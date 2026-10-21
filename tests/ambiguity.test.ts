@@ -19,6 +19,17 @@ describe("compareTimes", () => {
     ],
     ["No time mentioned", "Arrived at 8 PM", "no_times"],
     [
+      "from about 8 until closing",
+      "around 8, but only for a short drink",
+      "compatible",
+    ],
+    [
+      "Right at closing, 11:55 PM.",
+      "I called my sister around 12:10, and again at 7 the next morning.",
+      "uncertain",
+    ],
+    // From the real transcripts
+    [
       "I ordered pizza around 7pm and watched TV.",
       "maybe around 7:30, but came right back",
       "compatible",
