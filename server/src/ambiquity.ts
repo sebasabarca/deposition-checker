@@ -1,6 +1,5 @@
 const HEDGED_TOLERANCE = 30;
 const EXACT_TOLERANCE = 5;
-
 const SAME_MOMENT_GAP = 60;
 const DAY = 24 * 60;
 
@@ -136,9 +135,11 @@ function combineMentions(
   return readings.length > 0 ? { readings } : null;
 }
 
-function overlapsOnClock(a: Interval, b: Interval): boolean {
-  return [-DAY, 0, DAY].some(
-    (shift) => a[0] <= b[1] + shift && b[0] + shift <= a[1],
+function gapOnClock(a: Interval, b: Interval): number {
+  return Math.min(
+    ...[-DAY, 0, DAY].map((shift) =>
+      Math.max(0, b[0] + shift - a[1], a[0] - (b[1] + shift)),
+    ),
   );
 }
 
@@ -171,19 +172,28 @@ export function compareTimes(quote1: string, quote2: string): TimeCheck {
     };
   }
 
+  let closest: [Interval, Interval] = [
+    combined1.readings[0],
+    combined2.readings[0],
+  ];
+  let smallestGap = Infinity;
   for (const a of combined1.readings) {
     for (const b of combined2.readings) {
-      if (overlapsOnClock(a, b)) {
+      const gap = gapOnClock(a, b);
+      if (gap === 0) {
         return {
           status: "compatible",
           detail: `Times can overlap (${describe(a, b)}), so the difference may be imprecise language.`,
         };
       }
+      if (gap < smallestGap) {
+        smallestGap = gap;
+        closest = [a, b];
+      }
     }
   }
 
-  const a = combined1.readings[0];
-  const b = combined2.readings[0];
+  const [a, b] = closest;
   return {
     status: "incompatible",
     detail: `Times do not overlap under any reading (${describe(a, b)}).`,
