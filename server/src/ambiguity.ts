@@ -51,6 +51,16 @@ function isHedgedNear(text: string, start: number, end: number): boolean {
   return hasWord(nearby, HEDGES);
 }
 
+const IRREGULAR_PLURALS = ["people", "men", "women", "children", "feet"];
+
+function isCountedNoun(word: string): boolean {
+  if (IRREGULAR_PLURALS.includes(word)) return true;
+  return (
+    /^[a-z]{3,}s$/.test(word) &&
+    !["was", "is", "has", "this", "yes"].includes(word)
+  );
+}
+
 export function findTimes(text: string): TimeMention[] {
   const lower = text.toLowerCase();
   const mentions: TimeMention[] = [];
@@ -76,14 +86,10 @@ export function findTimes(text: string): TimeMention[] {
     const end = start + fullMatch.length;
     const previousWord = lower.slice(0, start).trim().split(/\s+/).pop() ?? "";
     const nextWord = lower.slice(end).trim().split(/\s+/)[0] ?? "";
-    const followedByNoun =
-      /^[a-z]/.test(nextWord) &&
-      !["and", "or", "but", "maybe", "o'clock"].includes(
-        nextWord.replace(/[.,;!?]$/, ""),
-      );
+    const followedByCount = isCountedNoun(nextWord.replace(/[.,;!?]$/, ""));
 
     const isExplicit = Boolean(suffix || minuteText);
-    const isCued = TIME_CUES.includes(previousWord) && !followedByNoun;
+    const isCued = TIME_CUES.includes(previousWord) && !followedByCount;
     if (!isExplicit && !isCued) continue;
 
     const base = (hour % 12) * 60 + minutes;

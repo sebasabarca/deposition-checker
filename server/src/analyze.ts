@@ -1,5 +1,5 @@
 import { findCandidates } from "./claude";
-import { compareTimes, type TimeCheck } from "./ambiquity";
+import { compareTimes, type TimeCheck } from "./ambiguity";
 import { verifyQuote } from "./verify";
 import type { Candidate } from "./schema";
 import type { QAPair } from "./transcript";

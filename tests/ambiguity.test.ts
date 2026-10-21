@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compareTimes, findTimes } from "../server/src/ambiquity";
+import { compareTimes, findTimes } from "../server/src/ambiguity";
 
 describe("compareTimes", () => {
   const cases: [string, string, string][] = [
