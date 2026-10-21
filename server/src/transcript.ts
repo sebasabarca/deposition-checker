@@ -1,7 +1,7 @@
 export type QAPair = {
   id: string;
-  questions: string;
-  answers: string;
+  question: string;
+  answer: string;
 };
 
 export function parseTranscript(text: string, prefix: string): QAPair[] {
@@ -13,8 +13,8 @@ export function parseTranscript(text: string, prefix: string): QAPair[] {
     if (!question.trim() || !answer) return;
     pairs.push({
       id: `${prefix}-${index + 1}`,
-      questions: question.trim(),
-      answers: answer,
+      question: question.trim(),
+      answer: answer,
     });
   });
 

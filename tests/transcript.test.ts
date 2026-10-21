@@ -7,7 +7,7 @@ describe("parseTranscript", () => {
     const pairs = parseTranscript(TRANSCRIPT_1, "T1");
     expect(pairs).toHaveLength(6);
     expect(pairs[0].id).toBe("T1-1");
-    expect(pairs[0].answers).toContain("at home all evening");
+    expect(pairs[0].answer).toContain("at home all evening");
   });
 
   it("returns an empty list when the text has no questions", () => {
