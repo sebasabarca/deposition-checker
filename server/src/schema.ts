@@ -7,7 +7,7 @@ export const CONTRADICTION_TYPES = [
 ] as const;
 
 export const CandidateSchema = z.object({
-  tq_id: z.string(),
+  t1_id: z.string(),
   t2_id: z.string(),
   t1_quote: z.string(),
   t2_quote: z.string(),

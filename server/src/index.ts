@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { z } from "zod";
 import { parseTranscript } from "./transcript";
-import { findCandidates } from "./claude";
+import { analyze } from "./analyze";
 
 const app = express();
 app.use(express.json({ limit: "200kb" }));
@@ -31,8 +31,8 @@ app.post("/api/analyze", async (req, res) => {
   }
 
   try {
-    const contradictions = await findCandidates(t1, t2);
-    return res.status(200).json({ t1, t2, contradictions });
+    const findings = await analyze(t1, t2);
+    return res.status(200).json({ t1, t2, findings });
   } catch (error) {
     return res
       .status(502)
