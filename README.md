@@ -1,15 +1,15 @@
 # Deposition Contradiction Detector
 
-Compares two deposition transcripts from the same witness and highlights where their story contradicts itself. Each flaged contradiction is classified as a **direct contradiction**, an **inferential contradiction** or a **likely false positive**, with a confidence score calculated by this app's own logic rules.
+Compares two deposition transcripts from the same witness and highlights where their story contradicts itself. Each flagged contradiction is classified as a **direct contradiction**, an **inferential contradiction** or a **likely false positive**, with a confidence score calculated by this app's own logic rules.
 
-**Hard rule: Claude proposes, the app calculates the confidence score.** Claude finds candidate contradictions and providies a brief explanation. The app checks that every quote exists in the transcrispt, compares times with deterministic logic, measures how consistent Claude is accross multimple checks, and calculates the confidence itself. Claude never returns a confidence score.
+**Main rule: Claude proposes, the app calculates the confidence score.** Claude finds candidate contradictions and provides a brief explanation. The app checks that every quote exists in the transcripts, compares times with deterministic logic, measures how consistent Claude is across multiple runs, and calculates the confidence itself. Claude never returns a confidence score.
 
 ## Run it
 
 Requirements: Node.js 20 or newer and an Anthropic API key.
 
 ```bash
-cp .env      # then add your ANTHROPIC_API_KEY
+cp .env.example .env      # then add your ANTHROPIC_API_KEY
 npm install && npm run dev
 ```
 
@@ -24,11 +24,16 @@ Other commands: `npm test` runs the unit tests, `npm run typecheck` checks types
 
 ## How it works
 
-1.- **Parse** each transcript into numbered question and answer pairs (`T1-1`, `T2-3`...), so every claim has a reference a lawyer can check. 2. **Ask Claude 3 times** for candidate contradictions using the structure output. Each candidate must include the answer IDs, word-for-word quotes, a proposed type and an explanation. Responses format are validated using zod to ensure consistency. If one run fails, the other ones are still used to evaluate the candidates. 3. **Group** the same pair across runs and take the majority type. When two types are tied, the app goes to the more cautious label (false positive, then inferential, then direct). 4. **Evidence gate:** both quotes must exist in the transcripts (score of 0.6 or higher). Otherwise the finding is marked **Unverified**, gets no confidence score, and the app reports what went wrong. 5. **Time check:** times are turned into ranges and compared (see below). 6. **Score, band and sort** each finding, with a plain-English list of reasons.
+1. **Parse** each transcript into numbered question and answer pairs (`T1-1`, `T2-3`...), so every claim has a reference a lawyer can check.
+2. **Ask Claude 3 times in parallel** for candidate contradictions using structured outputs. Each candidate must include the answer IDs, word-for-word quotes, a proposed type and an explanation. The response format is validated with zod to ensure consistency. If one run fails, the other runs are still used.
+3. **Group** the same pair across runs and take the majority type. When two types are tied, the app picks the more cautious label (false positive, then inferential, then direct).
+4. **Evidence gate:** both quotes must exist in the transcripts (score of 0.6 or higher). Otherwise the finding is marked **Unverified**, gets no confidence score, and the app reports what went wrong.
+5. **Time check:** times are turned into ranges and compared (see below).
+6. **Score, band and sort** each finding, with a plain-English list of reasons.
 
 ## Confidence rubric
 
-The score expresses confidence in the **assigned classification**, whithout caring about the type. It is a heuristic, not a probability, because there is no labelled data to train a model.
+The score expresses confidence in the **assigned classification**, whatever the type. It is a heuristic, not a probability, because there is no labelled data to calibrate it.
 
 | Signal                                                                  | Effect       |
 | ----------------------------------------------------------------------- | ------------ |
@@ -47,32 +52,36 @@ Results are sorted by review priority: high-confidence direct contradictions fir
 
 ## Quote verification
 
-Quotes are normalized (lowercase, punctuation and spacing ignored) and must exist inside the answer they cite. An exact match scores 1.0. If the words are present but not in the exact order, the score is at most 0.9, based on how many words match. Some words like "I", "the" and "was" are ignored, because otherwise an invented quote could pass just by sharing them.
+Quotes are normalized (lowercase, punctuation and spacing ignored) and must exist inside the answer they cite. An exact match scores 1.0. If the words are present but not in the exact order, the score is at most 0.9, based on how many words match. Common words like "I", "the" and "was" are ignored, because otherwise an invented quote could pass just by sharing them.
 
 ## Time check
 
 Answers one question only: can the times in two quotes refer to the same moment?
 
-- A hedged time ("around 8", "maybe 10:30") becomes a range of ±30 minutes. A precise time ("8:05", "8 PM sharp") gets ±5 minutes. These tolerances are not legal standars, just heuristic values.
-- A time without AM or PM is considered both ways, and the times count as compatible if any reading overlaps with any of the two.
-- A bare number only counts as a time if its after a time word ("at", "around", "until") and not before a plural noun, so "about 5 people" is not a time.
+- A hedged time ("around 8", "maybe 10:30") becomes a range of ±30 minutes. A precise time ("8:05", "8 PM sharp") gets ±5 minutes. These tolerances are not legal standards, just heuristic values.
+- A time without AM or PM is considered both ways, and the times count as compatible if any reading overlaps.
+- A bare number only counts as a time if it's after a time word ("at", "around", "until") and not before a plural noun, so "about 5 people" is not a time.
 - Several times in one quote are combined only if they are within 60 minutes of each other ("10, maybe 10:30"). Otherwise the result is "uncertain".
 - Ranges are compared on a 24-hour clock, so 11:55 PM and 12:05 AM can overlap.
 
 ## What was wrong with the original app
 
-- It called the Anthropic API directly from the browser, which will expose the API key. In this app, the API key now goes through a small Express server to protect the key.
-- The responsed was parsed using regex and `JSON.parse` with no validation of the output, and `max_tokens: 1000` could cut the JSON off. It now uses structured outputs, zod validation and its free of errors for refused responses.
+- It called the Anthropic API directly from the browser, which would expose the API key. In this app, the call goes through a small Express server, so the key stays on the server.
+- The response was parsed using a regex and `JSON.parse` with no validation of the output, and `max_tokens: 1000` could cut the JSON off. It now uses structured outputs, zod validation and clear errors for truncated or refused responses.
 - `severity` came straight from the LLM. Confidence is now calculated by the app.
 - Nothing checked that the quotes were real, and the three types were never defined in the prompt.
-- Transcripts were hardcoded, there was no legend, no explanation of results and no tests.
+- Transcripts were hardcoded, and there was no legend, no explanation of results and no tests.
+
+## Tests
+
+`npm test` covers the transcript parser, quote verification, the time check and the scoring engine. The scoring tests run without an API key, because `scoreFindings` is a pure function that takes Claude's results as input. Cases include invented quotes, real quotes under the wrong ID, disagreeing runs, duplicate findings, overlapping and non-overlapping times, and quantities that look like times.
 
 ## Known limitations
 
 - The time check handles times only, not dates, quantities ("a few" vs "three") or durations.
 - It cannot tell which event a time refers to. This depends on Claude pairing the right statements.
 - Quote matching is word-based, so a paraphrase with the same key words can still pass the gate with a penalty.
-- Three runs per analysis triples the API cost and time. This is a tradeof I decided to take as we dont have any labeled data to train a model.
+- Three runs per analysis triples the API cost and time. This is a tradeoff I decided to take, because agreement between runs gives a confidence signal I can measure myself.
 - Scores are heuristic and would need labelled transcripts to calibrate.
 
 ## How I used AI
