@@ -1,142 +1,113 @@
-I am new to Claude Code, and this is my first project using an AI coding agent.
+# CLAUDE.md
 
-We are developing Deposition Checker v2, an application that analyzes legal depositions and identifies potential contradictions.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-The repository contains an existing v1 implementation that we will upgrade.
+## Project overview
 
-I have an approved technical plan in DESIGN.md.
+Deposition Checker finds potential contradictions in a witness's sworn testimony across deposition sessions. Claude reads small evidence packets and classifies candidate pairs as direct, inferential or false positive. Code then checks every citation against the stored transcript and calculates a confidence score with a fixed, explainable rubric. A lawyer reviews each finding with both passages shown side by side at their page:line.
 
-Your task is to review the repository, read DESIGN.md, and improve the existing CLAUDE.md.
+The repo holds **v1**, which compares two short `Q:`/`A:` transcripts in one request. We are building **v2**, which handles real page:line depositions with background jobs, measured cost and a review workbench. `DESIGN.md` is the approved v2 plan and the source of truth for the planned architecture. Planned v2 modules do not exist yet unless you find them in the repo.
 
-Do not implement application features yet.
+Development priorities, in order: correct evidence, reliable retrieval, defensible adjudication, excellent UI, measured cost, demonstrable scalability.
 
-1. Understand the repository
+## Technology stack
 
-Inspect the existing codebase and identify:
+**Current (v1):**
+- Node 20+, TypeScript (strict, `nodenext` modules), run with `tsx`
+- Express 5 API server (`server/`)
+- Anthropic SDK (`@anthropic-ai/sdk`) with structured outputs, validated with zod 4
+- Vitest for unit tests
+- Client: React 19 + Vite 8, a separate package in `client/`
 
-- Technologies currently used.
-- Existing project structure.
-- Available development commands.
-- Testing framework and test commands.
-- Reusable v1 functionality.
-- Existing coding conventions.
+**Approved v2 additions (from `DESIGN.md`, not yet installed):**
+- Postgres with pgvector and full-text search, run via Docker Compose
+- Drizzle for schema and migrations
+- pg-boss job queue, with the API and the worker as separate processes
+- `pdfjs-dist` for PDF parsing (PyMuPDF only if it fails the parser spike)
+- Tailwind and shadcn/ui for the Workbench UI
+- k6 for load testing
 
-Do not assume that planned v2 modules already exist.
+## Repository structure
 
-2. Understand the approved design
+**Existing:**
+- `server/src/index.ts`: Express app with `POST /api/analyze`
+- `server/src/transcript.ts`: `Q:`/`A:` parser (replaced in v2)
+- `server/src/claude.ts`, `schema.ts`: the Claude call and its zod schema (the pattern is reused)
+- `server/src/analyze.ts`: three runs, majority vote and scoring (voting is removed in v2)
+- `server/src/verify.ts`: quote matching (`normalize`, `quoteMatchScore`), reused in v2
+- `server/src/ambiguity.ts`: time-range comparison, reused as-is in v2
+- `server/src/data/samples.ts`: Marcus Webb and Elena Ruiz samples, kept as synthetic fixtures
+- `tests/`: Vitest tests for the pure functions above
+- `scripts/try.ts`: runs a v1 analysis from the CLI
+- `client/src/`: the v1 single-page UI
+- `docs/agent-log.md`: log of agent sessions
 
-Read DESIGN.md and identify:
+**Planned v2 modules** (folders under `server/src/`, each with one public entry point; see `DESIGN.md`, Modules section): `ingest/`, `claims/`, `retrieve/`, `adjudicate/`, `verify/`, `score/`, `costs/`, `jobs/`, `api/`, `eval/`. Only `claims/` and `adjudicate/` may call a model, and every such call goes through `costs/`.
 
-- The application’s purpose.
-- Approved technologies and architecture.
-- Important technical constraints.
-- Non-negotiable correctness requirements.
-- Development priorities.
+## Development commands
 
-DESIGN.md is the source of truth for the planned architecture.
+- `npm install`: installs root deps; `postinstall` also installs `client/` deps
+- `npm run dev`: server (`tsx watch`, port 3001) and Vite client (port 5173, proxies `/api` to 3001)
+- `npm test`: all Vitest tests in `tests/`
+- `npx vitest run tests/verify.test.ts`: one test file
+- `npx vitest run -t "<test name>"`: one test
+- `npm run typecheck`: `tsc --noEmit` over `server/`, `scripts/` and `tests/` (not the client)
+- `npm run build --prefix client`: typechecks and builds the client
+- `npx tsx scripts/try.ts`: v1 analysis of the samples (needs `ANTHROPIC_API_KEY`)
 
-If existing code differs from DESIGN.md, distinguish between the current implementation and the intended v2 architecture.
+Requires a `.env` with `ANTHROPIC_API_KEY` and, optionally, `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). See `.env.example`. Add new commands here only once they exist and work.
 
-Do not silently change the design.
+## Architectural rules
 
-3. Improve CLAUDE.md
+- **Follow `DESIGN.md`.** If code and design disagree, say so and ask. Never change the design silently.
+- **Keep API requests separate from long-running analysis.** Analysis runs in background jobs, and API requests only read stored rows.
+- **Never call an AI model from the client.** The API key is read only on the server.
+- **Every displayed quotation comes from stored transcript source lines,** never from model output.
+- **Never trust a model-generated citation without verification.** Unverified citations get no score and go to a "check manually" section.
+- **Claude classifies, TypeScript scores.** Claude never returns a confidence, score, band or probability, and strict schemas reject such keys. All scoring lives in pure functions, with weights in a versioned rubric.
+- **Keep model interpretation separate from deterministic verification,** in code, in the database and in the UI labels.
+- **Record every AI call's token usage and cost.**
+- **Preserve page and line references** from ingestion through to display.
+- **Never silently discard failed or unprocessed evidence.** Count it and show it: pages with no text layer, failed batches, deferred candidates.
 
-Create a concise, practical set of project instructions.
-
-Include these sections:
-
-Project overview
-
-Explain what Deposition Checker v2 does in a few sentences.
-
-Technology stack
-
-Document the existing stack and the approved v2 additions.
-
-Repository structure
-
-Explain the important existing directories and the planned module boundaries.
-
-Development commands
-
-Include only commands verified against the repository.
-
-Architectural rules
-
-Include these requirements:
-
-- Follow DESIGN.md.
-- Keep API requests separate from long-running analysis jobs.
-- Never call an AI model directly from the client.
-- Every displayed quotation must originate from stored transcript source lines.
-- Never trust a model-generated citation without verification.
-- Claude classifies contradictions, but TypeScript calculates confidence scores.
-- Keep model interpretation separate from deterministic verification.
-- Record every AI call’s token usage and cost.
-- Preserve page and line references throughout processing.
-- Do not silently discard failed or unprocessed evidence.
-
-Development workflow
+## Development workflow
 
 For each feature:
 
-1. Read the relevant section of DESIGN.md.
+1. Read the relevant section of `DESIGN.md`.
 2. Inspect the existing implementation.
 3. Explain the proposed approach.
-4. Identify affected files.
-5. Wait for my approval before implementing significant changes.
+4. Identify the affected files.
+5. Wait for approval before implementing significant changes.
 6. Implement only the approved scope.
 7. Add or update tests.
-8. Run relevant tests and type checks.
-9. Summarize changes and limitations.
+8. Run the relevant tests and `npm run typecheck`.
+9. Summarize the changes and their limitations.
 
-Coding conventions
+## Coding conventions
 
-Follow the existing repository’s TypeScript conventions.
+- Follow the existing TypeScript style: named exports, `type` aliases, `camelCase` functions, `UPPER_SNAKE` constants at the top of the file (see `analyze.ts`).
+- Put logic in pure functions (no I/O, clock or randomness) and test them with hand-built inputs, so tests need no API key or database.
+- Validate external data with zod at every boundary.
+- Prefer clear, maintainable code over unnecessary abstractions.
+- Don't add dependencies without explaining why they are needed.
+- `client/src/types.ts` hand-duplicates the server's response types, so update both when the API shape changes.
+- Keep the scoring constants in `README.md` in sync with the code.
 
-Prefer clear, maintainable code over unnecessary abstractions.
-
-Do not add dependencies without explaining why they are necessary.
-
-Git workflow
+## Git workflow
 
 - Work on one feature at a time.
-- Do not modify unrelated files.
-- Do not commit unless I explicitly request it.
+- Don't modify unrelated files.
+- Don't commit unless explicitly asked.
 - Never rewrite Git history or discard existing work without permission.
-- Summarize changes before suggesting a commit.
+- Summarize the changes before suggesting a commit.
 
-Communication preferences
+## Communication preferences
 
-I am a Computer Systems Technology student learning to use AI coding agents.
-
-I want to understand the system I am building.
-
-When proposing significant changes:
+The developer is a Computer Systems Technology student learning to work with AI coding agents, and wants to understand the system being built. When proposing significant changes:
 
 - Explain the reasoning in straightforward language.
-- Explain important trade-offs.
-- Identify what is new versus reused.
+- Explain the important trade-offs.
+- Say what is new and what is reused from v1.
 - Avoid unnecessary technical complexity.
-- Ask for approval when deviating from DESIGN.md.
-
-4. Keep CLAUDE.md concise
-
-Aim for approximately 100–150 lines.
-
-Avoid duplicating the entire DESIGN.md.
-
-CLAUDE.md should explain how to work on the project, not reproduce the full implementation plan.
-
-5. Expected result
-
-Update CLAUDE.md only.
-
-Then summarize:
-
-1. What instructions you added.
-2. What information came from the existing repository.
-3. What information came from DESIGN.md.
-4. Any inconsistencies or missing commands you discovered.
-
-Do not implement features, install dependencies, or change application code yet.
+- Ask for approval before deviating from `DESIGN.md`.
