@@ -111,3 +111,34 @@ Codex reviewed the parser-spike changes and found no actionable bugs within the 
 **Codex review:** Found the issues above; its targeted re-review confirmed all fixes resolved.
 
 **Status:** Steps 1 and 2 complete and approved, ready to commit. Next: Step 3, PostgreSQL setup with Docker Compose and Drizzle.
+
+### October 28, 2026 — Production ingestion, Step 3
+
+**Branch:** `feature/production-ingestion`.
+
+**Goal:** Set up PostgreSQL with Docker Compose and Drizzle, and create the tables ingestion needs. Nothing writes to them yet; saving `readDeposition` results is Step 4.
+
+**What was built:**
+
+- `docker-compose.yml`: Postgres 16 from the `pgvector/pgvector:pg16` image, data in a named volume, and a health check so `npm run db:up` waits until the database is ready. `docker/postgres-init/` creates a separate `deposition_checker_test` database the first time the volume is created, so tests never touch development data.
+- `server/src/db/schema.ts`: seven tables (`orgs`, `cases`, `witnesses`, `depositions`, `lines`, `exchanges`, `exchange_lines`). `client.ts` opens the connection from `DATABASE_URL`. The first migration is `drizzle/0000_init_ingestion.sql`.
+- New dependencies: `drizzle-orm` and `pg` (runtime), `drizzle-kit` and `@types/pg` (development). New scripts: `db:up`, `db:down`, `db:generate`, `db:migrate`. `.env.example` and `CLAUDE.md` list the new variables and commands.
+
+**Rules the database enforces:**
+
+- Duplicate protection: one deposition per case, file hash and parser version (`DESIGN.md`, "Idempotent by design"). A new parser version may ingest the same file again.
+- One line per `page:line` in a deposition, and one row per exchange part.
+- A deposition's witness must belong to the same case.
+- File hashes must be 64 hex characters, statuses must be known values, part numbers must be in range, question and answer ranges must have both endpoints or neither, and a part holds at most 40 answer lines.
+- Exchanges point at lines by ID and never copy them. Overlapping long-answer parts share lines through `exchange_lines`.
+- An exchange, and each of its `exchange_lines` rows, can only point at lines from its own deposition. The foreign keys cover the pair (line, deposition), the same pattern as witness and case.
+- Deleting a deposition removes its lines, exchanges and memberships, but not its case or witness. This is what lets Step 4 rewrite a deposition cleanly.
+- Not yet included: the full-text `tsv` column and its index (Path B), plus the tables for retrieval, jobs, findings and users, which arrive with their own modules.
+
+**What the agent got wrong, and what changed:**
+
+- Codex's review found that the foreign keys only checked that a referenced line existed, not that it belonged to the exchange's deposition. An exchange could cite another witness's line, even from another case, and display it as that witness's evidence. Claude had missed it. A new test reproduced it against the old schema (the database accepted the cross-deposition exchange). Fixed with composite foreign keys on the six exchange endpoints, plus a `deposition_id` column on `exchange_lines` with keys to both the exchange and the line. The migration had not been committed, so `0000_init_ingestion.sql` was regenerated rather than adding a second one.
+
+**Tests:** 14 database tests in `tests/db/schema.test.ts` check each rule above against a real Postgres. They run only when `TEST_DATABASE_URL` is set, and refuse to run unless the database name ends in `_test`, so `npm test` still works without Docker. With Postgres running, all 123 tests pass and typecheck is clean.
+
+**Status:** Step 3 complete, ready to commit. Next: Step 4, saving ingested depositions in one transaction keyed by file hash and parser version.
