@@ -18,12 +18,11 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - Anthropic SDK (`@anthropic-ai/sdk`) with structured outputs, validated with zod 4
 - Vitest for unit tests
 - Client: React 19 + Vite 8, a separate package in `client/`
+- `pdfjs-dist` for PDF text extraction (chosen by the parser spike; see `docs/parser-spike.md`)
+- Postgres 16 (with pgvector available) in Docker Compose, accessed through Drizzle ORM (`drizzle-orm`, `drizzle-kit`, `pg`)
 
 **Approved v2 additions (from `DESIGN.md`, not yet installed):**
-- Postgres with pgvector and full-text search, run via Docker Compose
-- Drizzle for schema and migrations
 - pg-boss job queue, with the API and the worker as separate processes
-- `pdfjs-dist` for PDF parsing (PyMuPDF only if it fails the parser spike)
 - Tailwind and shadcn/ui for the Workbench UI
 - k6 for load testing
 
@@ -40,6 +39,10 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `tests/`: Vitest tests for the pure functions above
 - `scripts/try.ts`: runs a v1 analysis from the CLI
 - `client/src/`: the v1 single-page UI
+- `server/src/ingest/`: v2 PDF ingestion: extraction, per-page validation against the `ellison-doj-v1` layout, speakers, exchanges and long-answer parts (pure functions)
+- `server/src/db/`: Drizzle schema (`schema.ts`) and connection (`client.ts`); migrations generated into `drizzle/`
+- `docker-compose.yml`, `docker/postgres-init/`: local Postgres, plus a separate `deposition_checker_test` database for the test suite
+- `scripts/spike/`: the parser spike, kept as the record behind `docs/parser-spike.md`; production code lives in `server/src/ingest/`
 - `docs/agent-log.md`: log of agent sessions
 
 **Planned v2 modules** (folders under `server/src/`, each with one public entry point; see `DESIGN.md`, Modules section): `ingest/`, `claims/`, `retrieve/`, `adjudicate/`, `verify/`, `score/`, `costs/`, `jobs/`, `api/`, `eval/`. Only `claims/` and `adjudicate/` may call a model, and every such call goes through `costs/`.
@@ -54,8 +57,12 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `npm run typecheck`: `tsc --noEmit` over `server/`, `scripts/` and `tests/` (not the client)
 - `npm run build --prefix client`: typechecks and builds the client
 - `npx tsx scripts/try.ts`: v1 analysis of the samples (needs `ANTHROPIC_API_KEY`)
+- `npm run db:up` / `npm run db:down`: start or stop Postgres in Docker
+- `npm run db:generate`: write a new SQL migration to `drizzle/` after changing `server/src/db/schema.ts` (review the SQL, then commit it)
+- `npm run db:migrate`: apply migrations to the database in `DATABASE_URL`
+- Database tests in `tests/db/` run only when `TEST_DATABASE_URL` is set (they wipe that database, whose name must end in `_test`); otherwise they are skipped
 
-Requires a `.env` with `ANTHROPIC_API_KEY` and, optionally, `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). See `.env.example`. Add new commands here only once they exist and work.
+Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_URL`, and optionally `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). See `.env.example`, whose database URLs match `docker-compose.yml`. Add new commands here only once they exist and work.
 
 ## Architectural rules
 

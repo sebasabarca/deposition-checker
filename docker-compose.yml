@@ -1,0 +1,24 @@
+# Local Postgres for development and tests. Start with `npm run db:up`, stop with `npm run db:down`.
+# Postgres 16 with the pgvector extension available (DESIGN.md), data kept in a named volume.
+# The credentials are for local development only.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: deposition
+      POSTGRES_PASSWORD: deposition
+      POSTGRES_DB: deposition_checker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, when the volume is first created: adds the separate test database.
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deposition -d deposition_checker"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:
