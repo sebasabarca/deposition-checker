@@ -33,6 +33,7 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `server/src/worker.ts`: the ingest worker process
 - `server/src/api/`: v2 endpoints: upload a deposition PDF, read its status, retry a failed one
 - `server/src/jobs/`: pg-boss queues and the ingest job handlers (run, and record a final failure)
+- `server/src/costs/`: model price table (`pricing.ts`), the models v2 calls per stage (`models.ts`), the pure `callCost()`, and `recordCall()` / `jobCost()` over `llm_calls`
 - `server/src/transcript.ts`: `Q:`/`A:` parser (replaced in v2)
 - `server/src/claude.ts`, `schema.ts`: the Claude call and its zod schema (the pattern is reused)
 - `server/src/analyze.ts`: three runs, majority vote and scoring (voting is removed in v2)
@@ -79,7 +80,7 @@ Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_UR
 - **Never trust a model-generated citation without verification.** Unverified citations get no score and go to a "check manually" section.
 - **Claude classifies, TypeScript scores.** Claude never returns a confidence, score, band or probability, and strict schemas reject such keys. All scoring lives in pure functions, with weights in a versioned rubric.
 - **Keep model interpretation separate from deterministic verification,** in code, in the database and in the UI labels.
-- **Record every AI call's token usage and cost.**
+- **Record every AI call's token usage and cost** with `recordCall()` from `costs/`. The one known exception is v1's `server/src/claude.ts`, which v2 replaces.
 - **Preserve page and line references** from ingestion through to display.
 - **Never silently discard failed or unprocessed evidence.** Count it and show it: pages with no text layer, failed batches, deferred candidates.
 

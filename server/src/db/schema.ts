@@ -10,12 +10,14 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
+  boolean,
   check,
   date,
   foreignKey,
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -295,5 +297,44 @@ export const exchangeLines = pgTable(
     lineInSameDeposition("exchange_lines_line_fk", t.lineId, t.depositionId).onDelete("cascade"),
     // Find every exchange part a line belongs to (a line can be in two overlapping parts).
     index("exchange_lines_line_id_idx").on(t.lineId),
+  ],
+);
+
+export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication"]);
+
+// One row per successful model call (DESIGN.md, "Cost model"). Cost is computed when the call is
+// recorded, with the price version it used, so a later price change never rewrites it. A model
+// missing from the price table is still recorded, with its tokens, as unpriced: cost_usd and
+// price_version are null, and totals report it rather than counting it as free.
+export const llmCalls = pgTable(
+  "llm_calls",
+  {
+    id: id(),
+    // The analysis job. No foreign key yet: the jobs table arrives with analysis jobs, and the key is
+    // added then, once existing values are checked. Same type as every other ID here (bigint).
+    jobId: ref("job_id"),
+    stage: llmStage("stage").notNull(),
+    model: text("model").notNull(),
+    items: integer("items").notNull(), // pairs or exchanges carried by the call
+    inputTokens: integer("input_tokens").notNull(), // uncached input only
+    outputTokens: integer("output_tokens").notNull(),
+    cacheWrite5mTokens: integer("cache_write_5m_tokens").notNull(),
+    cacheWrite1hTokens: integer("cache_write_1h_tokens").notNull(),
+    cacheReadTokens: integer("cache_read_tokens").notNull(),
+    batch: boolean("batch").notNull().default(false),
+    attempt: integer("attempt").notNull(), // 1 for the first try; retries are billed too
+    priceVersion: text("price_version"),
+    costUsd: numeric("cost_usd", { precision: 14, scale: 8, mode: "number" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("llm_calls_job_stage_idx").on(t.jobId, t.stage),
+    check(
+      "llm_calls_tokens_check",
+      sql`${t.inputTokens} >= 0 and ${t.outputTokens} >= 0 and ${t.cacheWrite5mTokens} >= 0 and ${t.cacheWrite1hTokens} >= 0 and ${t.cacheReadTokens} >= 0`,
+    ),
+    check("llm_calls_counts_check", sql`${t.items} >= 1 and ${t.attempt} >= 1`),
+    // Priced calls have both a cost and the price version behind it; unpriced calls have neither.
+    check("llm_calls_priced_check", sql`(${t.costUsd} is null) = (${t.priceVersion} is null) and (${t.costUsd} is null or ${t.costUsd} >= 0)`),
   ],
 );

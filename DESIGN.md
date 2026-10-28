@@ -282,7 +282,9 @@ Every expected value above was recomputed from the exact rubric; the tests asser
 
 Cost is measured, not asserted. Every model call writes a row with its usage and price, and the app shows an estimated cost before an analysis and the actual cost during and after it. The figures below rest on planning assumptions about packet size, which the first real run replaces with measured numbers. The plan does not claim that two 300-page depositions cost less than $3 until a measured run supports it.
 
-**What every call records** (`llm_calls`): job, pipeline stage, model identifier, input tokens, output tokens, cache-write and cache-read tokens, batch flag, attempt number, `price_version`, computed cost in USD, and timestamp. Prices live in a versioned table in code (`costs/pricing.ts`, USD per million tokens by model and token type, with an effective date). Cost is stored at call time, so a later price change never rewrites history.
+**What every call records** (`llm_calls`): job, pipeline stage, model identifier, input tokens, output tokens, 5-minute and 1-hour cache-write tokens (separately, since they are priced at 1.25x and 2x input), cache-read tokens, batch flag, attempt number, `price_version`, computed cost in USD, and timestamp. Prices live in a versioned table in code (`costs/pricing.ts`, USD per million tokens by model and token type, with an effective date). Cost is stored at call time, so a later price change never rewrites history.
+
+**Built October 28.** `costs/` has the price table (Sonnet 5.5 and Haiku 5.5 from the pricing page, including Haiku 5.5's higher rates for prompts over 100,000 tokens, where the prompt counts cache reads and writes, and the Batch API's 50% off every token type), the pure `callCost()`, `recordCall()` and `jobCost()`. Every v2 model call is recorded with `recordCall()`; the models v2 calls are named per stage in `costs/models.ts`, and a test checks each has a price. A call to a model missing from the price table is still recorded with its tokens, as **unpriced** (`cost_usd` and `price_version` null), and is never counted as free: a job's total is unknown while any of its calls is unpriced, and the priced part is reported separately. `llm_calls.job_id` has no foreign key until the `jobs` table exists; that migration adds it after checking existing values. **The one known exception** is v1's `server/src/claude.ts`, which has no database and isn't recorded; v2 replaces it.
 
 **Estimated versus actual**
 
@@ -434,8 +436,9 @@ reviews(id, finding_id, user_id, decision, note, created_at)                    
 jobs(id, case_id, status, budget_usd, spent_usd, counts jsonb, error)
      -- status: queued | running | partial_budget | partial_failed | complete | failed
 job_stages(job_id, deposition_id, stage, status, attempts, input_hash, completed_at)  -- unique (job_id, deposition_id, stage)
-llm_calls(id, job_id, stage, model, items int, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
-          batch bool, attempt, price_version, cost_usd, created_at)     -- items: pairs or exchanges in the call
+llm_calls(id, job_id NULL, stage, model, items int, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens,
+          batch bool, attempt, price_version NULL, cost_usd NULL, created_at)     -- items: pairs or exchanges in the call
+          -- price_version and cost_usd are null together for a model missing from the price table (unpriced, never free)
 eval_labels(id, set_name, is_synthetic bool, exchange_a, exchange_b, label, expected_type NULL, note)
 case_summary(case_id, counts jsonb, cost_usd, updated_at)
 ```

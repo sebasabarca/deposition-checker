@@ -80,7 +80,7 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
     ...overrides,
   });
 
-  it("creates the seven ingestion tables", async () => {
+  it("creates the seven ingestion tables and llm_calls", async () => {
     const result = await db.execute<{ table_name: string }>(
       sql`select table_name from information_schema.tables where table_schema = 'public' order by table_name`,
     );
@@ -90,6 +90,7 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
       "exchange_lines",
       "exchanges",
       "lines",
+      "llm_calls",
       "orgs",
       "witnesses",
     ]);
