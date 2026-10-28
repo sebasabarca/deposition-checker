@@ -1,0 +1,1 @@
+ALTER TABLE "depositions" ADD COLUMN "ingest_run" integer DEFAULT 1 NOT NULL;

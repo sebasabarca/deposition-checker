@@ -143,7 +143,7 @@ describe.skipIf(!TEST_DATABASE_URL)("saving depositions (Postgres)", () => {
     const texts = await db.select({ text: lines.rawText }).from(lines).where(eq(lines.lineNo, 22));
     expect(texts).toEqual([{ text: "A. No, I didn't." }]);
     const [depo] = await db.select().from(depositions);
-    expect(depo.validation.reasons).toEqual([]);
+    expect(depo.validation?.reasons).toEqual([]);
   });
 
   const notReady = (status: "needs_review" | "unsupported", reason: string): DepositionRead => ({
@@ -161,7 +161,7 @@ describe.skipIf(!TEST_DATABASE_URL)("saving depositions (Postgres)", () => {
       expect(await count()).toEqual([5, 2, 5]);
       const [depo] = await db.select().from(depositions);
       expect(depo).toMatchObject({ id: first.depositionId, status: "ready" });
-      expect(depo.validation.reasons).toEqual([]);
+      expect(depo.validation?.reasons).toEqual([]);
       expect(failed).toMatchObject({ depositionId: first.depositionId, outcome: "kept_previous", status: "ready", lines: 5, exchanges: 2, parts: 2 });
       expect(failed.attempt.status).toBe(status);
       expect(failed.attempt.reasons).toEqual(["the file could not be read as a PDF: out of memory"]);
@@ -197,7 +197,7 @@ describe.skipIf(!TEST_DATABASE_URL)("saving depositions (Postgres)", () => {
     expect(saved).toMatchObject({ status: "unsupported", lines: 0, exchanges: 0, parts: 0 });
     const [depo] = await db.select().from(depositions);
     expect(depo).toMatchObject({ status: "unsupported", needsOcrPages: [1, 2], pageCount: 2 });
-    expect(depo.validation.reasons).toEqual(["no page has a text layer"]);
+    expect(depo.validation?.reasons).toEqual(["no page has a text layer"]);
     expect(await count()).toEqual([0, 0, 0]);
   });
 

@@ -8,6 +8,8 @@
 //   time). Its rows and status stay, and the failed attempt's validation is returned to the caller.
 // - Saves of the same key run one at a time, under a transaction-level advisory lock, so two
 //   processes ingesting the same file can't both decide the deposition is new.
+// The worker also passes the run it is saving for (`onlyIf`): the save then happens only if that
+// deposition is still processing that run, checked with its row locked inside this transaction.
 
 import { and, countDistinct, eq, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
@@ -43,13 +45,28 @@ export type SaveResult = {
   attempt: Validation; // this attempt's validation, also when it was not stored
 };
 
+// The ingestion run a worker's save is for: the deposition and its ingest_run.
+export type CurrentRun = { depositionId: number; run: number };
+
+// Returned instead of saving when the deposition is no longer processing that run: it finished,
+// failed, or was retried as a newer run while this attempt was still working.
+export type NotCurrent = { outcome: "not_current"; depositionId: number; status: (typeof depositions.$inferSelect)["status"] | null };
+
+// The advisory lock that serializes work on one deposition key. The upload endpoint takes the same
+// lock, so an upload and a save of the same file can't interleave.
+export function depositionLockKey(caseId: number, fileSha256: string, parserVersion: string): string {
+  return `deposition:${caseId}:${fileSha256}:${parserVersion}`;
+}
+
 function batches<T>(rows: T[]): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < rows.length; i += BATCH_SIZE) result.push(rows.slice(i, i + BATCH_SIZE));
   return result;
 }
 
-export async function saveDeposition(db: Database, input: SaveInput): Promise<SaveResult> {
+export function saveDeposition(db: Database, input: SaveInput): Promise<SaveResult>;
+export function saveDeposition(db: Database, input: SaveInput, onlyIf: CurrentRun): Promise<SaveResult | NotCurrent>;
+export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: CurrentRun): Promise<SaveResult | NotCurrent> {
   const { read } = input;
   const { validation } = read;
   const key = and(
@@ -61,10 +78,28 @@ export async function saveDeposition(db: Database, input: SaveInput): Promise<Sa
   return db.transaction(async (tx) => {
     // Held until this transaction ends; a concurrent save of the same key waits here, then sees
     // this one's committed rows and replaces them.
-    const lockKey = `deposition:${input.caseId}:${input.fileSha256}:${read.parserVersion}`;
+    const lockKey = depositionLockKey(input.caseId, input.fileSha256, read.parserVersion);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
 
+    // The row lock makes a retry or a recorded failure wait for this save, or this save see them.
+    if (onlyIf) {
+      const [target] = await tx
+        .select({ status: depositions.status, run: depositions.ingestRun })
+        .from(depositions)
+        .where(eq(depositions.id, onlyIf.depositionId))
+        .for("update");
+      if (!target || target.status !== "processing" || target.run !== onlyIf.run) {
+        return { outcome: "not_current", depositionId: onlyIf.depositionId, status: target?.status ?? null };
+      }
+    }
+
     const [previous] = await tx.select({ id: depositions.id, status: depositions.status }).from(depositions).where(key);
+    // The worker's result must land on the deposition it was queued for, never on another one.
+    if (onlyIf && previous?.id !== onlyIf.depositionId) {
+      throw new Error(
+        `deposition ${onlyIf.depositionId} is not the one stored under parser ${read.parserVersion} (${previous ? `that is deposition ${previous.id}` : "none is"})`,
+      );
+    }
     if (previous?.status === "ready" && validation.status !== "ready") {
       const [stored] = await tx
         .select({ parts: sql<number>`count(*)::int`, exchanges: countDistinct(exchanges.groupId) })
@@ -101,6 +136,7 @@ export async function saveDeposition(db: Database, input: SaveInput): Promise<Sa
       validation,
       parserVersion: read.parserVersion,
       status: validation.status,
+      ingestError: null,
     };
     const [deposition] = await tx
       .insert(depositions)

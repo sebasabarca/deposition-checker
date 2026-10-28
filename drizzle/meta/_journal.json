@@ -15,6 +15,20 @@
       "when": 1793204801847,
       "tag": "0001_exchange_witness",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793206795147,
+      "tag": "0002_deposition_processing",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793207822422,
+      "tag": "0003_ingest_run",
+      "breakpoints": true
     }
   ]
 }

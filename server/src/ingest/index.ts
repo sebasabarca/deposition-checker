@@ -15,8 +15,16 @@ export type { LayoutProfile } from "./layout";
 export type { PageExtraction, SourceLine } from "./pdf";
 export type { AttributedLine, Exchange, ExchangeLine, ExchangePart, LineRange, LineRole, SpeakerRole } from "./exchanges";
 export type { DepositionStatus, PageStatus, PageValidation, Validation } from "./validate";
-export { saveDeposition, type SaveInput, type SaveOutcome, type SaveResult } from "./store";
-export { storeUpload, UPLOADS_DIR } from "./uploads";
+export {
+  depositionLockKey,
+  saveDeposition,
+  type CurrentRun,
+  type NotCurrent,
+  type SaveInput,
+  type SaveOutcome,
+  type SaveResult,
+} from "./store";
+export { isPdf, readUpload, storeUpload, UPLOADS_DIR } from "./uploads";
 
 export type DepositionRead = {
   parserVersion: string;

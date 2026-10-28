@@ -28,6 +28,23 @@ async function hashOf(file: string): Promise<string | null> {
   }
 }
 
+// Whether the bytes start like a PDF. The PDF standard puts "%PDF-" in the first 1,024 bytes; this
+// checks the content itself rather than the Content-Type a client claims. It only screens out other
+// files: whether the PDF can be read is decided later, by ingestion.
+export function isPdf(data: Uint8Array): boolean {
+  return Buffer.from(data.subarray(0, 1024)).includes("%PDF-");
+}
+
+// A stored upload's bytes, checked against the hash in its name, so the worker never parses a file
+// that changed or was damaged after it was stored.
+export async function readUpload(storageKey: string, dir = UPLOADS_DIR): Promise<Uint8Array> {
+  const data = new Uint8Array(await readFile(path.join(dir, storageKey)));
+  const expected = path.basename(storageKey, ".pdf");
+  const actual = sha256(data);
+  if (actual !== expected) throw new Error(`stored upload ${storageKey} is damaged: its contents hash to ${actual}`);
+  return data;
+}
+
 export async function storeUpload(data: Uint8Array, dir = UPLOADS_DIR): Promise<{ fileSha256: string; storageKey: string }> {
   const fileSha256 = sha256(data);
   const storageKey = `${fileSha256}.pdf`;

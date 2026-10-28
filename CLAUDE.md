@@ -13,23 +13,26 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 ## Technology stack
 
 **Current (v1):**
-- Node 20+, TypeScript (strict, `nodenext` modules), run with `tsx`
+- Node 22.12+ (`.nvmrc` selects 24; pg-boss 12 requires it), TypeScript (strict, `nodenext` modules), run with `tsx`
 - Express 5 API server (`server/`)
 - Anthropic SDK (`@anthropic-ai/sdk`) with structured outputs, validated with zod 4
 - Vitest for unit tests
 - Client: React 19 + Vite 8, a separate package in `client/`
 - `pdfjs-dist` for PDF text extraction (chosen by the parser spike; see `docs/parser-spike.md`)
 - Postgres 16 (with pgvector available) in Docker Compose, accessed through Drizzle ORM (`drizzle-orm`, `drizzle-kit`, `pg`)
+- pg-boss job queue (in Postgres), with the API and the ingest worker as separate processes
 
 **Approved v2 additions (from `DESIGN.md`, not yet installed):**
-- pg-boss job queue, with the API and the worker as separate processes
 - Tailwind and shadcn/ui for the Workbench UI
 - k6 for load testing
 
 ## Repository structure
 
 **Existing:**
-- `server/src/index.ts`: Express app with `POST /api/analyze`
+- `server/src/index.ts`: Express app with v1's `POST /api/analyze`, plus the v2 deposition endpoints from `api/` when Postgres is reachable
+- `server/src/worker.ts`: the ingest worker process
+- `server/src/api/`: v2 endpoints: upload a deposition PDF, read its status, retry a failed one
+- `server/src/jobs/`: pg-boss queues and the ingest job handlers (run, and record a final failure)
 - `server/src/transcript.ts`: `Q:`/`A:` parser (replaced in v2)
 - `server/src/claude.ts`, `schema.ts`: the Claude call and its zod schema (the pattern is reused)
 - `server/src/analyze.ts`: three runs, majority vote and scoring (voting is removed in v2)
@@ -51,7 +54,8 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 ## Development commands
 
 - `npm install`: installs root deps; `postinstall` also installs `client/` deps
-- `npm run dev`: server (`tsx watch`, port 3001) and Vite client (port 5173, proxies `/api` to 3001)
+- `npm run dev`: server (`tsx watch`, port 3001), ingest worker and Vite client (port 5173, proxies `/api` to 3001)
+- `npm run worker`: the ingest worker on its own (needs Postgres)
 - `npm test`: all Vitest tests in `tests/`
 - `npx vitest run tests/verify.test.ts`: one test file
 - `npx vitest run -t "<test name>"`: one test
