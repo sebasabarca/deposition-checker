@@ -18,12 +18,12 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - Anthropic SDK (`@anthropic-ai/sdk`) with structured outputs, validated with zod 4
 - Vitest for unit tests
 - Client: React 19 + Vite 8, a separate package in `client/`
+- `pdfjs-dist` for PDF text extraction (chosen by the parser spike; see `docs/parser-spike.md`)
 
 **Approved v2 additions (from `DESIGN.md`, not yet installed):**
 - Postgres with pgvector and full-text search, run via Docker Compose
 - Drizzle for schema and migrations
 - pg-boss job queue, with the API and the worker as separate processes
-- `pdfjs-dist` for PDF parsing (PyMuPDF only if it fails the parser spike)
 - Tailwind and shadcn/ui for the Workbench UI
 - k6 for load testing
 
@@ -40,6 +40,8 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `tests/`: Vitest tests for the pure functions above
 - `scripts/try.ts`: runs a v1 analysis from the CLI
 - `client/src/`: the v1 single-page UI
+- `server/src/ingest/`: v2 PDF ingestion (so far: extraction and per-page validation against the `ellison-doj-v1` layout)
+- `scripts/spike/`: the parser spike, kept as the record behind `docs/parser-spike.md`; production code lives in `server/src/ingest/`
 - `docs/agent-log.md`: log of agent sessions
 
 **Planned v2 modules** (folders under `server/src/`, each with one public entry point; see `DESIGN.md`, Modules section): `ingest/`, `claims/`, `retrieve/`, `adjudicate/`, `verify/`, `score/`, `costs/`, `jobs/`, `api/`, `eval/`. Only `claims/` and `adjudicate/` may call a model, and every such call goes through `costs/`.
