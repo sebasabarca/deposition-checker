@@ -134,6 +134,8 @@ export const depositions = pgTable(
       foreignColumns: [witnesses.id, witnesses.caseId],
     }),
     index("depositions_witness_id_idx").on(t.witnessId),
+    // Target for exchanges' (deposition, witness) foreign key.
+    unique("depositions_id_witness_unique").on(t.id, t.witnessId),
     check(
       "depositions_file_sha256_check",
       sql`${t.fileSha256} ~ '^[0-9a-f]{64}$'`,
@@ -188,6 +190,9 @@ export const exchanges = pgTable(
     depositionId: ref("deposition_id")
       .notNull()
       .references(() => depositions.id, { onDelete: "cascade" }),
+    // Copied from the deposition so retrieval can find a witness's exchanges across sessions;
+    // the foreign key below keeps it equal to the deposition's witness.
+    witnessId: ref("witness_id").notNull(),
     groupId: integer("group_id").notNull(), // shared by all parts of one exchange, numbered within the deposition
     partNo: integer("part_no").notNull(),
     partCount: integer("part_count").notNull(),
@@ -214,6 +219,12 @@ export const exchanges = pgTable(
     unique("exchanges_part_unique").on(t.depositionId, t.groupId, t.partNo),
     // Target for exchange_lines' (exchange, deposition) foreign key.
     unique("exchanges_id_deposition_unique").on(t.id, t.depositionId),
+    foreignKey({
+      name: "exchanges_deposition_witness_fk",
+      columns: [t.depositionId, t.witnessId],
+      foreignColumns: [depositions.id, depositions.witnessId],
+    }).onDelete("cascade"),
+    index("exchanges_witness_deposition_idx").on(t.witnessId, t.depositionId),
     // Null question or answer endpoints skip their check (Postgres MATCH SIMPLE).
     lineInSameDeposition("exchanges_first_line_fk", t.firstLineId, t.depositionId),
     lineInSameDeposition("exchanges_last_line_fk", t.lastLineId, t.depositionId),

@@ -142,3 +142,48 @@ Codex reviewed the parser-spike changes and found no actionable bugs within the 
 **Tests:** 14 database tests in `tests/db/schema.test.ts` check each rule above against a real Postgres. They run only when `TEST_DATABASE_URL` is set, and refuse to run unless the database name ends in `_test`, so `npm test` still works without Docker. With Postgres running, all 123 tests pass and typecheck is clean.
 
 **Status:** Step 3 complete, ready to commit. Next: Step 4, saving ingested depositions in one transaction keyed by file hash and parser version.
+
+### October 28, 2026 — Production ingestion, Step 4
+
+**Branch:** `feature/production-ingestion`.
+
+**Goal:** Save what `readDeposition()` produces to Postgres, so that re-ingesting the same PDF never duplicates source records (`DESIGN.md`, Ingestion steps 4 and 5).
+
+**Developer decisions (approved before implementation):**
+
+1. Every deposition is stored with its validation report, whatever its status, but only `ready` depositions get lines and exchanges.
+2. `witness_id` is added to `exchanges` now, as `DESIGN.md` specifies. Step 3 had left it out without saying so.
+3. Re-ingesting keeps the deposition row and its ID, and replaces only its lines and exchanges.
+
+**What was built:**
+
+- `server/src/ingest/rows.ts` (pure): converts lines and exchange parts into rows. In memory, parts refer to lines by position. After the lines are inserted, each position is translated to its stored ID by matching on `page:line` rather than trusting insert order. `norm_text` comes from v1's `normalize()`, so later quote matching uses the same normalization.
+- `server/src/ingest/store.ts`: `saveDeposition()` writes everything in one transaction. It locks the previous ingestion of the same case, file hash and parser version, deletes its exchanges and then its lines, inserts or updates the deposition row, and inserts lines, parts and memberships in batches of 1,000. Any failure rolls the whole save back.
+- `server/src/ingest/uploads.ts`: stores PDFs as `data/uploads/<sha256>.pdf` (now in `.gitignore`); the storage key is the file name, ready to become an S3 key. `ingestFile()` in `index.ts` stores, reads and saves in one call.
+- `scripts/ingest.ts`: the development CLI. It creates the org, case and witness if needed, ingests the file and prints a summary.
+- Migration `0001_exchange_witness.sql`: `exchanges.witness_id`, with a foreign key on (deposition, witness) so it always equals the deposition's witness, and the `(witness_id, deposition_id)` index from `DESIGN.md`. Drizzle generated the foreign key before the unique constraint it depends on, which Postgres would reject. The statements were reordered by hand.
+- Test setup: the database tests now share `tests/db/database.ts`. `vitest.config.mts` (an `.mts` file because the package is CommonJS) runs test files one at a time, because both database test files reset the same database. The full suite now takes about 3.5 seconds instead of about 1.
+
+**Results with the real PDFs (CLI, development database):** P3171 is `ready`, with 3,943 lines and 533 exchanges in 534 parts. P3173 is `ready`, with 1,660 lines and 209 exchanges in 213 parts; its 9 blank pages are recorded. Both match Step 2 exactly. Ingesting P3173 a second time kept deposition 2 and the same counts. Gates `gates8a.pdf` was stored as `unsupported`, with 13 pages that need OCR, the reason, and no lines.
+
+**Tests:** 9 pure tests for the row mapping, 6 new database tests (saving, re-saving, rollback that leaves the previous ingestion untouched, an unsupported file, a new parser version, and P3173 end to end), and 1 new schema test for the exchange witness rule. All 139 tests pass with Postgres running. Without it, 118 pass and the 21 database tests skip. Typecheck is clean.
+
+**Limitations:**
+
+- The CLI looks up orgs and cases by name, and those names are not unique in the schema. That's fine for one developer; the upload endpoint will take IDs.
+- An insert that turns into an update still uses up an ID, so deposition IDs can have gaps (the Gates file got ID 4).
+- The upload endpoint, the pg-boss worker and the `processing` status remain for the next stage.
+
+**Codex review:** Found five problems Claude had missed. Each was first reproduced with a failing test, then fixed:
+
+1. **A failed re-ingestion destroyed good evidence (P1).** Re-ingesting a `ready` deposition with an attempt that came out `unsupported` or `needs_review` (a parse that failed this time) deleted its lines and exchanges and overwrote its status. Reproduced: the stored rows went from 5 lines to 0. Fixed: when the stored deposition is `ready` and the new attempt isn't, `saveDeposition()` changes nothing and returns the outcome `kept_previous`, with the failed attempt's validation in `attempt`. A successful re-ingestion still replaces the rows in one transaction and keeps the ID. A first-time failed file is still stored with its validation report and no lines. `replaced: boolean` became `outcome: created | replaced | kept_previous`.
+2. **Migration `0001` failed on a database with exchanges in it (P1).** It added `witness_id` as `NOT NULL` in one step. Reproduced with a new migration test that applies `0000`, inserts exchanges for two witnesses, then applies `0001`: "column witness_id contains null values". Fixed by hand in the SQL: add the column as nullable, copy each exchange's witness from its deposition, then require it, then add the foreign key and index. `drizzle-kit generate` still reports no schema changes, so the snapshot matches. The development database had already applied the old `0001` while empty; it ends in the same state, so it wasn't re-run.
+3. **Stored PDFs could be partial or corrupted (P1).** An existing file was trusted because of its name, and a second writer could return while the first was still writing. Reproduced: a truncated file under the right name was kept. Fixed: an existing file is used only if its SHA-256 matches its name. Otherwise the upload goes to a unique temporary file in the same folder, is flushed to disk, checked against the hash, and renamed into place. A rename within one filesystem is atomic, so the stored file is always either absent or complete. Concurrent writers each rename an identical copy. Tests cover a corrupted existing file, a leftover temporary file from a crash, and 8 concurrent writers.
+4. **Concurrent ingestion of the same file failed (P2).** Two saves could both find no deposition, and the second then inserted its lines over the first's. Reproduced: 7 of 8 concurrent saves failed with `lines_page_line_unique`. With 4 saves the race didn't always happen, so the test opens the pool's connections first and runs 8. Fixed: each save first takes a Postgres advisory lock on its key (case, file hash, parser version), held until its transaction ends. Saves of the same file run one at a time, and each later one sees the earlier one's committed rows and replaces them.
+5. **Concurrent CLI runs created duplicate cases (P2).** Reproduced: 8 concurrent lookups created 8 cases with the same name. Fixed without making case names unique: the lookup (moved to `scripts/cases.ts` so it can be tested) runs in a transaction that first takes one advisory lock shared by all CLI lookups, so concurrent runs wait for each other.
+
+The concurrency tests passed in 5 repeated runs. All 151 tests pass with Postgres running. Without it, 124 pass and the 27 database tests skip. Typecheck is clean.
+
+**Known limits that remain:** a temporary upload file left by a crashed process stays in `data/uploads/` (hidden, ignored, and never used as the stored file); cleaning it up is left for the worker stage. The CLI lock serializes every CLI lookup, which is fine at command-line volume.
+
+**Status:** Step 4 and the Codex fixes implemented and tested. Awaiting developer approval before commit.

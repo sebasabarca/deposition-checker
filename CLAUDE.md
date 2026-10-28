@@ -38,8 +38,9 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `server/src/data/samples.ts`: Marcus Webb and Elena Ruiz samples, kept as synthetic fixtures
 - `tests/`: Vitest tests for the pure functions above
 - `scripts/try.ts`: runs a v1 analysis from the CLI
+- `scripts/ingest.ts`: ingests one deposition PDF into Postgres from the CLI (development only); `scripts/cases.ts` finds or creates its case and witness by name
 - `client/src/`: the v1 single-page UI
-- `server/src/ingest/`: v2 PDF ingestion: extraction, per-page validation against the `ellison-doj-v1` layout, speakers, exchanges and long-answer parts (pure functions)
+- `server/src/ingest/`: v2 PDF ingestion: extraction, per-page validation against the `ellison-doj-v1` layout, speakers, exchanges and long-answer parts (pure functions); `rows.ts` maps them to database rows, `store.ts` saves a deposition in one transaction, `uploads.ts` keeps PDFs under `data/uploads/` by SHA-256, and `ingestFile` in `index.ts` runs all three
 - `server/src/db/`: Drizzle schema (`schema.ts`) and connection (`client.ts`); migrations generated into `drizzle/`
 - `docker-compose.yml`, `docker/postgres-init/`: local Postgres, plus a separate `deposition_checker_test` database for the test suite
 - `scripts/spike/`: the parser spike, kept as the record behind `docs/parser-spike.md`; production code lives in `server/src/ingest/`
@@ -60,7 +61,8 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `npm run db:up` / `npm run db:down`: start or stop Postgres in Docker
 - `npm run db:generate`: write a new SQL migration to `drizzle/` after changing `server/src/db/schema.ts` (review the SQL, then commit it)
 - `npm run db:migrate`: apply migrations to the database in `DATABASE_URL`
-- Database tests in `tests/db/` run only when `TEST_DATABASE_URL` is set (they wipe that database, whose name must end in `_test`); otherwise they are skipped
+- `npx tsx scripts/ingest.ts <file.pdf> --case <name> --witness <name> [--taken-on YYYY-MM-DD]`: ingest one PDF into the database in `DATABASE_URL`; re-running it on the same file replaces that deposition's rows instead of duplicating them
+- Database tests in `tests/db/` run only when `TEST_DATABASE_URL` is set (they wipe that database, whose name must end in `_test`); otherwise they are skipped. They share one database, so `vitest.config.mts` runs test files one at a time
 
 Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_URL`, and optionally `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). See `.env.example`, whose database URLs match `docker-compose.yml`. Add new commands here only once they exist and work.
 
