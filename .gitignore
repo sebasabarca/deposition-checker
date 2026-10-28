@@ -3,3 +3,5 @@ node_modules
 # Downloaded deposition files (see scripts/spike/download.sh)
 data/raw/
 data/spike-output/
+# Uploaded deposition PDFs, stored by SHA-256 (server/src/ingest/uploads.ts)
+data/uploads/

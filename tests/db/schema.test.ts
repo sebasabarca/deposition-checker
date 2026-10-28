@@ -1,51 +1,28 @@
-// Database tests for the ingestion schema. They need Postgres (`npm run db:up`) and run only when
-// TEST_DATABASE_URL is set, so `npm test` still works without Docker. The test database is wiped,
-// so its name must end in "_test".
+// Database tests for the ingestion schema: each rule the tables enforce is tried against a real
+// Postgres. See tests/db/database.ts for when they run.
 
-import "dotenv/config";
 import { sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../../server/src/db/schema";
+import type { Database } from "../../server/src/db/client";
 import { cases, depositions, exchangeLines, exchanges, lines, orgs, witnesses } from "../../server/src/db/schema";
+import { emptyTables, openTestDatabase, TEST_DATABASE_URL, violation } from "./database";
 
-const URL = process.env.TEST_DATABASE_URL;
 const SHA = "a".repeat(64);
 
-// The Postgres error behind a failed insert: its constraint name, or its error code.
-async function violation(promise: PromiseLike<unknown>): Promise<string> {
-  try {
-    await promise;
-  } catch (error) {
-    const pg = ((error as { cause?: unknown }).cause ?? error) as { constraint?: string; code?: string };
-    return pg.constraint ?? pg.code ?? "unknown error";
-  }
-  throw new Error("expected the database to reject this, but it was accepted");
-}
-
-describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
+describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
   let pool: Pool;
-  let db: ReturnType<typeof drizzle<typeof schema>>;
+  let db: Database;
 
   beforeAll(async () => {
-    if (!new globalThis.URL(URL!).pathname.endsWith("_test")) {
-      throw new Error(`TEST_DATABASE_URL must name a database ending in "_test"; got ${URL}`);
-    }
-    pool = new Pool({ connectionString: URL });
-    db = drizzle(pool, { schema });
-    await db.execute(sql`drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public;`);
-    await migrate(db, { migrationsFolder: "drizzle" });
+    ({ db, pool } = await openTestDatabase());
   });
 
   afterAll(async () => {
     await pool?.end();
   });
 
-  beforeEach(async () => {
-    await db.execute(sql`truncate orgs, cases, witnesses, depositions, lines, exchanges, exchange_lines restart identity cascade`);
-  });
+  beforeEach(() => emptyTables(db));
 
   async function seed() {
     const [org] = await db.insert(orgs).values({ name: "Demo" }).returning();
@@ -86,8 +63,10 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
     return { depo, rows, kase, witness };
   }
 
-  const part = (depositionId: number, first: number, last: number, overrides: Partial<typeof exchanges.$inferInsert> = {}) => ({
-    depositionId,
+  type DepositionRow = typeof depositions.$inferSelect;
+  const part = (depo: DepositionRow, first: number, last: number, overrides: Partial<typeof exchanges.$inferInsert> = {}) => ({
+    depositionId: depo.id,
+    witnessId: depo.witnessId,
     groupId: 1,
     partNo: 1,
     partCount: 1,
@@ -149,8 +128,8 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
 
     it("rejects a second copy of the same exchange part", async () => {
       const { depo, rows } = await depositionWithLines(2);
-      await db.insert(exchanges).values(part(depo.id, rows[0].id, rows[1].id));
-      expect(await violation(db.insert(exchanges).values(part(depo.id, rows[0].id, rows[1].id)))).toBe("exchanges_part_unique");
+      await db.insert(exchanges).values(part(depo, rows[0].id, rows[1].id));
+      expect(await violation(db.insert(exchanges).values(part(depo, rows[0].id, rows[1].id)))).toBe("exchanges_part_unique");
     });
   });
 
@@ -174,30 +153,29 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
     it("rejects impossible exchange parts", async () => {
       const { depo, rows } = await depositionWithLines(2);
       const [a, b] = [rows[0].id, rows[1].id];
-      expect(await violation(db.insert(exchanges).values(part(depo.id, a, b, { partNo: 3, partCount: 2 })))).toBe("exchanges_part_no_check");
-      expect(await violation(db.insert(exchanges).values(part(depo.id, a, b, { questionFirstLineId: a })))).toBe(
+      expect(await violation(db.insert(exchanges).values(part(depo, a, b, { partNo: 3, partCount: 2 })))).toBe("exchanges_part_no_check");
+      expect(await violation(db.insert(exchanges).values(part(depo, a, b, { questionFirstLineId: a })))).toBe(
         "exchanges_question_range_check",
       );
-      expect(await violation(db.insert(exchanges).values(part(depo.id, a, b, { answerLastLineId: b })))).toBe(
+      expect(await violation(db.insert(exchanges).values(part(depo, a, b, { answerLastLineId: b })))).toBe(
         "exchanges_answer_range_check",
       );
-      expect(await violation(db.insert(exchanges).values(part(depo.id, a, b, { answerLineCount: 41 })))).toBe(
+      expect(await violation(db.insert(exchanges).values(part(depo, a, b, { answerLineCount: 41 })))).toBe(
         "exchanges_answer_line_count_check",
       );
     });
 
     it("rejects an exchange that points at a line that doesn't exist", async () => {
       const { depo, rows } = await depositionWithLines(1);
-      expect(await violation(db.insert(exchanges).values(part(depo.id, rows[0].id, 999_999)))).toBe("exchanges_last_line_fk");
+      expect(await violation(db.insert(exchanges).values(part(depo, rows[0].id, 999_999)))).toBe("exchanges_last_line_fk");
     });
 
     it("rejects an exchange that points at a line from another deposition", async () => {
       const own = await depositionWithLines(2);
       const other = await depositionWithLines(1); // a different case and witness
       const [a, b, foreign] = [own.rows[0].id, own.rows[1].id, other.rows[0].id];
-      const id = own.depo.id;
-      expect(await violation(db.insert(exchanges).values(part(id, foreign, b)))).toBe("exchanges_first_line_fk");
-      expect(await violation(db.insert(exchanges).values(part(id, a, foreign)))).toBe("exchanges_last_line_fk");
+      expect(await violation(db.insert(exchanges).values(part(own.depo, foreign, b)))).toBe("exchanges_first_line_fk");
+      expect(await violation(db.insert(exchanges).values(part(own.depo, a, foreign)))).toBe("exchanges_last_line_fk");
       const q = { questionFirstLineId: a, questionLastLineId: a };
       const ans = { answerFirstLineId: b, answerLastLineId: b };
       for (const [overrides, constraint] of [
@@ -206,9 +184,17 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
         [{ ...ans, answerFirstLineId: foreign }, "exchanges_answer_first_line_fk"],
         [{ ...ans, answerLastLineId: foreign }, "exchanges_answer_last_line_fk"],
       ] as const) {
-        expect(await violation(db.insert(exchanges).values(part(id, a, b, overrides)))).toBe(constraint);
+        expect(await violation(db.insert(exchanges).values(part(own.depo, a, b, overrides)))).toBe(constraint);
       }
-      await db.insert(exchanges).values(part(id, a, b, { ...q, ...ans })); // the same exchange with its own lines is accepted
+      await db.insert(exchanges).values(part(own.depo, a, b, { ...q, ...ans })); // the same exchange with its own lines is accepted
+    });
+
+    it("rejects an exchange whose witness isn't its deposition's witness", async () => {
+      const { depo, rows, kase } = await depositionWithLines(1);
+      const [other] = await db.insert(witnesses).values({ caseId: kase.id, name: "Safra Catz" }).returning();
+      expect(await violation(db.insert(exchanges).values(part(depo, rows[0].id, rows[0].id, { witnessId: other.id })))).toBe(
+        "exchanges_deposition_witness_fk",
+      );
     });
   });
 
@@ -218,8 +204,8 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
       const [first, second] = await db
         .insert(exchanges)
         .values([
-          part(depo.id, rows[0].id, rows[1].id, { partCount: 2 }),
-          part(depo.id, rows[1].id, rows[2].id, { partNo: 2, partCount: 2 }),
+          part(depo, rows[0].id, rows[1].id, { partCount: 2 }),
+          part(depo, rows[1].id, rows[2].id, { partNo: 2, partCount: 2 }),
         ])
         .returning();
       await db.insert(exchangeLines).values([
@@ -238,7 +224,7 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
     it("rejects a membership row whose exchange and line come from different depositions", async () => {
       const own = await depositionWithLines(1);
       const other = await depositionWithLines(1);
-      const [ex] = await db.insert(exchanges).values(part(own.depo.id, own.rows[0].id, own.rows[0].id)).returning();
+      const [ex] = await db.insert(exchanges).values(part(own.depo, own.rows[0].id, own.rows[0].id)).returning();
       const member = { exchangeId: ex.id, lineId: other.rows[0].id, role: "answer" as const };
       // Labelled with the exchange's deposition, the line doesn't match; labelled with the line's, the exchange doesn't.
       expect(await violation(db.insert(exchangeLines).values({ ...member, depositionId: own.depo.id }))).toBe("exchange_lines_line_fk");
@@ -249,7 +235,7 @@ describe.skipIf(!URL)("ingestion schema (Postgres)", () => {
 
     it("deleting a deposition removes its lines, exchanges and memberships, but not the case or witness", async () => {
       const { depo, rows } = await depositionWithLines(2);
-      const [ex] = await db.insert(exchanges).values(part(depo.id, rows[0].id, rows[1].id)).returning();
+      const [ex] = await db.insert(exchanges).values(part(depo, rows[0].id, rows[1].id)).returning();
       await db.insert(exchangeLines).values(rows.map((r) => ({ exchangeId: ex.id, lineId: r.id, depositionId: depo.id, role: "answer" as const })));
 
       await db.delete(depositions).where(sql`${depositions.id} = ${depo.id}`);

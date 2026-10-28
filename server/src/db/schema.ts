@@ -25,11 +25,15 @@ import {
 } from "drizzle-orm/pg-core";
 import type { Validation } from "../ingest/validate";
 
+// processing: uploaded, waiting for or in the ingest worker. ready / needs_review / unsupported:
+// what validation decided about the file. failed: the worker itself failed (a crash or an
+// outage, not a bad PDF) on every attempt; the error is in ingest_error, and it can be retried.
 export const depositionStatus = pgEnum("deposition_status", [
   "processing",
   "ready",
   "needs_review",
   "unsupported",
+  "failed",
 ]);
 export const sourceFormat = pgEnum("source_format", ["pdf", "html"]);
 export const speakerRole = pgEnum("speaker_role", [
@@ -106,7 +110,9 @@ export const depositions = pgTable(
     fileSha256: text("file_sha256").notNull(),
     storageKey: text("storage_key").notNull(), // path under data/uploads/ now; an S3 key later
     sourceFormat: sourceFormat("source_format").notNull().default("pdf"),
-    pageCount: integer("page_count").notNull(),
+    // page_count and validation are null until the file has been read (status processing, or failed
+    // before any attempt finished); never a placeholder.
+    pageCount: integer("page_count"),
     needsOcrPages: integer("needs_ocr_pages")
       .array()
       .notNull()
@@ -115,9 +121,14 @@ export const depositions = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::integer[]`),
-    validation: jsonb("validation").$type<Validation>().notNull(), // per-page statuses and failure reasons
+    validation: jsonb("validation").$type<Validation>(), // per-page statuses and failure reasons
     parserVersion: text("parser_version").notNull(),
     status: depositionStatus("status").notNull(),
+    ingestError: text("ingest_error"), // why the worker failed; set only while status is failed
+    // Which ingestion run is current: 1 at upload, plus one for each explicit retry. Every queued
+    // job carries the run it was queued for, and acts only while that run is still current, so a
+    // late or redelivered message from an earlier run can't affect a newer one.
+    ingestRun: integer("ingest_run").notNull().default(1),
     createdAt: createdAt(),
   },
   (t) => [
@@ -134,9 +145,22 @@ export const depositions = pgTable(
       foreignColumns: [witnesses.id, witnesses.caseId],
     }),
     index("depositions_witness_id_idx").on(t.witnessId),
+    // Target for exchanges' (deposition, witness) foreign key.
+    unique("depositions_id_witness_unique").on(t.id, t.witnessId),
     check(
       "depositions_file_sha256_check",
       sql`${t.fileSha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    // A read file has both its page count and its validation report; only processing and failed
+    // depositions may have neither. The status is compared as text so this migration can run in
+    // the same transaction that adds the 'failed' value.
+    check(
+      "depositions_read_check",
+      sql`(${t.validation} is null) = (${t.pageCount} is null) and (${t.validation} is not null or ${t.status}::text in ('processing', 'failed'))`,
+    ),
+    check(
+      "depositions_ingest_error_check",
+      sql`(${t.status}::text = 'failed') = (${t.ingestError} is not null)`,
     ),
   ],
 );
@@ -188,6 +212,9 @@ export const exchanges = pgTable(
     depositionId: ref("deposition_id")
       .notNull()
       .references(() => depositions.id, { onDelete: "cascade" }),
+    // Copied from the deposition so retrieval can find a witness's exchanges across sessions;
+    // the foreign key below keeps it equal to the deposition's witness.
+    witnessId: ref("witness_id").notNull(),
     groupId: integer("group_id").notNull(), // shared by all parts of one exchange, numbered within the deposition
     partNo: integer("part_no").notNull(),
     partCount: integer("part_count").notNull(),
@@ -214,6 +241,12 @@ export const exchanges = pgTable(
     unique("exchanges_part_unique").on(t.depositionId, t.groupId, t.partNo),
     // Target for exchange_lines' (exchange, deposition) foreign key.
     unique("exchanges_id_deposition_unique").on(t.id, t.depositionId),
+    foreignKey({
+      name: "exchanges_deposition_witness_fk",
+      columns: [t.depositionId, t.witnessId],
+      foreignColumns: [depositions.id, depositions.witnessId],
+    }).onDelete("cascade"),
+    index("exchanges_witness_deposition_idx").on(t.witnessId, t.depositionId),
     // Null question or answer endpoints skip their check (Postgres MATCH SIMPLE).
     lineInSameDeposition("exchanges_first_line_fk", t.firstLineId, t.depositionId),
     lineInSameDeposition("exchanges_last_line_fk", t.lastLineId, t.depositionId),

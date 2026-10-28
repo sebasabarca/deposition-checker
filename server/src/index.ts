@@ -4,6 +4,9 @@ import { z } from "zod";
 import { parseTranscript } from "./transcript";
 import { analyze } from "./analyze";
 import { TRANSCRIPT_1, TRANSCRIPT_2 } from "./data/samples";
+import { depositionRoutes } from "./api";
+import { connect } from "./db/client";
+import { createIngestQueues, startBoss } from "./jobs";
 
 const app = express();
 app.use(express.json({ limit: "200kb" }));
@@ -48,7 +51,24 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
+// v2 deposition endpoints. They need Postgres; if it can't be reached, the server still starts and
+// the v1 endpoints above keep working. Parsing runs in the worker process (server/src/worker.ts).
+async function mountDepositionRoutes() {
+  try {
+    const { db, pool } = connect();
+    const boss = await startBoss(process.env.DATABASE_URL!, { supervise: false });
+    await createIngestQueues(boss);
+    app.use("/api", depositionRoutes({ db, pool, boss }));
+  } catch (error) {
+    console.warn(
+      `Deposition endpoints are off: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+}
+
 const PORT = Number(process.env.PORT ?? 3001);
-app.listen(PORT, () =>
-  console.log(`Server running on http://localhost:${PORT}`),
+mountDepositionRoutes().then(() =>
+  app.listen(PORT, () =>
+    console.log(`Server running on http://localhost:${PORT}`),
+  ),
 );
