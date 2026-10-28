@@ -1,2 +1,5 @@
 node_modules
 .env
+# Downloaded deposition files (see scripts/spike/download.sh)
+data/raw/
+data/spike-output/
