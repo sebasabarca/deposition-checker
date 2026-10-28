@@ -262,3 +262,36 @@ The same script after the fixes: one deposition, ingested in place; the stale fa
 3 new handler tests: the given-up run's save returns `not_current` and run 2 still finishes; two adoptions from the same stale snapshot both succeed and the deposition then ingests; a save that would land on another deposition throws and leaves its own `processing`. `adoptParserVersion` is exported from `jobs/ingest.ts` for that test, but not from the module's public entry point. All 185 tests pass, the database tests passed another full run, and typecheck and `git diff --check` are clean.
 
 **Status:** Implemented, tested and reviewed. Awaiting developer approval before commit. Next: the `costs/` price table and `recordCall()` as a separate small step.
+
+### October 28, 2026 — Model cost tracking (`costs/`)
+
+**Branch:** `feature/costs`, from `feature/background-ingestion` (that PR isn't merged yet).
+
+**Goal:** Record every v2 model call with its token counts and cost from a versioned price table, before any model is called (`DESIGN.md`, "Cost model"; on the schedule for Wednesday afternoon). The estimator and the budget guard come with adjudication.
+
+**Prices:** Taken from the live pricing page on October 28. The skill's cached reference gave Sonnet 5.5 cache reads at $0.20 per million tokens; the live page says $0.10 (0.05x input), and the live value is used. Haiku 5.5 has a second price tier for prompts over 100,000 tokens, counting cache reads and writes, and every token in such a request pays the higher rate. The Batch API halves every token type.
+
+**Developer decisions (approved before implementation):**
+
+1. `llm_calls.job_id` is nullable with no foreign key until the `jobs` table exists. That migration adds the key after checking existing values. The type is `bigint`, like every other ID.
+2. Separate `cache_write_5m_tokens` and `cache_write_1h_tokens` columns, since the two durations are priced differently. `DESIGN.md` updated.
+3. A call to a model missing from the price table is still recorded with its tokens, as unpriced (`cost_usd` and `price_version` null), and never counted as free in totals. A test checks that every configured v2 model has a price.
+4. v1's `server/src/claude.ts` stays unchanged and is documented as the one known exception to recording. All new v2 model calls use `recordCall()`.
+
+**What was built:**
+
+- `server/src/costs/pricing.ts`: `PRICE_VERSION` (`2026-10-28`), rates per model in price tiers by prompt length, and the batch multiplier.
+- `server/src/costs/models.ts`: the model per stage, `claim_tagging` → Haiku 5.5 and `adjudication` → Sonnet 5.5.
+- `server/src/costs/cost.ts` (pure): `tokensFromUsage()` maps the SDK's `usage`; cache writes reported without the 5-minute/1-hour split count as 5-minute, the API's default. `callCost()` picks the tier by prompt length, adds the five token types at their rates, applies the batch discount, rounds to 8 decimals, and returns null for an unpriced model.
+- `server/src/costs/record.ts`: `recordCall()` inserts the row. `jobCost()` totals a job by stage; its `totalUsd` is null while any call is unpriced, with the priced part reported separately.
+- Migration `0004`: the `llm_calls` table, the `llm_stage` enum, the `(job_id, stage)` index, and checks: non-negative tokens, items and attempt at least 1, cost and price version present together.
+
+**Tests:** 17 new.
+- 12 pure: input and output prices, both cache-write durations, cache reads per model, a full mixed call, Haiku at exactly 100,000 and 100,001 prompt tokens including a prompt pushed over by cache reads, the batch discount, an unpriced model, the price version, the usage mapping, every configured model priced, and the stages matching the database enum.
+- 5 database: exact persistence of every token count and the cost, a tiny batch cost kept to its last decimal, an unpriced call stored with its tokens, job totals by stage that become unknown once an unpriced call appears, and the table's checks.
+
+The schema test now expects `llm_calls` too. All 202 tests pass on Node 24 with Postgres running; without it, 139 pass and 63 skip. Typecheck and `git diff --check` are clean. Migration `0004` applied to the development database.
+
+**Not built yet:** the estimator, the budget guard, and any model call.
+
+**Status:** Implemented and tested. Awaiting developer approval before commit.
