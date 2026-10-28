@@ -63,4 +63,29 @@ describe.skipIf(!TEST_DATABASE_URL)("migrations on a populated database (Postgre
     );
     expect(column.rows[0].is_nullable).toBe("NO");
   });
+
+  it("0005 builds the full-text column for exchanges that already exist", async () => {
+    const before = migrationsUpTo(5);
+    folders.push(before);
+    const { db, pool } = await openTestDatabase(before);
+    pools.push(pool);
+
+    await db.execute(sql`
+      insert into orgs (name) values ('Demo');
+      insert into cases (org_id, name) values (1, 'U.S. v. Oracle');
+      insert into witnesses (case_id, name) values (1, 'Lawrence Ellison');
+      insert into depositions (case_id, witness_id, file_sha256, storage_key, page_count, validation, parser_version, status)
+        values (1, 1, repeat('a', 64), 'a.pdf', 1, '{}', 'v1', 'ready');
+      insert into lines (deposition_id, pdf_page, printed_page, line_no, speaker_role, raw_text, norm_text)
+        values (1, 1, 161, 1, 'witness', 'We outsourced it.', 'we outsourced it');
+      insert into exchanges (deposition_id, witness_id, group_id, part_no, part_count, kind, first_line_id, last_line_id,
+                             answer_line_count, question_text, answer_text, dialogue_text)
+        values (1, 1, 1, 1, 1, 'qa', 1, 1, 1, 'Did Oracle buy the software?', 'We outsourced it.', '');
+    `);
+
+    await migrate(db, { migrationsFolder: "drizzle" });
+
+    const rows = await db.execute<{ terms: string[] }>(sql`select tsvector_to_array(tsv) as terms from exchanges`);
+    expect(rows.rows[0].terms.sort()).toEqual(["buy", "oracl", "outsourc", "softwar"]);
+  });
 });

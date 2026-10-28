@@ -1,0 +1,2 @@
+ALTER TABLE "exchanges" ADD COLUMN "tsv" "tsvector" GENERATED ALWAYS AS (to_tsvector('english'::regconfig, question_text || ' ' || answer_text)) STORED NOT NULL;--> statement-breakpoint
+CREATE INDEX "exchanges_tsv_idx" ON "exchanges" USING gin ("tsv");

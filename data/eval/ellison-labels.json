@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "set": "ellison-real",
+  "synthetic": false,
+  "about": "Hand-labelled pairs from Lawrence Ellison's two DOJ depositions, for measuring retrieval (recall@K) and classification. Each passage is identified by the deposition PDF's SHA-256 and a printed page:line inside it, so labels survive re-ingestion. A page:line inside any part of a split long answer identifies that part. This file holds references and short notes only, never transcript text.",
+  "documents": {
+    "p3171": {
+      "sha256": "1c18756bfef969e4150d6bdd4aac22a1cf0bbf1803c762f2d5490169580cbe63",
+      "source": "DOJ exhibit P3171, Ellison videotaped deposition, January 20, 2004"
+    },
+    "p3173": {
+      "sha256": "3a2596bc581409a8a6f34b1bd2539a15c593b146821fe705236c7d4a5cffce1e",
+      "source": "DOJ exhibit P3173, Ellison videotaped deposition, later in 2004 (date not stated in the transcript)"
+    }
+  },
+  "definitions": {
+    "potentially_contradictory": "The witness asserts things about the same subject that cannot both be true as stated.",
+    "related_compatible": "Same subject, and both statements can be true together.",
+    "different_events": "Similar wording, but about different events, products, times or parties.",
+    "ambiguous": "Can't tell from the passages whether they conflict; more context is needed.",
+    "qualified": "At least one side is hedged or limited ('I believe', 'in a narrow sense'), so it does not conflict as stated.",
+    "lack_of_recollection": "At least one side is the witness not remembering, which is not an assertion.",
+    "retrievalRelevant": "Separate yes/no field: should retrieval surface this pair, whatever its label? Recall@K is measured on these pairs."
+  },
+  "pairs": []
+}

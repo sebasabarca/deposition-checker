@@ -12,6 +12,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   date,
   foreignKey,
   index,
@@ -57,6 +58,9 @@ export const lineRole = pgEnum("line_role", [
   "context",
   "unknown",
 ]);
+
+// Postgres full-text search vector. Drizzle has no built-in type for it.
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
 
 const id = () =>
   bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity();
@@ -238,6 +242,12 @@ export const exchanges = pgTable(
     questionText: text("question_text").notNull(), // retrieval
     answerText: text("answer_text").notNull(), // retrieval
     dialogueText: text("dialogue_text").notNull(), // model input
+    // Path B's full-text index over the retrieval text, kept in sync by Postgres. The English
+    // configuration stems words and drops common English stopwords; courtroom words are removed
+    // at query time (retrieve/procedural.ts), so changing that list never needs a migration.
+    tsv: tsvector("tsv")
+      .notNull()
+      .generatedAlwaysAs(sql`to_tsvector('english'::regconfig, question_text || ' ' || answer_text)`),
   },
   (t) => [
     unique("exchanges_part_unique").on(t.depositionId, t.groupId, t.partNo),
@@ -249,6 +259,7 @@ export const exchanges = pgTable(
       foreignColumns: [depositions.id, depositions.witnessId],
     }).onDelete("cascade"),
     index("exchanges_witness_deposition_idx").on(t.witnessId, t.depositionId),
+    index("exchanges_tsv_idx").using("gin", t.tsv),
     // Null question or answer endpoints skip their check (Postgres MATCH SIMPLE).
     lineInSameDeposition("exchanges_first_line_fk", t.firstLineId, t.depositionId),
     lineInSameDeposition("exchanges_last_line_fk", t.lastLineId, t.depositionId),

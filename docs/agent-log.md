@@ -295,3 +295,118 @@ The schema test now expects `llm_calls` too. All 202 tests pass on Node 24 with 
 **Not built yet:** the estimator, the budget guard, and any model call.
 
 **Status:** Implemented and tested. Awaiting developer approval before commit.
+
+### October 28, 2026 — Path B full-text retrieval, stage 1
+
+**Branch:** `feature/path-b-retrieval`, from `main` after PRs #4 (background ingestion) and #5 (cost tracking) were merged.
+
+**Goal:** Candidate pairs from the original testimony without any model call (`DESIGN.md`, "Candidate retrieval → Path B"), and a preview to label pairs from. This stage builds the index, Path B, bidirectional search, deduplication and ranking, and the preview command. Path A, the `candidates` table, merging and the recall@K evaluation are not built.
+
+**Developer decisions (approved before implementation):**
+
+1. No stored `content_terms` column. It is counted at query time with the current courtroom word list, and `tsv` is a generated column. `DESIGN.md` updated.
+2. Retrieval runs in both directions between depositions; pairs are deduplicated keeping the best score and ranked by it. Retrieval relevance is not contradiction confidence.
+3. Evaluation labels go in a versioned JSON file under `data/eval/`, anchored by the PDF's SHA-256 and page:line rather than exchange IDs, with a label definition and a short explanation per pair, and no transcript text. Recorded in `DESIGN.md`; the file and the evaluation are the next stage.
+4. Only stage 1 now.
+
+**What was built:**
+
+- **Migration `0005`:** `exchanges.tsv`, generated from the question and answer text with Postgres's English configuration, with a GIN index. Applied to the development database, it indexed the 747 existing exchange parts (about 19–20 distinct terms each).
+- **`server/src/retrieve/procedural.ts`** (pure): the courtroom word list (procedure and conversational filler that Postgres's English stopwords keep; words that can carry testimony such as "know", "remember" and "said" are kept), `MIN_CONTENT_TERMS = 3`, and `proceduralReason()`: kinds other than `qa`, and name-and-address questions.
+- **`server/src/retrieve/rank.ts`** (pure): `rankPairs()` deduplicates matches from both directions into unordered pairs, keeps the best score and every matched term, records which side's query found the pair, and ranks by score with ID tie-breaks.
+- **`server/src/retrieve/pathB.ts`:** `findPathB(db, { witnessId, depositionId, mode })`, one SQL statement.
+  - The witness's exchanges in ready depositions, minus procedural ones, become queries if they have at least 3 content terms.
+  - `all_terms` ORs them all; `rare_terms` ORs the 12 with the lowest frequency across the case's exchanges.
+  - Each query searches the other side (the new deposition against the others, and the others against it) and keeps its top 5 by `ts_rank_cd`, with the terms it shared.
+  - Terms are quoted into the `tsquery`, so a stemmed term can't be read as query syntax.
+  - Counts account for every exchange: procedural, too few terms, or queried.
+- **`scripts/pathb.ts`:** a read-only preview of the ranked pairs. Each side shows its deposition, file hash and page:line range, with lines printed from the stored source lines.
+
+**Results on Ellison P3171 against P3173** (development database; 747 exchange parts, 0 procedural since ingestion classified every Ellison exchange as `qa`, 47 too short, 700 queried):
+- **all_terms:** 3,401 pairs in about 1.1 s. The top of the list is dominated by long answers sharing generic words (*go, get, one, say, think, lot*), alongside real shared topics such as Microsoft's scale and low prices (P3171 148:15 / P3173 129:17).
+- **rare_terms:** 3,201 pairs in about 5 s. It favours short exchanges sharing named products and terms (*outsourcing, e-business suite, database*). Many queries have fewer than 12 terms, so rare-terms and all-terms queries are often identical for short exchanges.
+- Rare-terms is slower because it looks up each term's case-wide frequency per query. 5 s is acceptable for a background job, so it is not optimized yet, as the developer asked.
+- Which mode is better is for the labelled evaluation to decide, not for this preview.
+
+**Tests:** 13 new.
+- 7 pure: the procedural filter, and dedupe and ranking.
+- 6 database, on hand-built sessions:
+  - shared-subject pairs only across sessions of the same witness, never within a session, with another witness, or with a deposition that isn't ready;
+  - top 5 per query, plus a pair only the other direction reaches;
+  - procedural and too-short exchanges counted, not queried;
+  - courtroom words alone don't make a pair;
+  - rare-terms leaving out a pair that shares only a common word;
+  - and both modes on the real PDFs: every pair joins the two sessions, every exchange is accounted for, and ranks are contiguous.
+
+Two test mistakes were caught on the first run and fixed in the tests, not the code: the real-PDF test used an invalid placeholder file hash, and the rare-terms test forgot that the other direction's queries could find the common-word pairs. All 215 tests pass on Node 24 with Postgres running; without it, 146 pass and 69 skip. Typecheck and `git diff --check` are clean.
+
+**Developer review of the top 40 rare-terms pairs, and Claude's investigation (before changing anything):**
+
+- **Context.** Pair #2 (P3171 249:13–250:16 / P3173 51:13–51:15): P3171's "To what degree?" follows up 249:10 ("competition from outsourcers change from 2002 to 2003? — Yes, definitely."), so its topic is in the previous exchange. P3171 describes the industry's business-process outsourcing and software-as-a-service, where customers don't buy software; P3173 asks about Oracle's own outsourcing service, where they do, and P3173 51:1–51:12 isn't in the excerpt. They look like different subjects, a good "ambiguous" case to label, and a reminder that evidence packets need the neighbouring context. Pair #37 (P3171 148:15–150:11 / P3173 130:12–130:16): P3171's side is part 1 of a split long answer ending mid-sentence at 150:11.
+- **Numbers.** Postgres's parser splits `$10,000,000` into `10` and `000`, and `$10,000` the same way, so #33 "matched" on amounts a thousand times apart. `R&D` and `e-business` fragment similarly.
+- **Long exchanges.** Exchange 1521 (in 8 of the top 40) and 207 are first parts of split long answers with 96 and 90 distinct terms; 473 of the 747 parts have fewer than 20. OR queries favour the biggest answers, and split answers multiply them.
+- **Performance.** Path B sent 2 statements. `EXPLAIN ANALYZE` showed 5.8 of rare-terms' 6.0 s in one step: Postgres re-evaluated the case-wide frequency table once per query (`loops=735`) because it was inlined into a correlated subquery. The GIN index itself was used for every query at 0.02–0.1 ms each.
+
+**Codex review: four issues, fixed:**
+
+1. **Split exchanges weren't deduplicated.** Parts of the same long answer counted as separate candidates and took separate per-query slots. Retrieval still searches parts, but each query now keeps its top 5 *logical* exchanges (`distinct on (deposition, group)`). Final candidates are deduplicated by the two logical exchanges `(deposition_id, group_id)`, keeping the best-scoring part pair and its part IDs as the exact source references; this happens before any top-K cut. Tests cover split exchanges on both sides.
+2. **Scores weren't comparable.** The kept score was the `ts_rank_cd` of whichever query found the pair, and queries with different term sets give incomparable scores. `ts_rank_cd` now only discovers candidates. The final score is computed in pure code from the two exchanges' own terms, so it is symmetric and independent of direction and query length. Measured on Ellison before adopting one, with ranks of #2, #33 and #37 under rare-terms:
+
+   | Score | #2 | #33 | #37 | one-shared-word pairs in top 40 | 1521 in top 40 | mean terms per side, top 40 |
+   |---|---|---|---|---|---|---|
+   | old `ts_rank_cd` | 2 | 33 | 37 | — | 8 | — |
+   | plain Jaccard | 1,196 | 635 | 1,979 | — | 0 | 15.6 |
+   | IDF cosine | 279 | 521 | 1,503 | 7 | 0 | 11.0 |
+   | IDF cosine, ≥2 shared | 228 | 430 | 1,204 | 0 | 0 | 12.7 |
+   | sum of shared IDF | 623 | 374 | 779 | 0 | 6 | 60.9 |
+   | **IDF weighted overlap (÷ smaller), ≥2 shared** | **2** | **1,097** | **417** | **0** | **1** | **20.2** |
+
+   IDF cosine was implemented first and rejected after inspecting its top 12: short exchanges sharing one uncommon word (*familiar*, *brand*, *event*) filled it. The weighted overlap coefficient was adopted (`retrieve/score.ts`), because a contradiction is often a short Q/A echoing part of a long answer. A failing test then showed that a word used in every exchange still counted toward the 2-shared-terms minimum; only terms with weight now count.
+3. **The CLI picked an arbitrary case.** It now takes `--case-id`. A case name is accepted only when name and witness resolve to exactly one case (otherwise an error listing the case IDs), and `--deposition` must be a ready deposition of the resolved witness and case. No uniqueness constraint on case names. The lookups are `resolveWitness()` and `resolveDeposition()` in `scripts/cases.ts`.
+4. **Focused tests.** Below.
+
+**Also changed:**
+- The frequency table is computed once per run and passed in, and the rare-term choice moved into the pure `queryTerms()`. Rare-terms went from 4.9 s to 0.3 s with the same queries.
+- A regression Claude introduced during the rewrite and then caught: search targets had been limited to parts with 3 or more terms. `DESIGN.md` skips short parts as *queries* only, so they can be found again (3,185 → 3,193 pairs).
+- Path B now sends 4 statements. `EXPLAIN ANALYZE` of the search: GIN *Bitmap Index Scan* on every query, 227 ms (rare-terms) and 1.27 s (all-terms).
+
+**Results after the changes:** On Ellison under rare-terms, about half of the new top 20 are substantive topic matches (outsourcing, the e-business suite, HR functionality, a product-replacement denial, database competition). The rest are procedural or filler pairs matching on words not on the courtroom list (*ask, let, clear, take, know*, the fragments *ll*, *re*). The developer asked not to change that list before labels can measure it.
+
+**Labels file:** `data/eval/ellison-labels.json`, version 1. Both depositions are identified by full SHA-256. It has label definitions, a separate `retrievalRelevant` yes/no for recall@K, and an empty `pairs` list for the developer to fill. The schema is in `server/src/eval/labels.ts`; it rejects unknown documents, same-document pairs, unknown labels, bad page:line, and any extra field such as a database ID.
+
+**Tests:** 20 new or rewritten on top of stage 1.
+- Pure: scoring (symmetry, contained-short-against-long, zero-weight words, the 2-term minimum, term order), query terms by mode, and ranking (split exchanges deduplicated from both directions with their best parts kept, direction independence, the same order for shuffled input, a loud failure on unknown parts).
+- Database: split-exchange dedupe, top 5 counted by logical exchange with short exchanges findable, the GIN index's existence, CLI lookups (ambiguous name, `--case-id`, no match, deposition ownership, status and existence), and migration `0005` on a populated database.
+- Labels: the label file and its schema.
+
+All 233 tests pass on Node 24 with Postgres running; without it, 157 pass and 76 skip. Typecheck and `git diff --check` are clean.
+
+**Codex re-review: one high-priority issue, fixed.** Discovery cut each query to its top 5 by `ts_rank_cd` *before* the final rule that a pair needs at least 2 shared weighted terms, so matches that would score 0 could fill the slots and push out valid ones. Reproduced first with a regression test, five high-`ts_rank_cd` targets sharing one weighted term and a lower-ranked sixth sharing two: the old code returned the five score-0 pairs and dropped the sixth.
+
+The first version of the test didn't reproduce it. The "sixth" exchange had enough terms to run its own query and found the source from the other direction; Claude's comment in the test was wrong. The test now makes the sixth too short to query, and also checks that `ts_rank_cd` really ranks the five above it.
+
+**Fix:**
+- **In SQL:** the search's `WHERE` clause counts the query part's content terms that the target also has, excluding words every logical exchange in the case uses (weight 0, passed in from the frequency table). Fewer than 2 means the target is ineligible, so the top-5 cut only sees matches that will score above 0, with no over-fetch limit.
+- **In `rankPairs()`:** drops any pair scoring 0, as a guard.
+- **In `pairScore()`:** no longer rounds to 6 decimals, which could have turned a valid but tiny score into 0. It sums in sorted term order instead, so the score stays exact, symmetric and stable. The formula is unchanged.
+
+**What the fix exposed in older tests:** five older database tests failed because their tiny made-up cases used the same few words in every exchange, which by definition gives those words no weight. Each test case now includes eight unrelated background exchanges from another witness, which count toward word frequencies but are never searched. The rare-terms test was redesigned: its target now shares two moderately common words, which `all_terms` finds and `rare_terms` doesn't.
+
+**Results:**
+- All 234 tests pass on Node 24 with Postgres running; without it, 157 pass and 77 skip. Typecheck and `git diff --check` are clean.
+- On Ellison, three identical runs each: rare-terms 2,839 pairs in 0.6 s (was 3,193 including score-0 pairs, 0.3 s), all-terms 3,105 pairs in 2.2 s (was 1.3 s). No pair scores 0; the lowest is 0.025.
+- Slots freed from score-0 matches let two very short exchanges reach the top with a score of 1.0 ("In the applications area? — Yes."; "to the customer, I mean? — Yes."), both wholly contained in their partner. That's the overlap coefficient's weak spot. The formula was left unchanged as instructed; the limit is recorded in `DESIGN.md` with a possible remedy (a minimum size for the smaller exchange), to be judged with labels.
+
+**Codex final follow-up: two findings.**
+
+1. **Short-exchange recall: tried, measured, rejected, documented.** Exchanges with exactly two content terms never query, so two of them that match can't find each other. A failing regression test reproduced it. A narrow fallback was then built: two-term exchanges whose two terms both carry weight may query, while the 3-term threshold stays for everything else.
+
+   It worked as designed: 23 more queries, about 12 more pairs, runtime 0.60 → 0.64 s (rare-terms) and 2.2 → 2.5 s (all-terms), with one-term overlaps still excluded. But measured on Ellison, the new queries were mostly follow-up fragments that depend on the previous exchange ("Of your current products? — Yes.", "Let me try it again."). Each is wholly contained in some long answer, so it scores 1.0. Score-1.0 pairs in the top 20 went from 2 to 14, and the best real candidate (outsourcing) fell from rank 3 to rank 15.
+
+   That fails the developer's "without significantly increasing retrieval noise" condition, so the fallback was reverted. The limitation is documented in `retrieve/procedural.ts` and `DESIGN.md`. The regression test now pins it: two two-term exchanges don't find each other, while a longer exchange still finds a two-term one. Two older tests had been re-aimed for the fallback and are restored. A real fix needs the scoring to discount tiny exchanges, which is out of scope here; the developer asked not to change the formula.
+
+2. **Shared-term reporting: fixed.** `pairScore()` now reports only shared terms with positive weight, the ones that contribute to the score. Previously a word every exchange uses (for example *oracl*) could be listed. The score itself is unchanged, since such a term adds 0. A focused test reproduced the old listing first.
+
+**Results:** all 236 tests pass on Node 24 with Postgres running; without it, 158 pass and 78 skip. Typecheck and `git diff --check` are clean. On Ellison after the revert: 700 queries, rare-terms 2,839 pairs in 0.66 s, all-terms 3,105 pairs in 2.56 s; the same counts as before, with the times within run-to-run variation.
+
+**Status:** Path B stage 1 and all review fixes implemented and tested. Awaiting developer approval before commit. Path B tuning stops here; next is Path A and end-to-end analysis.

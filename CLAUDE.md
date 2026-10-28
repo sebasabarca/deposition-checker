@@ -33,6 +33,8 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `server/src/worker.ts`: the ingest worker process
 - `server/src/api/`: v2 endpoints: upload a deposition PDF, read its status, retry a failed one
 - `server/src/jobs/`: pg-boss queues and the ingest job handlers (run, and record a final failure)
+- `server/src/retrieve/`: Path B full-text retrieval (`pathB.ts`), the procedural filter and courtroom word list (`procedural.ts`), query terms by mode (`query.ts`), the symmetric pair score (`score.ts`), and logical-exchange dedupe and ranking (`rank.ts`)
+- `server/src/eval/`: the evaluation label file format (`labels.ts`); labels live in `data/eval/*.json`, anchored by PDF SHA-256 and page:line
 - `server/src/costs/`: model price table (`pricing.ts`), the models v2 calls per stage (`models.ts`), the pure `callCost()`, and `recordCall()` / `jobCost()` over `llm_calls`
 - `server/src/transcript.ts`: `Q:`/`A:` parser (replaced in v2)
 - `server/src/claude.ts`, `schema.ts`: the Claude call and its zod schema (the pattern is reused)
@@ -42,6 +44,7 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `server/src/data/samples.ts`: Marcus Webb and Elena Ruiz samples, kept as synthetic fixtures
 - `tests/`: Vitest tests for the pure functions above
 - `scripts/try.ts`: runs a v1 analysis from the CLI
+- `scripts/pathb.ts`: previews Path B's ranked candidate pairs with both passages, for labelling
 - `scripts/ingest.ts`: ingests one deposition PDF into Postgres from the CLI (development only); `scripts/cases.ts` finds or creates its case and witness by name
 - `client/src/`: the v1 single-page UI
 - `server/src/ingest/`: v2 PDF ingestion: extraction, per-page validation against the `ellison-doj-v1` layout, speakers, exchanges and long-answer parts (pure functions); `rows.ts` maps them to database rows, `store.ts` saves a deposition in one transaction, `uploads.ts` keeps PDFs under `data/uploads/` by SHA-256, and `ingestFile` in `index.ts` runs all three
@@ -67,6 +70,7 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `npm run db:generate`: write a new SQL migration to `drizzle/` after changing `server/src/db/schema.ts` (review the SQL, then commit it)
 - `npm run db:migrate`: apply migrations to the database in `DATABASE_URL`
 - `npx tsx scripts/ingest.ts <file.pdf> --case <name> --witness <name> [--taken-on YYYY-MM-DD]`: ingest one PDF into the database in `DATABASE_URL`; re-running it on the same file replaces that deposition's rows instead of duplicating them
+- `npx tsx scripts/pathb.ts (--case-id <id> | --case <name>) --witness <name> [--deposition <id>] [--mode all_terms|rare_terms] [--limit 15] [--lines 8]`: preview Path B pairs from the database in `DATABASE_URL` (read-only); a case name must match exactly one case and witness, and `--deposition` must be a ready deposition of that witness
 - Database tests in `tests/db/` run only when `TEST_DATABASE_URL` is set (they wipe that database, whose name must end in `_test`); otherwise they are skipped. They share one database, so `vitest.config.mts` runs test files one at a time
 
 Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_URL`, and optionally `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). See `.env.example`, whose database URLs match `docker-compose.yml`. Add new commands here only once they exist and work.

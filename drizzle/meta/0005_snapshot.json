@@ -1,0 +1,1179 @@
+{
+  "id": "3f2b1462-dc32-440c-a88c-a82433165164",
+  "prevId": "82127f87-303f-4e3f-89b9-4b4c597934e2",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.cases": {
+      "name": "cases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "cases_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "cases_org_id_idx": {
+          "name": "cases_org_id_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "cases_org_id_orgs_id_fk": {
+          "name": "cases_org_id_orgs_id_fk",
+          "tableFrom": "cases",
+          "tableTo": "orgs",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.depositions": {
+      "name": "depositions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "depositions_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "witness_id": {
+          "name": "witness_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taken_on": {
+          "name": "taken_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_sha256": {
+          "name": "file_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_format": {
+          "name": "source_format",
+          "type": "source_format",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pdf'"
+        },
+        "page_count": {
+          "name": "page_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "needs_ocr_pages": {
+          "name": "needs_ocr_pages",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::integer[]"
+        },
+        "blank_pages": {
+          "name": "blank_pages",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::integer[]"
+        },
+        "validation": {
+          "name": "validation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parser_version": {
+          "name": "parser_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "deposition_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ingest_error": {
+          "name": "ingest_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ingest_run": {
+          "name": "ingest_run",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "depositions_witness_id_idx": {
+          "name": "depositions_witness_id_idx",
+          "columns": [
+            {
+              "expression": "witness_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "depositions_case_id_cases_id_fk": {
+          "name": "depositions_case_id_cases_id_fk",
+          "tableFrom": "depositions",
+          "tableTo": "cases",
+          "columnsFrom": [
+            "case_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "depositions_witness_case_fk": {
+          "name": "depositions_witness_case_fk",
+          "tableFrom": "depositions",
+          "tableTo": "witnesses",
+          "columnsFrom": [
+            "witness_id",
+            "case_id"
+          ],
+          "columnsTo": [
+            "id",
+            "case_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "depositions_file_unique": {
+          "name": "depositions_file_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "case_id",
+            "file_sha256",
+            "parser_version"
+          ]
+        },
+        "depositions_id_witness_unique": {
+          "name": "depositions_id_witness_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "witness_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "depositions_file_sha256_check": {
+          "name": "depositions_file_sha256_check",
+          "value": "\"depositions\".\"file_sha256\" ~ '^[0-9a-f]{64}$'"
+        },
+        "depositions_read_check": {
+          "name": "depositions_read_check",
+          "value": "(\"depositions\".\"validation\" is null) = (\"depositions\".\"page_count\" is null) and (\"depositions\".\"validation\" is not null or \"depositions\".\"status\"::text in ('processing', 'failed'))"
+        },
+        "depositions_ingest_error_check": {
+          "name": "depositions_ingest_error_check",
+          "value": "(\"depositions\".\"status\"::text = 'failed') = (\"depositions\".\"ingest_error\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.exchange_lines": {
+      "name": "exchange_lines",
+      "schema": "",
+      "columns": {
+        "exchange_id": {
+          "name": "exchange_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_id": {
+          "name": "line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deposition_id": {
+          "name": "deposition_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "line_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "exchange_lines_line_id_idx": {
+          "name": "exchange_lines_line_id_idx",
+          "columns": [
+            {
+              "expression": "line_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exchange_lines_exchange_fk": {
+          "name": "exchange_lines_exchange_fk",
+          "tableFrom": "exchange_lines",
+          "tableTo": "exchanges",
+          "columnsFrom": [
+            "exchange_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "exchange_lines_line_fk": {
+          "name": "exchange_lines_line_fk",
+          "tableFrom": "exchange_lines",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "exchange_lines_pk": {
+          "name": "exchange_lines_pk",
+          "columns": [
+            "exchange_id",
+            "line_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.exchanges": {
+      "name": "exchanges",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "exchanges_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "deposition_id": {
+          "name": "deposition_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "witness_id": {
+          "name": "witness_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_id": {
+          "name": "group_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "part_no": {
+          "name": "part_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "part_count": {
+          "name": "part_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "exchange_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flags": {
+          "name": "flags",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "first_line_id": {
+          "name": "first_line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_line_id": {
+          "name": "last_line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question_first_line_id": {
+          "name": "question_first_line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "question_last_line_id": {
+          "name": "question_last_line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_first_line_id": {
+          "name": "answer_first_line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_last_line_id": {
+          "name": "answer_last_line_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_line_count": {
+          "name": "answer_line_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "question_text": {
+          "name": "question_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "answer_text": {
+          "name": "answer_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dialogue_text": {
+          "name": "dialogue_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tsv": {
+          "name": "tsv",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "to_tsvector('english'::regconfig, question_text || ' ' || answer_text)",
+            "type": "stored"
+          }
+        }
+      },
+      "indexes": {
+        "exchanges_witness_deposition_idx": {
+          "name": "exchanges_witness_deposition_idx",
+          "columns": [
+            {
+              "expression": "witness_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "deposition_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "exchanges_tsv_idx": {
+          "name": "exchanges_tsv_idx",
+          "columns": [
+            {
+              "expression": "tsv",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "exchanges_deposition_id_depositions_id_fk": {
+          "name": "exchanges_deposition_id_depositions_id_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "depositions",
+          "columnsFrom": [
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "exchanges_deposition_witness_fk": {
+          "name": "exchanges_deposition_witness_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "depositions",
+          "columnsFrom": [
+            "deposition_id",
+            "witness_id"
+          ],
+          "columnsTo": [
+            "id",
+            "witness_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "exchanges_first_line_fk": {
+          "name": "exchanges_first_line_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "first_line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchanges_last_line_fk": {
+          "name": "exchanges_last_line_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "last_line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchanges_question_first_line_fk": {
+          "name": "exchanges_question_first_line_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "question_first_line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchanges_question_last_line_fk": {
+          "name": "exchanges_question_last_line_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "question_last_line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchanges_answer_first_line_fk": {
+          "name": "exchanges_answer_first_line_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "answer_first_line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "exchanges_answer_last_line_fk": {
+          "name": "exchanges_answer_last_line_fk",
+          "tableFrom": "exchanges",
+          "tableTo": "lines",
+          "columnsFrom": [
+            "answer_last_line_id",
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id",
+            "deposition_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "exchanges_part_unique": {
+          "name": "exchanges_part_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "deposition_id",
+            "group_id",
+            "part_no"
+          ]
+        },
+        "exchanges_id_deposition_unique": {
+          "name": "exchanges_id_deposition_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "deposition_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "exchanges_part_no_check": {
+          "name": "exchanges_part_no_check",
+          "value": "\"exchanges\".\"part_no\" between 1 and \"exchanges\".\"part_count\""
+        },
+        "exchanges_question_range_check": {
+          "name": "exchanges_question_range_check",
+          "value": "(\"exchanges\".\"question_first_line_id\" is null) = (\"exchanges\".\"question_last_line_id\" is null)"
+        },
+        "exchanges_answer_range_check": {
+          "name": "exchanges_answer_range_check",
+          "value": "(\"exchanges\".\"answer_first_line_id\" is null) = (\"exchanges\".\"answer_last_line_id\" is null)"
+        },
+        "exchanges_answer_line_count_check": {
+          "name": "exchanges_answer_line_count_check",
+          "value": "\"exchanges\".\"answer_line_count\" between 0 and 40"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lines": {
+      "name": "lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "lines_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "deposition_id": {
+          "name": "deposition_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pdf_page": {
+          "name": "pdf_page",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "printed_page": {
+          "name": "printed_page",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_no": {
+          "name": "line_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "speaker_role": {
+          "name": "speaker_role",
+          "type": "speaker_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "speaker_name": {
+          "name": "speaker_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raw_text": {
+          "name": "raw_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "norm_text": {
+          "name": "norm_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "lines_deposition_id_depositions_id_fk": {
+          "name": "lines_deposition_id_depositions_id_fk",
+          "tableFrom": "lines",
+          "tableTo": "depositions",
+          "columnsFrom": [
+            "deposition_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "lines_page_line_unique": {
+          "name": "lines_page_line_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "deposition_id",
+            "printed_page",
+            "line_no"
+          ]
+        },
+        "lines_id_deposition_unique": {
+          "name": "lines_id_deposition_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "deposition_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "lines_line_no_check": {
+          "name": "lines_line_no_check",
+          "value": "\"lines\".\"line_no\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.llm_calls": {
+      "name": "llm_calls",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "llm_calls_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stage": {
+          "name": "stage",
+          "type": "llm_stage",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "items": {
+          "name": "items",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cache_write_5m_tokens": {
+          "name": "cache_write_5m_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cache_write_1h_tokens": {
+          "name": "cache_write_1h_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cache_read_tokens": {
+          "name": "cache_read_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch": {
+          "name": "batch",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_version": {
+          "name": "price_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_usd": {
+          "name": "cost_usd",
+          "type": "numeric(14, 8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "llm_calls_job_stage_idx": {
+          "name": "llm_calls_job_stage_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "stage",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "llm_calls_tokens_check": {
+          "name": "llm_calls_tokens_check",
+          "value": "\"llm_calls\".\"input_tokens\" >= 0 and \"llm_calls\".\"output_tokens\" >= 0 and \"llm_calls\".\"cache_write_5m_tokens\" >= 0 and \"llm_calls\".\"cache_write_1h_tokens\" >= 0 and \"llm_calls\".\"cache_read_tokens\" >= 0"
+        },
+        "llm_calls_counts_check": {
+          "name": "llm_calls_counts_check",
+          "value": "\"llm_calls\".\"items\" >= 1 and \"llm_calls\".\"attempt\" >= 1"
+        },
+        "llm_calls_priced_check": {
+          "name": "llm_calls_priced_check",
+          "value": "(\"llm_calls\".\"cost_usd\" is null) = (\"llm_calls\".\"price_version\" is null) and (\"llm_calls\".\"cost_usd\" is null or \"llm_calls\".\"cost_usd\" >= 0)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.orgs": {
+      "name": "orgs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "orgs_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.witnesses": {
+      "name": "witnesses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "witnesses_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "case_id": {
+          "name": "case_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "witnesses_case_id_cases_id_fk": {
+          "name": "witnesses_case_id_cases_id_fk",
+          "tableFrom": "witnesses",
+          "tableTo": "cases",
+          "columnsFrom": [
+            "case_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "witnesses_case_name_unique": {
+          "name": "witnesses_case_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "case_id",
+            "name"
+          ]
+        },
+        "witnesses_id_case_unique": {
+          "name": "witnesses_id_case_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "case_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.deposition_status": {
+      "name": "deposition_status",
+      "schema": "public",
+      "values": [
+        "processing",
+        "ready",
+        "needs_review",
+        "unsupported",
+        "failed"
+      ]
+    },
+    "public.exchange_kind": {
+      "name": "exchange_kind",
+      "schema": "public",
+      "values": [
+        "qa",
+        "colloquy",
+        "objection",
+        "exhibit"
+      ]
+    },
+    "public.line_role": {
+      "name": "line_role",
+      "schema": "public",
+      "values": [
+        "question",
+        "answer",
+        "context",
+        "unknown"
+      ]
+    },
+    "public.llm_stage": {
+      "name": "llm_stage",
+      "schema": "public",
+      "values": [
+        "claim_tagging",
+        "adjudication"
+      ]
+    },
+    "public.source_format": {
+      "name": "source_format",
+      "schema": "public",
+      "values": [
+        "pdf",
+        "html"
+      ]
+    },
+    "public.speaker_role": {
+      "name": "speaker_role",
+      "schema": "public",
+      "values": [
+        "attorney",
+        "witness",
+        "colloquy",
+        "parenthetical",
+        "unknown"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
