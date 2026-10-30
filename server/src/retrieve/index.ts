@@ -8,3 +8,4 @@ export { rankPairs, type LogicalExchange, type Match, type PartInfo, type Ranked
 export { idf, MIN_SHARED_TERMS, pairScore, type PairScore, type TermFrequency } from "./score";
 export { claimSignal, findPathA, OBJECT_OVERLAP, objectsOverlap, SIGNALS, type ClaimPair, type Signal, type SignalClaim } from "./pathA";
 export { mergeCandidates, PAIR_BUDGET, PER_EXCHANGE_CAP, RRF_K, selectCandidates, type Candidate, type Deferred, type Evidence, type Path } from "./merge";
+export { countsToward, provenanceOf, type Provenance } from "./provenance";

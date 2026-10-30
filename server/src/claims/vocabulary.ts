@@ -31,6 +31,9 @@ export const POLARITIES = ["affirms", "denies"] as const;
 // does_not_know (never knew) and does_not_recall (can't remember) stay distinct, and neither is a
 // denial that the thing happened.
 export const EPISTEMIC = ["asserted", "qualified", "does_not_know", "does_not_recall", "hypothetical", "reported_by_other"] as const;
+// Statement cards (claims/cards.ts): the card's stance on its statement, and how the witness holds it.
+export const CARD_STANCES = ["asserts", "denies", "not_answered", "unclear"] as const;
+export const CARD_EPISTEMIC = EPISTEMIC;
 export const CLAIM_SOURCES = ["answer", "adopted_question"] as const;
 
 export type Polarity = (typeof POLARITIES)[number];

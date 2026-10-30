@@ -1,0 +1,1537 @@
+{
+  "version": 1,
+  "about": "Human review set. References only: the testimony is in the git-ignored sheet. human fields are filled by a person and stay null until then. modelVerdict is model output, never ground truth. Pairs are evaluation targets: retrieval must never read this file.",
+  "choices": [
+    "direct_contradiction",
+    "inferential_contradiction",
+    "compatible",
+    "insufficient_evidence",
+    "uncertain_needs_expert_review"
+  ],
+  "pairs": [
+    {
+      "id": "R01",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 136,
+        "group": 136,
+        "range": "93:17–94:19"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1464,
+        "group": 78,
+        "range": "57:16–57:18"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 337
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R02",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1642,
+        "group": 6,
+        "range": "12:12–12:13"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1654,
+        "group": 6,
+        "range": "55:14–55:15"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 9
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R03",
+      "source": "synthetic",
+      "caseName": "Synthetic: Marcus Webb (fixture)",
+      "witness": "Marcus Webb",
+      "a": {
+        "document": "bab44ae56fd7",
+        "depositionId": 10,
+        "exchangeId": 1601,
+        "group": 2,
+        "range": "10:04–10:06"
+      },
+      "b": {
+        "document": "559ff4c970fd",
+        "depositionId": 11,
+        "exchangeId": 1608,
+        "group": 3,
+        "range": "40:08–40:10"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 16
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "inferential",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R04",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1647,
+        "group": 11,
+        "range": "12:22–13:01"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1659,
+        "group": 11,
+        "range": "56:03–56:04"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 27
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R05",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 400,
+        "group": 399,
+        "range": "258:02–258:18"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1590,
+        "group": 201,
+        "range": "216:18–216:21"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 492
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R06",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 189,
+        "group": 189,
+        "range": "137:15–139:08"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1561,
+        "group": 172,
+        "range": "151:05–151:22"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims"
+        ],
+        "rank": 157
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R07",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 171,
+        "group": 171,
+        "range": "109:03–109:07"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1506,
+        "group": 120,
+        "range": "69:18–69:20"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 412
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R08",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 210,
+        "group": 209,
+        "range": "152:15–153:01"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1550,
+        "group": 162,
+        "range": "130:12–130:16"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims"
+        ],
+        "rank": 70
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R09",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 210,
+        "group": 209,
+        "range": "152:15–153:01"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1549,
+        "group": 161,
+        "range": "129:17–130:11"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims"
+        ],
+        "rank": 213
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R10",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1640,
+        "group": 4,
+        "range": "12:08–12:09"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1651,
+        "group": 3,
+        "range": "55:06–55:07"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 15
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R11",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1641,
+        "group": 5,
+        "range": "12:10–12:11"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1653,
+        "group": 5,
+        "range": "55:11–55:13"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 7
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R12",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 531,
+        "group": 530,
+        "range": "309:14–309:19"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1452,
+        "group": 66,
+        "range": "50:12–50:22"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 623
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R13",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1643,
+        "group": 7,
+        "range": "12:14–12:15"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1655,
+        "group": 7,
+        "range": "55:16–55:17"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 35
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R14",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 181,
+        "group": 181,
+        "range": "112:08–112:17"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1544,
+        "group": 156,
+        "range": "125:06–125:16"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 496
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R15",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 212,
+        "group": 211,
+        "range": "159:11–159:14"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1592,
+        "group": 203,
+        "range": "218:02–218:04"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 48
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "insufficient_evidence",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "approximate"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R16",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1639,
+        "group": 3,
+        "range": "12:06–12:07"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1650,
+        "group": 2,
+        "range": "55:03–55:05"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 14
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R17",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 269,
+        "group": 268,
+        "range": "187:21–188:08"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1554,
+        "group": 165,
+        "range": "137:20–137:22"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 450
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "insufficient_evidence",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R18",
+      "source": "synthetic",
+      "caseName": "Synthetic: Marcus Webb (fixture)",
+      "witness": "Marcus Webb",
+      "a": {
+        "document": "bab44ae56fd7",
+        "depositionId": 10,
+        "exchangeId": 1605,
+        "group": 6,
+        "range": "10:13–10:15"
+      },
+      "b": {
+        "document": "559ff4c970fd",
+        "depositionId": 11,
+        "exchangeId": 1611,
+        "group": 6,
+        "range": "40:16–40:18"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 2
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "inferential",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R19",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1644,
+        "group": 8,
+        "range": "12:16–12:17"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1656,
+        "group": 8,
+        "range": "55:18–55:20"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 8
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R20",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 497,
+        "group": 496,
+        "range": "292:01–292:04"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1581,
+        "group": 192,
+        "range": "191:08–191:22"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 348
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R21",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 297,
+        "group": 296,
+        "range": "202:11–203:01"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1550,
+        "group": 162,
+        "range": "130:12–130:16"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims",
+          "fulltext"
+        ],
+        "rank": 82
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R22",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 212,
+        "group": 211,
+        "range": "159:11–159:14"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1393,
+        "group": 7,
+        "range": "13:01–13:08"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 209
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "insufficient_evidence",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "approximate"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R23",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1638,
+        "group": 2,
+        "range": "12:03–12:05"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1649,
+        "group": 1,
+        "range": "55:01–55:02"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 23
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R24",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 277,
+        "group": 276,
+        "range": "193:20–194:14"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1599,
+        "group": 209,
+        "range": "221:22–222:06"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 288
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R25",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 42,
+        "group": 42,
+        "range": "42:18–43:04"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1592,
+        "group": 203,
+        "range": "218:02–218:04"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 30
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "insufficient_evidence",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R26",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1646,
+        "group": 10,
+        "range": "12:20–12:21"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1658,
+        "group": 10,
+        "range": "56:01–56:02"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 29
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R27",
+      "source": "synthetic",
+      "caseName": "Synthetic: Dana Whitfield (fixture)",
+      "witness": "Dana Whitfield",
+      "a": {
+        "document": "443d5c0e4064",
+        "depositionId": 14,
+        "exchangeId": 1645,
+        "group": 9,
+        "range": "12:18–12:19"
+      },
+      "b": {
+        "document": "474d35614ff9",
+        "depositionId": 15,
+        "exchangeId": 1657,
+        "group": 9,
+        "range": "55:21–55:22"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 40
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R28",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 138,
+        "group": 138,
+        "range": "95:05–96:07"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1505,
+        "group": 119,
+        "range": "69:14–69:17"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 238
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R29",
+      "source": "synthetic",
+      "caseName": "Synthetic: Marcus Webb (fixture)",
+      "witness": "Marcus Webb",
+      "a": {
+        "document": "bab44ae56fd7",
+        "depositionId": 10,
+        "exchangeId": 1600,
+        "group": 1,
+        "range": "10:01–10:03"
+      },
+      "b": {
+        "document": "559ff4c970fd",
+        "depositionId": 11,
+        "exchangeId": 1606,
+        "group": 1,
+        "range": "40:01–40:03"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 25
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R30",
+      "source": "synthetic",
+      "caseName": "Synthetic: Marcus Webb (fixture)",
+      "witness": "Marcus Webb",
+      "a": {
+        "document": "bab44ae56fd7",
+        "depositionId": 10,
+        "exchangeId": 1603,
+        "group": 4,
+        "range": "10:09–10:10"
+      },
+      "b": {
+        "document": "559ff4c970fd",
+        "depositionId": 11,
+        "exchangeId": 1610,
+        "group": 5,
+        "range": "40:13–40:15"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 1
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R31",
+      "source": "synthetic",
+      "caseName": "Synthetic: Marcus Webb (fixture)",
+      "witness": "Marcus Webb",
+      "a": {
+        "document": "bab44ae56fd7",
+        "depositionId": 10,
+        "exchangeId": 1600,
+        "group": 1,
+        "range": "10:01–10:03"
+      },
+      "b": {
+        "document": "559ff4c970fd",
+        "depositionId": 11,
+        "exchangeId": 1607,
+        "group": 2,
+        "range": "40:04–40:07"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 38
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R32",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 58,
+        "group": 58,
+        "range": "55:03–55:11"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1526,
+        "group": 138,
+        "range": "96:04–96:13"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims",
+          "fulltext"
+        ],
+        "rank": 22
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R33",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 60,
+        "group": 60,
+        "range": "56:03–56:17"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1481,
+        "group": 95,
+        "range": "61:22–62:03"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 81
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R34",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 200,
+        "group": 200,
+        "range": "143:17–145:09"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1562,
+        "group": 173,
+        "range": "153:13–153:17"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims",
+          "fulltext"
+        ],
+        "rank": 169
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R35",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 423,
+        "group": 422,
+        "range": "269:18–269:22"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1470,
+        "group": 84,
+        "range": "58:20–59:01"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 287
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "insufficient_evidence",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R36",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 532,
+        "group": 531,
+        "range": "309:20–310:01"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1453,
+        "group": 67,
+        "range": "51:13–51:15"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 10
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "approximate"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R37",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 193,
+        "group": 193,
+        "range": "140:08–141:10"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1553,
+        "group": 164,
+        "range": "130:20–133:07"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "claims",
+          "fulltext"
+        ],
+        "rank": 143
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R38",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 449,
+        "group": 448,
+        "range": "279:02–279:05"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1420,
+        "group": 34,
+        "range": "25:22–27:06"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 597
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "false_positive",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R39",
+      "source": "real",
+      "caseName": "U.S. v. Oracle",
+      "witness": "Lawrence Ellison",
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "exchangeId": 210,
+        "group": 209,
+        "range": "152:15–153:01"
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "exchangeId": 1592,
+        "group": 203,
+        "range": "218:02–218:04"
+      },
+      "retrieval": {
+        "set": "analysis-11",
+        "sources": [
+          "fulltext"
+        ],
+        "rank": 15
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "insufficient_evidence",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    },
+    {
+      "id": "R40",
+      "source": "synthetic",
+      "caseName": "Synthetic: Marcus Webb (fixture)",
+      "witness": "Marcus Webb",
+      "a": {
+        "document": "bab44ae56fd7",
+        "depositionId": 10,
+        "exchangeId": 1602,
+        "group": 3,
+        "range": "10:07–10:08"
+      },
+      "b": {
+        "document": "559ff4c970fd",
+        "depositionId": 11,
+        "exchangeId": 1609,
+        "group": 4,
+        "range": "40:11–40:12"
+      },
+      "retrieval": {
+        "set": "exp-strategies-1-C",
+        "sources": [
+          "fixture"
+        ],
+        "rank": 32
+      },
+      "modelVerdict": {
+        "note": "model-generated; not ground truth",
+        "classification": "direct",
+        "promptVersion": "adjudicate-v3",
+        "citationStatus": "verified"
+      },
+      "human": {
+        "classification": null,
+        "comparable": null,
+        "notes": ""
+      }
+    }
+  ]
+}

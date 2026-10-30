@@ -5,6 +5,8 @@
 export const V2_MODELS = {
   claim_tagging: "claude-haiku-5-5",
   adjudication: "claude-sonnet-5-5",
+  statement_cards: "claude-haiku-5-5",
+  topic_mapping: "claude-haiku-5-5",
 } as const;
 
 export type Stage = keyof typeof V2_MODELS;

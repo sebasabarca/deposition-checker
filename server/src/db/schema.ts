@@ -26,9 +26,10 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { Validation } from "../ingest/validate";
-import { CLAIM_SOURCES, EPISTEMIC, POLARITIES, PREDICATE_NAMES } from "../claims/vocabulary";
+import { CARD_EPISTEMIC, CARD_STANCES, CLAIM_SOURCES, EPISTEMIC, POLARITIES, PREDICATE_NAMES } from "../claims/vocabulary";
 
 // processing: uploaded, waiting for or in the ingest worker. ready / needs_review / unsupported:
 // what validation decided about the file. failed: the worker itself failed (a crash or an
@@ -314,7 +315,7 @@ export const exchangeLines = pgTable(
   ],
 );
 
-export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication"]);
+export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication", "statement_cards", "topic_mapping"]);
 
 // One row per successful model call (DESIGN.md, "Cost model"). Cost is computed when the call is
 // recorded, with the price version it used, so a later price change never rewrites it. A model
@@ -510,7 +511,9 @@ export const budgetReservations = pgTable(
 // back to the exact evidence retrieval found. Until analysis jobs exist, candidates are grouped in a
 // named set instead of a job. exchange_a / exchange_b are the representative parts of the two logical
 // exchanges; evidence keeps every path's parts, claims and signals.
-export const candidateStatus = pgEnum("candidate_status", ["selected", "deferred", "audit", "adjudicated"]);
+// status is the candidate's assessment state: selected (awaiting assessment), adjudicated (assessed),
+// deferred (with deferred_reason), excluded (with exclusion_reason), audit.
+export const candidateStatus = pgEnum("candidate_status", ["selected", "deferred", "audit", "adjudicated", "excluded"]);
 export const candidates = pgTable(
   "candidates",
   {
@@ -527,11 +530,16 @@ export const candidates = pgTable(
     sources: text("sources").array().notNull(),
     rankClaims: integer("rank_claims"),
     rankFulltext: integer("rank_fulltext"),
+    rankTopics: integer("rank_topics"), // rank within Path A's topic retrieval
     rrfScore: real("rrf_score").notNull(),
     mergedRank: integer("merged_rank").notNull(),
     evidence: jsonb("evidence").notNull(), // every path's evidence, as retrieval returned it
     status: candidateStatus("status").notNull().default("selected"),
     deferredReason: text("deferred_reason"),
+    exclusionReason: text("exclusion_reason"),
+    retrievalVersion: text("retrieval_version"), // null on candidates from before versioned retrieval
+    mapVersion: integer("map_version"), // the topic map Path A used
+    selectedBy: text("selected_by"), // whose share of the budget selected it
     createdAt: createdAt(),
   },
   (t) => [
@@ -539,6 +547,8 @@ export const candidates = pgTable(
     foreignKey({ name: "candidates_exchange_a_fk", columns: [t.exchangeA, t.depositionA], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
     foreignKey({ name: "candidates_exchange_b_fk", columns: [t.exchangeB, t.depositionB], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
     check("candidates_order_check", sql`(${t.depositionA}, ${t.groupA}) < (${t.depositionB}, ${t.groupB})`),
+    check("candidates_excluded_check", sql`(${t.status}::text = 'excluded') = (${t.exclusionReason} is not null)`),
+    check("candidates_selected_by_check", sql`${t.selectedBy} is null or ${t.selectedBy} in ('path_a', 'path_b')`),
   ],
 );
 
@@ -724,4 +734,140 @@ export const analyses = pgTable(
     check("analyses_pair_check", sql`${t.depositionA} <> ${t.depositionB}`),
     check("analyses_budget_check", sql`${t.budgetUsd} >= 0 and ${t.maxCandidates} > 0`),
   ],
+);
+
+// Statement cards (DESIGN.md, "Path A"): what each exchange asserts, as a retrieval representation
+// only. A card is never evidence; the source lines stay authoritative. An exchange has zero, one or
+// several cards. A rejected card is kept with its reason and the model's raw text, so its structured
+// fields can be null; a usable one has them all. card_key is stable across re-runs of a version.
+export const cardStance = pgEnum("card_stance", CARD_STANCES);
+export const cardEpistemic = pgEnum("card_epistemic", CARD_EPISTEMIC);
+export const cardStatus = pgEnum("card_status", ["usable", "rejected"]);
+export const statementCards = pgTable(
+  "statement_cards",
+  {
+    id: id(),
+    cardKey: text("card_key").notNull(),
+    exchangeId: ref("exchange_id"), // null only for a rejected card citing a part outside its chunk
+    citedExchange: text("cited_exchange").notNull(), // as the model wrote it
+    depositionId: ref("deposition_id").notNull(),
+    witnessId: ref("witness_id").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    sourcePhrase: text("source_phrase"),
+    firstLineId: ref("first_line_id").references(() => lines.id),
+    lastLineId: ref("last_line_id").references(() => lines.id),
+    statement: text("statement"),
+    event: text("event"),
+    subject: text("subject"),
+    entities: text("entities").array().notNull().default(sql`'{}'::text[]`),
+    ungroundedEntities: text("ungrounded_entities").array().notNull().default(sql`'{}'::text[]`),
+    predicate: text("predicate"),
+    object: text("object"),
+    time: text("time"),
+    location: text("location"),
+    amount: text("amount"),
+    stance: cardStance("stance"),
+    epistemic: cardEpistemic("epistemic"),
+    status: cardStatus("status").notNull(),
+    rejectionReason: text("rejection_reason"),
+    raw: jsonb("raw").notNull(), // the model's card as received
+    llmCallId: ref("llm_call_id")
+      .notNull()
+      .references(() => llmCalls.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("statement_cards_key_unique").on(t.extractorVersion, t.cardKey),
+    foreignKey({ name: "statement_cards_exchange_fk", columns: [t.exchangeId, t.depositionId], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
+    foreignKey({ name: "statement_cards_deposition_witness_fk", columns: [t.depositionId, t.witnessId], foreignColumns: [depositions.id, depositions.witnessId] }).onDelete("cascade"),
+    index("statement_cards_witness_idx").on(t.witnessId, t.depositionId, t.status),
+    index("statement_cards_exchange_idx").on(t.exchangeId),
+    check("statement_cards_rejected_check", sql`(${t.status}::text = 'rejected') = (${t.rejectionReason} is not null)`),
+    check(
+      "statement_cards_usable_check",
+      sql`${t.status}::text <> 'usable' or (${t.exchangeId} is not null and ${t.firstLineId} is not null and ${t.lastLineId} is not null and ${t.sourcePhrase} is not null and ${t.statement} is not null and ${t.event} is not null and ${t.subject} is not null and ${t.predicate} is not null and ${t.stance} is not null and ${t.epistemic} is not null)`,
+    ),
+  ],
+);
+
+// Whether each eligible exchange part was processed, per extractor version. An unprocessed part is
+// never read as having no claims: no_assertion is the model saying so, omitted is the model's silence.
+export const cardCoverageStatus = pgEnum("card_coverage_status", ["carded", "no_assertion", "omitted", "failed", "not_processed"]);
+export const cardCoverage = pgTable(
+  "card_coverage",
+  {
+    exchangeId: ref("exchange_id").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    depositionId: ref("deposition_id").notNull(),
+    status: cardCoverageStatus("status").notNull(),
+    cards: integer("cards").notNull().default(0), // usable cards
+    error: text("error"), // why it failed
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id), // null when no response came back
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: "card_coverage_pk", columns: [t.exchangeId, t.extractorVersion] }),
+    foreignKey({ name: "card_coverage_exchange_fk", columns: [t.exchangeId, t.depositionId], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
+    index("card_coverage_deposition_idx").on(t.depositionId, t.extractorVersion, t.status),
+    check("card_coverage_carded_check", sql`(${t.status}::text = 'carded') = (${t.cards} > 0)`),
+    check("card_coverage_failed_check", sql`(${t.status}::text = 'failed') = (${t.error} is not null)`),
+  ],
+);
+
+// A witness's topic map, one row per topic per map_version. A topic's name is a label for the lawyer,
+// never evidence. Each version has one is_unassigned topic, for cards the map gave no real topic.
+export const topics = pgTable(
+  "topics",
+  {
+    id: id(),
+    witnessId: ref("witness_id")
+      .notNull()
+      .references(() => witnesses.id, { onDelete: "cascade" }),
+    mapVersion: integer("map_version").notNull(),
+    name: text("name").notNull(),
+    sessions: integer("sessions").notNull().default(0), // how many depositions it spans
+    isUnassigned: boolean("is_unassigned").notNull().default(false),
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("topics_name_unique").on(t.witnessId, t.mapVersion, t.name),
+    unique("topics_id_version_unique").on(t.id, t.mapVersion),
+    uniqueIndex("topics_one_unassigned").on(t.witnessId, t.mapVersion).where(sql`${t.isUnassigned}`),
+  ],
+);
+
+// Many-to-many: a card may belong to several topics, and has at most one primary per map version.
+// map_version repeats the topic's, tied to it by the foreign key, so the database can enforce that.
+export const cardTopics = pgTable(
+  "card_topics",
+  {
+    topicId: ref("topic_id").notNull(),
+    cardId: ref("card_id")
+      .notNull()
+      .references(() => statementCards.id, { onDelete: "cascade" }),
+    mapVersion: integer("map_version").notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ name: "card_topics_pk", columns: [t.topicId, t.cardId] }),
+    foreignKey({ name: "card_topics_topic_fk", columns: [t.topicId, t.mapVersion], foreignColumns: [topics.id, topics.mapVersion] }).onDelete("cascade"),
+    uniqueIndex("card_topics_one_primary").on(t.cardId, t.mapVersion).where(sql`${t.isPrimary}`),
+    index("card_topics_card_idx").on(t.cardId),
+  ],
+);
+
+// The topics a Path A candidate was found through: one candidate, however many topics it shares.
+export const candidateTopics = pgTable(
+  "candidate_topics",
+  {
+    candidateId: ref("candidate_id")
+      .notNull()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    topicId: ref("topic_id")
+      .notNull()
+      .references(() => topics.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ name: "candidate_topics_pk", columns: [t.candidateId, t.topicId] }), index("candidate_topics_topic_idx").on(t.topicId)],
 );

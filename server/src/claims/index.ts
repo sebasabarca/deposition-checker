@@ -2,6 +2,7 @@
 // against the stored source lines. Only this module and adjudicate/ call a model, and every call is
 // recorded with recordCall.
 
+export { CARDS_JSON_SCHEMA, ExtractedCard, mergeCoverage, readCards, type CardReading, type CheckedCard, type Chunk, type ChunkExchange, type Coverage, type CoverageStatus, type ModelReply as CardModelReply } from "./cards";
 export { readAnswer, readRecollection, type AnswerReading, type RecollectionReading } from "../verify";
 export { normalizeEntities, normalizeEntity } from "./entities";
 export { anthropicClaimModel, type ClaimModel, type ModelReply } from "./model";
