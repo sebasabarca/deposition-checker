@@ -11,6 +11,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
+import { timedSync } from "../timing";
 
 export const UPLOADS_DIR = "data/uploads";
 
@@ -46,7 +47,7 @@ export async function readUpload(storageKey: string, dir = UPLOADS_DIR): Promise
 }
 
 export async function storeUpload(data: Uint8Array, dir = UPLOADS_DIR): Promise<{ fileSha256: string; storageKey: string }> {
-  const fileSha256 = sha256(data);
+  const fileSha256 = timedSync("upload.sha256", () => sha256(data));
   const storageKey = `${fileSha256}.pdf`;
   const target = path.join(dir, storageKey);
   if ((await hashOf(target)) === fileSha256) return { fileSha256, storageKey };

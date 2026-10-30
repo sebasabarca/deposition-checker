@@ -2,18 +2,28 @@
 // Start it with `npm run worker` (or `npm run dev`, which starts it with the server and client).
 
 import "dotenv/config";
+import { anthropicAdjudicator, type PromptVersion } from "./adjudicate";
+import type { Effort } from "./adjudicate/prompt";
 import { connect } from "./db/client";
-import { createIngestQueues, startBoss, startIngestWorkers } from "./jobs";
+import { createAnalysisQueues, createIngestQueues, paidCallsAllowed, startAnalysisWorkers, startBoss, startIngestWorkers } from "./jobs";
 
 async function main() {
   const { db, pool } = connect();
   const boss = await startBoss(process.env.DATABASE_URL!, { supervise: true });
   await createIngestQueues(boss);
+  await createAnalysisQueues(boss);
   await startIngestWorkers(boss, db);
-  console.log("Ingest worker running");
+  const shuttingDown = new AbortController();
+  await startAnalysisWorkers(boss, db, {
+    signal: shuttingDown.signal,
+    liveAdjudicator: (a) => (paidCallsAllowed(process.env) ? anthropicAdjudicator(a.effort as Effort, a.promptVersion as PromptVersion) : null),
+  });
+  console.log(`Worker running (ingest and analysis; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"})`);
 
-  // Finish the job in hand before exiting; an unfinished one is retried by pg-boss.
+  // An unfinished job is redelivered by pg-boss, and stops at once if it was a paid one.
+  // A running analysis stops dispatching and aborts what is in flight, then records itself interrupted.
   const shutdown = async () => {
+    shuttingDown.abort();
     await boss.stop({ graceful: true });
     await pool.end();
     process.exit(0);

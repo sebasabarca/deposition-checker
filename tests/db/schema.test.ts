@@ -80,18 +80,26 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
     ...overrides,
   });
 
-  it("creates the seven ingestion tables and llm_calls", async () => {
+  it("creates the ingestion, cost, claim and adjudication tables", async () => {
     const result = await db.execute<{ table_name: string }>(
       sql`select table_name from information_schema.tables where table_schema = 'public' order by table_name`,
     );
     expect(result.rows.map((r) => r.table_name)).toEqual([
+      "adjudication_requests", "analyses",
+      "budget_reservations",
+      "budgets",
+      "candidates",
       "cases",
+      "claim_tagging",
+      "claims",
       "depositions",
       "exchange_lines",
       "exchanges",
+      "findings",
       "lines",
       "llm_calls",
       "orgs",
+      "verdicts",
       "witnesses",
     ]);
   });

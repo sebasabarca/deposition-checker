@@ -23,30 +23,35 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - pg-boss job queue (in Postgres), with the API and the ingest worker as separate processes
 
 **Approved v2 additions (from `DESIGN.md`, not yet installed):**
-- Tailwind and shadcn/ui for the Workbench UI
+- Tailwind 4 is installed in `client/` (October 30). shadcn/ui is not: its style is followed with hand-written components in `client/src/components/ui.tsx`, with no Radix dependency
 - k6 for load testing
 
 ## Repository structure
 
 **Existing:**
-- `server/src/index.ts`: Express app with v1's `POST /api/analyze`, plus the v2 deposition endpoints from `api/` when Postgres is reachable
+- `server/src/index.ts`: Express app with v1's `POST /api/analyze`, plus the v2 case, analysis, finding and deposition endpoints from `api/` when Postgres is reachable
 - `server/src/worker.ts`: the ingest worker process
-- `server/src/api/`: v2 endpoints: upload a deposition PDF, read its status, retry a failed one
-- `server/src/jobs/`: pg-boss queues and the ingest job handlers (run, and record a final failure)
-- `server/src/retrieve/`: Path B full-text retrieval (`pathB.ts`), the procedural filter and courtroom word list (`procedural.ts`), query terms by mode (`query.ts`), the symmetric pair score (`score.ts`), and logical-exchange dedupe and ranking (`rank.ts`)
-- `server/src/eval/`: the evaluation label file format (`labels.ts`); labels live in `data/eval/*.json`, anchored by PDF SHA-256 and page:line
-- `server/src/costs/`: model price table (`pricing.ts`), the models v2 calls per stage (`models.ts`), the pure `callCost()`, and `recordCall()` / `jobCost()` over `llm_calls`
+- `server/src/api/`: v2 endpoints: cases and witnesses (`cases.ts`); upload a deposition PDF, read its status, retry (`depositions.ts`); start, read and resume analyses, and grouped findings and one finding with both passages (`analyses.ts`); finding sections and labels (`present.ts`, pure)
+- `server/src/jobs/`: pg-boss queues; the ingest job handlers; the analysis job (`analysis.ts`: wait for parsing, retrieve, adjudicate in demo or live mode under a budget, record progress); `paidCallsAllowed` gates live calls
+- `server/src/adjudicate/`: demo replay of stored or fixture verdicts (`replay.ts`, never calls a model); evidence packets from stored lines (`packet.ts`), the strict `Verdict` schema, the Sonnet prompt and client (`model.ts`, the only file here that calls the API), `assess()` (Layer 1, Layer 2, checks, score, priority; pure), candidate persistence, and `adjudicateCandidate()` (reserve, call, record, settle, store verdict and finding); execution strategies (`strategies.ts`, `pool.ts`, `execute.ts`; the default is C, ten independent single-pair requests with `adjudicate-v3`), the experimental batch format, prompt and response checks (`batch.ts`, pure, never used by normal analyses), and the request record (`requests.ts`)
+- `server/src/verify/`: v1's quote matching (`quotes.ts`, moved unchanged), `readAnswer`, shared text helpers, Layer 1 source verification (`source.ts`) and Layer 2 attribution (`attribution.ts`)
+- `server/src/score/`: the frozen `RUBRIC_V1`, code's corroboration, context and time checks, `score()` and `prioritize()`
+- `server/src/claims/`: Path A input: the predicate vocabulary, the Haiku extraction prompt and client (`model.ts`, the only file here that calls the API), claim verification against stored lines, the yes/no answer reader, and `tagClaims()`
+- `server/src/retrieve/`: Path A claim retrieval (`pathA.ts`), the pure merge with cap and budget (`merge.ts`), Path B full-text retrieval (`pathB.ts`), the procedural filter and courtroom word list (`procedural.ts`), query terms by mode (`query.ts`), the symmetric pair score (`score.ts`), and logical-exchange dedupe and ranking (`rank.ts`)
+- `server/src/eval/`: the evaluation label file format (`labels.ts`); labels live in `data/eval/*.json`, anchored by PDF SHA-256 and page:line; `synthetic.ts` / `syntheticStore.ts` build the labelled synthetic Webb adjudication cases from `data/samples.ts`
+- `server/src/costs/`: model price table (`pricing.ts`), the models v2 calls per stage (`models.ts`), the pure `callCost()`, and `recordCall()` / `jobCost()` over `llm_calls`; `budget.ts` keeps stored budgets and reserves each call's worst-case cost atomically before it is sent
+- `server/src/timing.ts`: optional stage timings for benchmarks, written to `BENCHMARK_TIMING_FILE` only when it is set
 - `server/src/transcript.ts`: `Q:`/`A:` parser (replaced in v2)
 - `server/src/claude.ts`, `schema.ts`: the Claude call and its zod schema (the pattern is reused)
 - `server/src/analyze.ts`: three runs, majority vote and scoring (voting is removed in v2)
-- `server/src/verify.ts`: quote matching (`normalize`, `quoteMatchScore`), reused in v2
 - `server/src/ambiguity.ts`: time-range comparison, reused as-is in v2
 - `server/src/data/samples.ts`: Marcus Webb and Elena Ruiz samples, kept as synthetic fixtures
 - `tests/`: Vitest tests for the pure functions above
 - `scripts/try.ts`: runs a v1 analysis from the CLI
+- `scripts/patha.ts`: Path A cost estimate, claim tagging (paid API calls) and report
 - `scripts/pathb.ts`: previews Path B's ranked candidate pairs with both passages, for labelling
 - `scripts/ingest.ts`: ingests one deposition PDF into Postgres from the CLI (development only); `scripts/cases.ts` finds or creates its case and witness by name
-- `client/src/`: the v1 single-page UI
+- `client/src/`: the v2 app (`App.tsx` with hash routes in `lib/router.ts`; `pages/` for cases, case and analysis; `components/FindingView.tsx` for the side-by-side evidence; `lib/labels.ts` for plain-language wording; `lib/api.ts`), and v1's analyzer as `ClassicApp.tsx` at `#/classic`
 - `server/src/ingest/`: v2 PDF ingestion: extraction, per-page validation against the `ellison-doj-v1` layout, speakers, exchanges and long-answer parts (pure functions); `rows.ts` maps them to database rows, `store.ts` saves a deposition in one transaction, `uploads.ts` keeps PDFs under `data/uploads/` by SHA-256, and `ingestFile` in `index.ts` runs all three
 - `server/src/db/`: Drizzle schema (`schema.ts`) and connection (`client.ts`); migrations generated into `drizzle/`
 - `docker-compose.yml`, `docker/postgres-init/`: local Postgres, plus a separate `deposition_checker_test` database for the test suite
@@ -59,7 +64,11 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 
 - `npm install`: installs root deps; `postinstall` also installs `client/` deps
 - `npm run dev`: server (`tsx watch`, port 3001), ingest worker and Vite client (port 5173, proxies `/api` to 3001)
-- `npm run worker`: the ingest worker on its own (needs Postgres)
+- `npm run worker`: the worker on its own (ingest and analysis jobs; needs Postgres)
+- `npx tsx scripts/benchmark.ts free|estimate --run-id <id>`: the whole-product benchmark on the Ellison PDFs, with no model calls: starts its own API, worker and client build (stop `npm run dev` first), drives a real headless Chrome, and writes `reports/benchmarks/ellison-full-run/<id>/` (git-ignored). Re-running an ID resumes it. `preflight --run-id <id>` shows what a warm full run would evaluate and cost, with no API call. `live … --i-approve-paid-calls` makes paid calls: run it only with approval; `--dry-run` proves the wiring with no API key
+- `npx tsx scripts/adjudication-experiment.ts estimate|mock`: strategy cost estimates, or every strategy with the mock model (`mock` wipes `TEST_DATABASE_URL`); no API call. `live …` makes paid calls: run it only with approval
+- `npx tsx scripts/interrupt-analysis.ts --analysis <id>`: closes out an analysis whose worker is gone, counting any open request in full; no API call
+- `npx tsx scripts/demo.ts [--fresh]`: with `npm run dev` running, stores the synthetic fixture cases and starts demo analyses (Ellison, Webb) through the API; no model calls
 - `npm test`: all Vitest tests in `tests/`
 - `npx vitest run tests/verify.test.ts`: one test file
 - `npx vitest run -t "<test name>"`: one test
@@ -71,9 +80,11 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 - `npm run db:migrate`: apply migrations to the database in `DATABASE_URL`
 - `npx tsx scripts/ingest.ts <file.pdf> --case <name> --witness <name> [--taken-on YYYY-MM-DD]`: ingest one PDF into the database in `DATABASE_URL`; re-running it on the same file replaces that deposition's rows instead of duplicating them
 - `npx tsx scripts/pathb.ts (--case-id <id> | --case <name>) --witness <name> [--deposition <id>] [--mode all_terms|rare_terms] [--limit 15] [--lines 8]`: preview Path B pairs from the database in `DATABASE_URL` (read-only); a case name must match exactly one case and witness, and `--deposition` must be a ready deposition of that witness
+- `npx tsx scripts/patha.ts estimate|sample|report|reverify (--case-id <id> | --case <name>) --witness <name> [--deposition <id>] [--parts <ids>] [--version <v>]`: Path A cost estimate, pilot sample (or listed parts) with its estimate, coverage and fixture report, or re-verification of stored claims; no API call. `tag … --deposition <id> --pilot|--parts <ids>|--all` (`--all` with `--budget-name <n> --budget-limit <usd>`) makes paid Haiku calls: run it only with approval
+- `npx tsx scripts/adjudicate.ts persist|fixtures|list|show|estimate …`: save Path A + B candidates into a named set, store the synthetic Webb evaluation (`webb-synthetic-v1`), list candidates, print a packet with its verdicts and findings, or estimate worst-case and measured expected cost; no API call. `run --candidate <id> --budget-name <n> --budget-limit <usd> [--effort medium] [--prompt adjudicate-v1|adjudicate-v2]` makes one paid Sonnet call: run it only with approval
 - Database tests in `tests/db/` run only when `TEST_DATABASE_URL` is set (they wipe that database, whose name must end in `_test`); otherwise they are skipped. They share one database, so `vitest.config.mts` runs test files one at a time
 
-Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_URL`, and optionally `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). See `.env.example`, whose database URLs match `docker-compose.yml`. Add new commands here only once they exist and work.
+Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_URL`, and optionally `ANTHROPIC_MODEL` (defaults to `claude-sonnet-5-5`). Live analyses call a model only when `ALLOW_PAID_CALLS=true` is also set; leave it unset in development and tests. See `.env.example`, whose database URLs match `docker-compose.yml`. Add new commands here only once they exist and work.
 
 ## Architectural rules
 
@@ -102,6 +113,15 @@ For each feature:
 8. Run the relevant tests and `npm run typecheck`.
 9. Summarize the changes and their limitations.
 
+## Frontend design
+
+Use both design skills for any work on the frontend (`client/`), including new screens, redesigns, restyling, polish and UI review:
+
+- **Impeccable:** `.agents/skills/impeccable/SKILL.md`
+- **Taste:** `.agents/skills/design-taste-frontend/SKILL.md`
+
+Read both `SKILL.md` files before writing frontend code, and follow them. They live under `.agents/`, so open them by path if they aren't listed as available skills. They don't override the architectural rules above: testimony is always the stored lines, and model output stays labelled as model output.
+
 ## Coding conventions
 
 - Follow the existing TypeScript style: named exports, `type` aliases, `camelCase` functions, `UPPER_SNAKE` constants at the top of the file (see `analyze.ts`).
@@ -109,7 +129,7 @@ For each feature:
 - Validate external data with zod at every boundary.
 - Prefer clear, maintainable code over unnecessary abstractions.
 - Don't add dependencies without explaining why they are needed.
-- `client/src/types.ts` hand-duplicates the server's response types, so update both when the API shape changes.
+- `client/src/types.ts` hand-duplicates the server's response types, so update both when the API shape changes. Client tests (`tests/client/`) run under vitest but are excluded from the root typecheck; `npm run build --prefix client` checks them.
 - Keep the scoring constants in `README.md` in sync with the code.
 
 ## Git workflow

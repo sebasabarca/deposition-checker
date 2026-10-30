@@ -43,6 +43,55 @@
       "when": 1793211436884,
       "tag": "0005_exchange_tsv",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793219033048,
+      "tag": "0006_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793220435317,
+      "tag": "0007_claims_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793309862809,
+      "tag": "0008_adjudication",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793312883538,
+      "tag": "0009_findings_context_requested",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793313552298,
+      "tag": "0010_verdicts_consistency_issues",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793350432843,
+      "tag": "0011_analyses",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793386014082,
+      "tag": "0012_adjudication_requests",
+      "breakpoints": true
     }
   ]
 }

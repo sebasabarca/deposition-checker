@@ -5,4 +5,16 @@
 export { callCost, promptTokens, tokensFromUsage, type CallCost, type CallTokens } from "./cost";
 export { V2_MODELS, type Stage } from "./models";
 export { BATCH_MULTIPLIER, PRICE_VERSION, PRICES, type PriceTier, type Rates } from "./pricing";
-export { jobCost, recordCall, type JobCost, type RecordedCall } from "./record";
+export { jobCost, measuredOutputShare, recordCall, type JobCost, type RecordedCall } from "./record";
+export {
+  budgetStatus,
+  BudgetExceeded,
+  closeFailed,
+  ensureBudget,
+  failureIsUnbilled,
+  inputTokenBound,
+  maxRequestCost,
+  reconcileStale,
+  reserve,
+  settle,
+} from "./budget";

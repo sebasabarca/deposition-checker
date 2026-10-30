@@ -410,3 +410,545 @@ The first version of the test didn't reproduce it. The "sixth" exchange had enou
 **Results:** all 236 tests pass on Node 24 with Postgres running; without it, 158 pass and 78 skip. Typecheck and `git diff --check` are clean. On Ellison after the revert: 700 queries, rare-terms 2,839 pairs in 0.66 s, all-terms 3,105 pairs in 2.56 s; the same counts as before, with the times within run-to-run variation.
 
 **Status:** Path B stage 1 and all review fixes implemented and tested. Awaiting developer approval before commit. Path B tuning stops here; next is Path A and end-to-end analysis.
+
+### October 28, 2026 — Path A: claims, retrieval and merge
+
+**Branch:** `feature/path-a-claims`, from the committed Path B (`085a9b1`, not pushed).
+
+**Goal:** Path A as approved: Haiku extracts the witness's factual claims, code verifies them against the stored lines, claims are paired across sessions by meaning, and both paths merge without losing exact evidence. No API call was made: the pipeline takes its model as a parameter, and the tests use a fake one.
+
+**Developer decisions (approved):** entities stored as normalized text on each claim (no `entities` table); `time` as text; a `claim_tagging` table for coverage and resuming; CLI first, job wiring with analysis jobs; `merge.ts` pure, with the `candidates` table arriving with jobs. Added requirements:
+- verify adopted questions with both the question and the explicit yes or no;
+- signals are not contradictions;
+- a non-overlapping predicate vocabulary;
+- every attempt recorded, rejected claims kept with reasons, idempotent re-runs;
+- a cost estimate and a 2-batch pilot before any full run;
+- Path A independently measurable, with no recall claims before reviewed labels.
+
+**What was built, by stage:**
+
+1. **Schema (migration `0006`).**
+   - `claims`: the model's reading kept apart from code's status, reason, match scores and evidence line IDs; the `llm_calls` row each claim came from.
+   - A claim's part must be in its deposition, and the deposition the witness's.
+   - A rejected claim citing a part outside its batch is kept, with the cited ID as text.
+   - Claims are unique per model response.
+   - `claim_tagging`: one row per part per extractor version.
+   - Enums come from `claims/vocabulary.ts`: 16 predicates plus `other`, each with a written meaning. `recall_event` was drafted and removed before use, because it overlapped the epistemic status.
+2. **Extraction.**
+   - `claims/prompt.ts`: prompt, batch format, extractor version `claims-v1+claude-haiku-5-5`, and a pre-call estimate at 1 token per 3 characters with output at 40% of input, ignoring caching so it errs high.
+   - `claims/model.ts`: the only API caller; low effort, structured output, cached system prompt.
+   - `claims/verify.ts`: claim verification.
+   - `claims/answers.ts`: `readAnswer`, the DESIGN.md Layer 2 reader, built here first because adopted questions need it.
+   - `claims/tag.ts`: refusals and cut-offs recorded with their billed call; invalid output and errors marked failed; one transaction per batch.
+3. **Retrieval.** `retrieve/pathA.ts`: one SQL query and a deterministic rollup to logical exchanges.
+4. **Merge.** `retrieve/merge.ts`.
+5. **CLI.** `scripts/patha.ts`.
+
+**Bugs caught by tests before any real run:**
+- The stored lines keep their turn markers ("A. Yes, they do."), so `readAnswer` read every plain answer as not plain. The marker is now stripped before reading.
+- In review of the tests, Claude found its re-run logic would have deleted a rejected claim that cited a part from another batch once that part was tagged. Claims are now replaced by their actual part and unique per response; the uncommitted migration was regenerated.
+- An operator-precedence slip (`a || b < 0`) would have put Path A pairs' sides in the wrong order.
+- An ambiguous `status` column in Path A's SQL.
+- Three test-fixture mistakes.
+
+**Tests:** 32 new.
+- Pure: `readAnswer`, claim verification and every rejection reason, entity normalization, prompt and estimate, merge, cap and budget.
+- Database, with the fake model:
+  - tagging stores every claim with code's verdict, marks parts and records the call;
+  - refusal, cut-off, invalid output and a call that never answered;
+  - re-runs that only retry what isn't tagged, with no duplicate claims;
+  - a deposition that isn't ready.
+- Path A: a paraphrase pair by meaning, all three signals in rank order, pairing by object, every exclusion, same-session, and the logical rollup.
+
+All 268 tests pass on Node 24 with Postgres running; without it, 179 pass and 89 skip. Typecheck and `git diff --check` are clean. Migration `0006` applied to the development database.
+
+**Estimate on Ellison (no API call):** P3171 has 534 parts in 45 batches, about $0.039. P3173 has 213 parts in 18 batches, about $0.015. A 2-batch pilot costs about $0.0015–0.0019 per deposition.
+
+**Not done:** no API call (awaiting approval of the pilot), no commit. Path A coverage numbers and Path A-only pairs exist only after tagging.
+
+**Status:** Implemented and tested. Awaiting approval to run the pilot, then review, then commit.
+
+### October 28, 2026 — Path A pilot 1 and corrections
+
+**Pilot 1 (approved, claims-v1).** The first `--pilot` would have taken each deposition's first 24 parts, mostly introductory, so a reproducible sample rule was added first: Path B shared-topic parts, plain yes/no answers, qualified answers, recollection answers, then long direct answers (`patha.ts sample`, and an `only` option on `tagClaims`, tested).
+
+- **Run:** 48 parts in 4 calls, none failed or refused. 62 claims, **all 62 quote-verified**. That proves the quotes, not the interpretation.
+- **Developer's semantic review (by Claude, reading every claim):**
+  - polarity was right throughout;
+  - 3 hedged statements were labelled asserted;
+  - 4 claims took their meaning from another exchange;
+  - "I don't know." answers produced no claim;
+  - "oracle" was attached to 32 of 62 claims;
+  - 16 were `other`;
+  - the outsourcing statement "they're not buying any software" was missed.
+- **Path A pairs between the samples:** 0.
+- **Cost:** **$0.0077 actual against $0.0037 estimated**, above the ~$0.0034 approved. Output was 13,733 tokens against about 4,500 estimated, likely thinking (unconfirmed: thinking tokens weren't recorded yet). Cache: one 2,041-token write, three reads.
+
+**Corrections (approved; no prompt or schema change was made without approval):**
+
+1. **Qualifiers.**
+   - The prompt (now `claims-v2`) defines hedges, and says "I'm sure" and "certainly" aren't.
+   - Code records the hedge governing the key phrase. It looks only in the phrase's clause, up to the phrase's end, or at a bare disclaimer clause before it.
+   - A first version reported "I believe" for 22, a hedge belonging to the next conjunct, instead of the governing "I don't know that for a fact". Claude caught it on real data and scoped the check to the phrase's end.
+2. **Knowledge and recollection.**
+   - `does_not_know` is added beside `does_not_recall`.
+   - A plain "I don't know" or "I don't recall" answer becomes an adopted-question claim of the proposition as asked (`readRecollection`), with polarity required to be `affirms`. It is never a denial.
+   - An adopted claim now needs a real question (`not_a_question` otherwise).
+3. **Fragments.** A model flag `dependsOnEarlierExchange`, plus code rules: the exchange starts mid-turn, the question continues an earlier one, or the question or phrase is too short to stand alone. Context-dependent claims are kept and counted but never enter retrieval.
+4. **Entity grounding.** A name is kept only if the exchange's words support it in full, or by a capitalized alias ("Ms. Catz"). Otherwise it is stored as ungrounded. A first version picked the longest word as "distinctive" and missed "Catz"; a test caught it.
+5. **Object matching.** Exact equality is replaced by meaningful-word overlap: at least one shared content word, covering at least half the smaller object. Path A pairing now runs in a pure, tested `claimSignal`, with a new `knowledge_change` signal.
+6. **The missed outsourcing claim.** Investigated without paid calls:
+   - not the output limit (1,841 of 16,000 tokens);
+   - not long-exchange handling (one unsplit 25-line part);
+   - not batch composition (3 other claims were extracted from it).
+   The likely cause is the prompt: the sentence is conditional ("*if* people outsource…, they're not buying any software"), and v1 defined hypothetical as a supposition with "if". It can't be confirmed, because raw output wasn't stored; every call now stores it. v2 says general statements phrased with "if" are asserted. A regression fixture (from 376's real lines) verifies the claim, finds it unhedged and self-contained, and shows Path A would now pair it with P3173 51:13 as `opposite_polarity`.
+7. **Cost accounting.** `llm_calls` now records `thinking_tokens` and `raw_output`. The estimator uses the measured output share once 4 calls exist (1.01× now).
+
+**Also added:**
+- `reverifyClaims` / `patha.ts reverify`: re-applies code checks to stored claims for free.
+- `--parts`: tags only listed parts, with an estimate first.
+- `data/eval/claim-fixtures.json` (13 cases), checked by `patha.ts report`.
+
+**Code-only corrections on the stored v1 claims (no API call):**
+- 8 claims got a governing hedge. Model and code disagree on exactly the two claims found by hand (22, 376).
+- 4 became context-dependent (533, 1551, 1591, and 1482 "It is integration software", a borderline exclusion).
+- 24 had entities set aside, mostly an implied "oracle".
+- 1 was rejected: 532, whose question breaks off with "--" and is finished in the next exchange.
+- Fixtures: 8 of 13 pass on v1. The 5 failures need the v2 prompt: the missed outsourcing claim, the "everything listed" qualifier, "I don't know" for 140, the "it will make it a lot harder" fragment, and the "I'm sure" claim the model labelled qualified.
+
+**Tests:** 291 pass on Node 24 with Postgres running; without it, 199 pass and 92 skip. Typecheck and `git diff --check` are clean. Migration `0007` applied to the development database.
+
+**Pilot 2 (approved, claims-v2, 13 parts, 2 calls):**
+- 13 parts tagged, none failed or refused. 19 claims: 18 verified, 1 rejected (1440 "Yeah, I think so.", `answer_not_plain_yes_or_no`, correctly).
+- Cost **$0.0019 actual against $0.0033 estimated.** Cache: one 2,567-token write, one read. `thinking_tokens` were recorded as **0** on both calls, so output is the claims' JSON (about 150 tokens per claim), not thinking. The output share was 0.46× this time against 1.01× in pilot 1; it varies with claims per part. Total Path A spend so far: $0.0096.
+- **Fixtures: 11 of 13 pass** (v1 on the same code: 8). Fixed by v2:
+  - "I don't know" for 140 is now a `does_not_know` claim of the question as asked;
+  - the "I'm sure" claim is now asserted;
+  - the "it will make it a lot harder" fragment is now excluded;
+  - 22 is now qualified by the model too.
+- **New problem:** the model set `dependsOnEarlierExchange` on **14 of 19** claims, including self-contained ones. It flagged all four 376 claims, including the recovered outsourcing claim, and 22, 1417 and 1427, apparently treating the exchange's own question as earlier context. Context-dependent claims never enter retrieval, so the outsourcing claim, now extracted correctly (`buy` / denies / asserted, "if people outsource… they're not buying any software…"), is excluded. That fails its fixture and leaves Path A with 0 pairs.
+- **Second failure:** the 1427 fixture expected a claim whose phrase includes "everything listed"; the model instead put the qualifier on the listed products claim ("we offer a product in database…", `sell`, qualified), which reads as correct. The fixture was likely too narrow; left unchanged pending the developer's decision.
+- **Prompt fix confirmed:** the missed outsourcing claim is now extracted, which supports the diagnosis: the conditional "if" sentence was being skipped as hypothetical.
+
+### October 29, 2026 — Path A: context flag as metadata, retrieval on the pilot claims
+
+**Developer decisions:**
+- Option A: the model's `dependsOnEarlierExchange` flag stays on each claim as diagnostic metadata, but alone never excludes a claim; only the deterministic rules do.
+- The 1427 fixture stays unchanged.
+- Qualified yes/no answers are documented as a known limitation.
+- No vocabulary or scoring change, and no paid pilot.
+
+**Change:** `contextReason()` no longer returns `model_says_depends_on_earlier_exchange`; a test pins that the flag alone excludes nothing. All 292 tests pass. Re-verifying the stored claims (no API call) changed only v2's context flags: 10 claims are no longer excluded.
+
+**Retrieval and merge on the stored pilot claims** (no API call; Path A compares one extractor version at a time):
+- **claims-v1 (pilot 1, 48 parts).**
+  - Usable claims: P3171 31 of 40, P3173 9 of 22. P3173 lost 13 claims to predicate `other`, mostly definitions.
+  - One Path A pair, `recollection_change` on `review`: P3171 204:20 "I don't think I've ever seen this specific presentation" (Exhibit 8's restructuring chart) against P3173 12:15 "I don't recall seeing the document" (Exhibit 550, a board M&A presentation).
+  - **Different documents**, linked only because both objects contain "presentation". Likely irrelevant. Path B also had it, at rank 672.
+- **claims-v2 (pilot 2, 13 parts).**
+  - Usable claims: P3171 9 of 12, P3173 4 of 7.
+  - One Path A pair: **the expected outsourcing pair**, `opposite_polarity` on `buy`. P3171 249:17 "…they're not buying any software" (denies) against P3173 51:13 "does the customer buy the software? — Yes, they do." (affirms). Linked by object overlap ("software" / "the software"). Merged rank 1; Path B found it too, at rank 3.
+  - It is a retrieval signal, not a contradiction: P3171 describes the industry's outsourcing, P3173 Oracle's own service. That's for Sonnet to judge.
+- **Path A only: 0 in both versions.** Both pairs were also found by Path B. With 48 and 13 parts tagged out of 747, this says nothing about Path A's added coverage.
+- **Fixtures (v2):** 11 of 13 still pass. 1427 still fails (unchanged, debatable). The "it will make it a lot harder" fragment now fails, as expected under Option A: only the model flagged it, so it enters retrieval.
+
+**Limitations that could prevent meaningful retrieval:**
+1. Coverage: the pilots tagged 48 (v1) and 13 (v2) of 747 parts, and versions can't be mixed, so any real measure needs a full v2 run.
+2. Object overlap on a generic head word ("presentation", "software") links different things, as in the v1 pair.
+3. Predicate `other` (13 of P3173's v1 claims) never pairs.
+4. Qualified yes/no answers are unrepresented.
+5. Fragments only the model detects now enter retrieval.
+6. The model flag over-flags; it is kept for diagnosis only.
+
+**Status:** Change done and tested; no commit. Full extraction awaiting approval.
+
+### October 29, 2026 — Path A full extraction (claims-v2) and retrieval report
+
+**Approved:** a full v2 extraction of both Ellison depositions, run in order, with **$0.15 as the combined cap including retries**. Prompt, schema and retrieval rules unchanged. Before any call, the developer asked whether "not context-dependent" meant only the deterministic rules. Confirmed from the data: every excluded claim has a deterministic reason, and 10 claims carrying the model's flag were not excluded.
+
+**Budget guard:** `patha.ts tag --all --budget <usd>` (CLI only, no library change) tags one batch at a time. Before each batch it stops if the run's actual spend plus the estimated cost of the remaining batches would exceed the budget. P3171 ran with $0.15. P3173 got the remainder ($0.0836).
+
+**Extraction:**
+- **Coverage:** P3171 527 parts (plus 7 from pilot 2) = **534 of 534**; P3173 207 + 6 = **213 of 213**. 0 failed, 0 refused.
+- **Claims:** P3171 712 (616 verified, 2 approximate, 94 rejected); P3173 264 (236, 3, 25).
+- **Rejections:** `answer_not_plain_yes_or_no` 82 (mostly qualified yes and no answers, the documented limitation), `not_a_question` 26, `plain_answer_not_asserted` 5, other reasons 7.
+- **Predicates:** `other` 279 of 857 non-rejected claims (33%), `compete` 140, `support` 62, `measure` 62, then `plan`, `price`, `sell`, `role`, `know`, `review`, `buy`.
+- **Polarity:** 735 affirms, 90 denies. **Epistemic:** 686 asserted, 133 qualified, 20 hypothetical, 6 reported, 8 does_not_know, 4 does_not_recall.
+- **Context and model flag:** 78 claims context-dependent by the code rules; the model flag was set on 381.
+- **Usable for Path A:** 381 claims in P3171, 135 in P3173.
+- **Hedges and entities:** code found a hedge on 22 claims the model called asserted; 115 claims had entities set aside as ungrounded.
+
+**Cost:**
+
+| Run | Calls | Uncached input | Cache write | Cache read | Output | Thinking | Cost |
+|---|---|---|---|---|---|---|---|
+| P3171 | 44 | 56,774 | 2,567 | 110,381 | 118,446 | 11,749 | $0.0663 |
+| P3173 | 18 | 21,543 | 0 | 46,206 | 45,987 | 7,709 | $0.0256 |
+
+- **Total $0.0919** against the $0.108 estimate and the $0.15 cap.
+- All of Path A so far, pilots included: **$0.1015**.
+- Thinking is about 10% (P3171) to 17% (P3173) of output; the rest is the claims' JSON.
+
+**Retrieval (P3173 against P3171):**
+- **Path A:** 175 pairs in 37 ms.
+  - Signals: 33 `opposite_polarity`, 142 `different_value`, 0 recollection or knowledge changes (only 12 no-knowledge or no-recall claims exist).
+  - Links: 157 by a shared entity, 18 by object overlap only.
+- **Path B:** 2,839 pairs (`rare_terms`), 3,105 (`all_terms`).
+- **Overlap with `rare_terms`:** 27 pairs found by both paths, **148 only by Path A**, 2,812 only by Path B. The shared pairs' median Path B rank is 1,141; 7 fall within B's top 300.
+- **Overlap with `all_terms`:** 41 both, 134 Path A only.
+- **After merging (300-pair budget, cap 3 per exchange):** 53 Path A pairs would be adjudicated, 40 of them found only by Path A (17 `opposite_polarity`, 36 `different_value`).
+
+**Quality (Claude reading the top 20 merged pairs and 40 Path A-only pairs):**
+- **Useful:**
+  - #1, the outsourcing pair, found by both paths;
+  - #2, "I saw them enter the database market and become very competitive" against "could they monopolize enterprise application sales? — No";
+  - #3, "our sales force would not be selling both the e-business suite and PeopleSoft" against "the e-business suite requires customers to get the bulk of their applications from Oracle";
+  - "virtually all of the dot com companies used Oracle applications" against "not everyone is going to buy only Oracle application software".
+  All are related statements worth adjudicating, most likely compatible.
+- **False positives, by type:**
+  - **Hubs.** Six P3173 claims each pair 10–21 times: "Largely a function of scale" (21), the bare list "IBM, Microsoft, Sun, BEA, SAP" (21), "compete better with Microsoft? — Absolutely" (18), "could they monopolize…? — No" (13).
+  - **Ubiquitous entities as links.** Microsoft links 81 pairs, SAP 26, Oracle 25, PeopleSoft 25.
+  - **`different_value` from disjoint objects.** Same predicate and company, but objects that describe different aspects, such as "free database" against "the entire technology stack". This is the largest noise source.
+  - **Unrelated propositions sharing a polarity flip.** "We wouldn't be advertising PeopleSoft products" against "the intent is to get our applications 100 percent to Java".
+  - **A context fragment.** "does Oracle supply that type of software? — No" pairs with every "Oracle sells…" claim; "that type" refers to an earlier exchange, and only the model flagged it.
+
+**Limitations (no change made):**
+- Common-entity and generic-object links, and hub claims, dominate Path A.
+- `different_value` on disjoint objects is mostly noise.
+- `other` takes a third of the claims.
+- Qualified yes and no answers make up most rejections.
+- Context fragments flagged only by the model enter retrieval.
+- No recall claim is possible without independently reviewed labels.
+
+**Status:** Awaiting developer review; no commit.
+
+### October 29, 2026 — Evidence review before adjudication (no API call, no retrieval change)
+
+**Counts reconciled (claims-v2, 976 claims).**
+- Exclusive buckets: rejected 119; context-dependent by a code rule 63 (excluding the rejected); hypothetical or reported 24; predicate `other` 254; **usable 516** (P3171 381, P3173 135).
+- In total, 78 claims are context-dependent: 63 kept plus 15 that were also rejected.
+- The earlier distributions used the **857 non-rejected claims** (852 verified + 5 approximate) as denominator, so "`other` 279" includes context-dependent and hypothetical claims that the waterfall counts first.
+- **Correction:** the earlier report said 735 affirms; the right figure is **767** (735 was asserted and qualified only). Denies is 90; epistemic totals 857 as reported.
+
+**Context dependence.** 78 claims excluded:
+- 51 for a phrase too short to stand alone: "Sure.", "Occasionally", "Indefinitely", "More customers";
+- 14 for a question too short: "And No. 4?", "In the applications area?";
+- 8 for starting mid-turn;
+- 5 for a question continuing an earlier one.
+
+Mostly real fragments; some borderline ("we wouldn't approve it", some mid-turn parts). The model's flag has no effect: **188 claims carry it and remain eligible**, `contextReason()` doesn't read it, and Path A's SQL filters only on `context_dependent`.
+
+**Evaluation sample (`scripts/eval-sample.ts`, reproducible: three runs gave identical files).**
+- **Pairs:** 60 = 20 Path A only (of 148), 20 Path B only (of 2,812, `rare_terms`), 20 found by both (of 27). Each group is split into high / medium / low thirds of its own ranking and sampled evenly (7 / 7 / 6).
+- **Source exchanges:** 20 P3173 exchanges, evenly spaced, with every pair retrieved for them (2 have none). Reviewers look for related P3171 testimony that neither path found; recall is measured from these, never from retrieved pairs.
+- **Files:** `data/eval/retrieval-sample-v1.json` holds references, ranks, signals and empty evaluation fields (attribution, same proposition, potential contradiction, compatible, insufficient context, worth lawyer review, note). `data/eval/review/*.csv` adds the testimony and is git-ignored, since it is regenerable.
+
+**Review of migration 0007:**
+- **Correct on populated data.** It only adds columns with defaults or nulls and a check that existing rows pass, and it applied cleanly to the development database.
+- **One hazard:** Drizzle applies all pending migrations in one transaction, and Postgres can't use a new enum value in the transaction that added it. A future migration that uses `'does_not_know'` (a check or default naming it), applied together with 0007 on a fresh database, would fail. Mitigation: cast to text in such checks, as 0002 does, or apply it on its own.
+- **Not covered by a populated-database migration test** (0001 and 0005 are).
+
+**Review of the CLI budget guard:**
+- **Resumable and idempotent per part.** A re-run tags only parts not yet tagged, retrying failed and refused ones.
+- **Estimate-based, not worst-case.** `DESIGN.md`'s guard checks each call's *maximum* cost against what remains. This one checks the run's spend plus the *estimated* remaining cost, so the last batch can overshoot by its own estimation error. That is small here: the worst case for one Haiku call at 16,000 output tokens is about $0.0086.
+- **The budget isn't persisted.** The combined cap across runs relied on passing the remainder by hand. A crash after a call is recorded but before its result is stored leaves a billed call the next run doesn't count, and two concurrent runs would each spend their own budget.
+- **It lives only in the CLI,** not in `costs/` (`assertBudget` in `DESIGN.md`), so a worker path wouldn't have it.
+- Retries of failed and refused parts by a later run are inside that run's budget only.
+
+**Status:** Sample, findings and adjudication proposal awaiting review; no commit.
+
+### October 29, 2026 — Budget enforcement and the minimal adjudication path (no paid call)
+
+**A. Budgets (`costs/budget.ts`, migration 0008).**
+- Budgets and reservations are stored in Postgres.
+- Before a call, its worst case (input bounded by characters at the cache-write rate, output at `max_tokens`) is reserved in one conditional `UPDATE`, so concurrent workers can't overspend: in a test, 20 concurrent reserves left exactly 10 that fit.
+- **Settle** charges the recorded cost; an unpriced call is charged the full reservation.
+- **A 4xx is released** (it wasn't billed). Timeouts, 5xx and connection loss are marked **uncertain** and charged in full.
+- **Reservations left open by a crash** are reconciled as uncertain.
+- SDK retries are off for both models, so every attempt reserves its own cost.
+- **Path A** `tagClaims` takes a `budgetId`. `patha.ts tag --all` now spends from a named stored budget, replacing the estimate-based guard. `BudgetExceeded` stops the run before the call and leaves the parts untagged.
+
+**B. Adjudication.**
+- **Modules:**
+  - `adjudicate/`: packet, prompt `adjudicate-v1`, Sonnet client, `assess()`, `adjudicateCandidate()`;
+  - `verify/`: v1's `verify.ts` moved to `verify/quotes.ts` unchanged, plus `answers.ts`, shared text helpers, Layer 1 and Layer 2;
+  - `score/`: `RUBRIC_V1`, checks, `score()`, `prioritize()`.
+- **Stored:**
+  - verdicts as received, with status, raw text and the packet's line IDs;
+  - findings with evidence status, attribution levels, factors, caps, checks, rubric version and priority;
+  - calls with effort and latency.
+- **Two problems found while building:**
+  - v1's word-share match accepts a phrase whose negation was dropped or added (0.675 and 0.9). Layer 1 now requires approximate matches to carry the same negations as the best-matching sentence.
+  - The excerpted P3171 omits page ranges, so "5 lines before" could show text from 19 pages earlier. Context now stops at a page skip, and the packet says pages are omitted.
+
+**C. CLI:** `scripts/adjudicate.ts persist|list|show|estimate|run`.
+- Set `ellison-v1` holds 300 selected and 2,687 deferred candidates, the same counts as before (175 Path A + 2,839 Path B − 27 found by both).
+
+**D. Six pairs for labelling (labels left to the developer):**
+
+| # | P3171 | P3173 |
+| --- | --- | --- |
+| 1 | 249:13 | 51:13 |
+| 2 | 146:18 | 163:10 |
+| 4 | 37:1 | 216:22 |
+| 17 | 43:5 | 79:9 |
+| 49 | 152:15 | 130:12 |
+| 105 | 143:17 | 153:13 |
+
+Most top-ranked `opposite_polarity` pairs read as retrieval noise. Hub answers such as 23:11 "No, we don't." and 163:10 "No." are linked to many unrelated exchanges.
+
+**E. Tests:**
+- the 16 DESIGN scoring cases with exact component values, the cap matrix, the strict schema and the properties;
+- Layer 1 and 2 cases;
+- adjudication end to end with a fake model;
+- Path A under a budget.
+
+**Results:** 383 tests pass and typecheck is clean.
+
+**Estimate for the six:** worst case $0.61 in total ($0.10 each, almost all of it the 8,000-token output bound); typical about $0.12.
+
+**Status:** Awaiting review; no paid call, no commit.
+
+### October 29, 2026 — Adjudication pilot 1 (6 calls, approved)
+
+**Run:** Sonnet 5.5, effort medium, `adjudicate-v1`, rubric v1, budget `ellison-adj-pilot1` ($0.30). Candidates 1, 2, 4, 17, 49 and 105, run one at a time.
+- **Calls:** 6 valid verdicts, no failures, every reservation settled.
+- **Cost:** **$0.0461** total; 32 s elapsed.
+- **Evidence:** every key phrase verified exactly.
+- **Classifications:** all `false_positive` (4 `different_event`, 2 `both_can_be_true`).
+- **Scores and priorities:** scores 60 to 80; priorities 3 `needs_context`, 3 `low`.
+
+**Usage:**
+- 705 to 1,386 uncached input tokens per call;
+- the system prompt (2,738 tokens) was written to the cache once, then read from it;
+- 378 to 486 output tokens;
+- **0 thinking tokens on every call**;
+- latency 3.5 to 6.2 s.
+- The typical estimate ($0.12) was 2.6x the actual cost.
+
+**Observations for review (nothing changed):**
+- **Bare answers as key phrases.** Claude used "Yes, they do." and "Yes." as key phrases (#1, #4), against the prompt's instruction to use the question's words. They verify exactly and read as the witness's own answer, but they carry no proposition.
+- **The alternative-explanation deduction hit every call.** Sonnet always gave an alternative explanation, so every call lost 10 points.
+- **Context requests.** `needsMoreContext` put 3 of the 6 false positives in the `needs_context` priority.
+- **A page gap cost context points.** #105's B side sits after a page gap, so it has no context lines, and code's context check gave 0 of 5.
+- **Path A disagreed on attribution** for #49 and #105 (-5 each).
+
+This is a test of rejecting false positives and of the pipeline, not of recall.
+
+**Status:** Awaiting review; no commit.
+
+### October 29, 2026 — Short-answer evidence, pilot issues, synthetic evaluation, performance (no paid call)
+
+**1. Short-answer evidence (correctness bug, fixed).**
+- **The bug.** Pilot calls #1 and #4 used "Yes, they do." / "Yes." as key phrases. Layer 1 found them in the answer and treated them as the witness's own clear statement, with no proposition attached.
+- **Bare answers.** A key phrase made only of answer words (yes, no, sir, correct, I don't recall…) now stands for its question. The question and answer are read together with `readAnswer`. The question becomes the side's proposition for code's checks (corroboration, time, Path A disagreement). The evidence lines are the Q and A lines.
+- **Bare answer with no question:** unsupported.
+- **Compound questions.** When the key phrase cites only part of the question, a plain No to "A and B?" and a plain Yes to "A or B?" are uncertain.
+- **A related bug** (fixed): the v1 matcher accepted a fabrication assembled from different sentences ("I met Daniel Cho at the warehouse", 0.675). An approximate match now has to be found within one sentence.
+- **Re-assessing the six stored pilot verdicts** (read-only): the scores are unchanged; #1 and #4 now show their Q and A lines.
+
+**2. Pilot issues: review and proposals (rubric unchanged).**
+
+*Correctness bugs, fixed:*
+- bare answers;
+- evidence lines without the answer;
+- fabrications assembled across sentences;
+- the context label at a page gap, which now names the source gap.
+
+*Correctness issues, not fixed: they need approval because Path A shares the code, or because they change how the rubric is applied:*
+- **(a) `readAnswer` misses some plain answers.** It doesn't read "No, never." as a plain No (Hargrove case). It is shared with Path A's claim checks.
+- **(b) `findHedge` misses some hedges.** "might have", "maybe" and "may have" aren't hedges (Alone case). It is also shared with Path A.
+- **(c) The false-positive attribution points are too strict.** Code counts any different reading as contradicting Claude, even when code's reading is indefinite: a mixed answer (`question_other`), or a witness's answer where nothing was found. That cost 8 points in the Pizza and Hargrove cases. Proposal: code contradicts Claude only when Claude claims a higher level than a definite code reading, or the stances conflict.
+- **(d) Pronouns count as shared terms.** The negation-asymmetry check counts "him" as a shared content term, because v1's stopword list is small. Proposal: a scoring-only stopword list in `score/checks.ts`.
+- **(e) The typical cost estimate is too high.** It assumes 1,500 output tokens; the measured average is about 430. Proposal: switch to measured values, as DESIGN says to do after the first run.
+
+*Scoring-design choices, each with a proposal:*
+- **Alternative-explanation deduction.** It is working as specified, but Sonnet gave an alternative on 6 of 6 calls.
+  - Proposal A (recommended first): prompt `adjudicate-v2`. `alternativeExplanation` must be null unless specific lines support a contrary reading, cited by page:line. The rubric is untouched.
+  - Proposal B: rubric v2, with a categorical `alternativeStrength` (none, weak or strong) and the 10-point deduction only for strong.
+- **False positives entering `needs_context`.** DESIGN's priority table sends any verdict with `needsMoreContext` to `needs_context`, so harmless pairs crowd the lawyer's "needs context" queue (3 of 6). Proposal: for false positives, keep the score-based priority and show a "context requested" marker. Reserve `needs_context` for direct, inferential and insufficient-evidence verdicts.
+- **Source page gaps.** The packet already stops at the gap and says so, and the label now names the source gap. Code's 5 context points stay withheld, because the model genuinely saw no context. Proposal: no rubric change.
+- **High support scores on false positives.** "80 High" on a false positive is support for "not a contradiction", but it reads like a strong contradiction. Proposal (UI only):
+  - show false positives in their own "likely not contradictions" section;
+  - label the score "Support for 'not a contradiction': 80/100", in a neutral colour;
+  - sort them below conflicts.
+
+**3. Synthetic evaluation.**
+- **What it is.** `eval/synthetic.ts` builds 6 labelled cases from v1's Marcus Webb transcripts:
+  - direct (Cho);
+  - conflicting times (bedtime);
+  - qualified direct (home all evening, then "I think I went out");
+  - recollection change (pizza);
+  - qualified but compatible (alone, then a neighbor "might have seen me");
+  - compatible (warehouse, then the area).
+- **Storage.** `eval/syntheticStore.ts` ingests both sessions through the real ingestion code and stores one candidate per case. In the dev DB this is set `webb-synthetic-v1`, candidates #2988–2993, created by `scripts/adjudicate.ts fixtures`.
+- **Results with a fake model** (`tests/db/synthetic.test.ts`). Every correct verdict verifies. The scores are 90, 75, 66, 77, 75 and 77, each recomputed by hand. Faulty verdicts are also caught: a fabricated quote is unsupported, a near-fabrication is a wrong reference, and a direct call resting on no recall is capped at 40.
+- **Paid-run estimate:** at most $0.59; about $0.04 expected from the measured rates.
+
+**4. Performance (from the six measured calls; no concurrency built).**
+- **Packets:** the 294 still-selected packets average 2,460 characters (90th percentile 3,704). The pilot packets measured about 2.7 characters per token.
+- **Cost per call:** about $0.0064 with a warm cache (90th percentile about $0.0080), plus $0.007 once per cold cache.
+- **Latency:** 3.5 to 6.2 s, mean 4.8 s.
+- See the report for the 30, 100 and 300 figures.
+
+**Tests:** 405 pass and typecheck is clean.
+
+**Status:** Awaiting review; no paid call, no commit.
+
+### October 29, 2026 — Synthetic adjudication run (6 calls, approved) and correctness fixes
+
+**Run.**
+- Sonnet 5.5, effort medium, `adjudicate-v1`, rubric v1, budget `webb-synthetic-pilot1` ($0.20), run one at a time.
+- 6 valid verdicts; every citation verified; **$0.0433**; 26 s. Uncached input 529–740 tokens, output 424–476, thinking 0, latency 3.3–4.8 s.
+
+**Result: Sonnet called all six false positives.** Labels are unchanged, and agreement is 3 of 6:
+- **Agreed:** pizza, alone, Hargrove (all labelled false positive).
+- **Missed (labelled direct):**
+  - Cho: `value_conflict`, but classified `both_can_be_true`;
+  - bedtime: `qualified_statement`;
+  - home: `qualified_statement`.
+- **Its own fields show it saw the conflicts.** Its explanations call them "a real tension", "notable" and "in tension". For Cho it gave `conflictBasis: value_conflict` together with `false_positive`.
+- **Likely cause: the prompt.** `adjudicate-v1` lists "a qualified or unrecalled statement" among false-positive examples. DESIGN instead scores a qualified conflict as direct or inferential capped at 70 (case 7).
+- **Context requests and alternatives:** all six had `needsMoreContext`, and all six gave an alternative explanation.
+
+**Fixes made after the run (approved):**
+- **(a) `readAnswer`:** explicit denials and affirmatives, including elaboration that keeps the same direction.
+- **(b) Hedges:** possibility and recollection hedges, but not when quoted, negated or reported from someone else.
+- **(c) Bounded Layer 2:** exact, upper or no code reading; overstatement and understatement both recorded.
+- **(e) Cost estimate:** from measured calls only, with the worst case at `max_tokens`.
+- **Priority routing:** false positives with a context request keep their score-based priority, and `findings.context_requested` is added (migration 0009, backfilled from verdicts).
+- **Fake-model scores after these fixes:** 90, 67, 66, 85, 80, 85.
+
+**(d) Pronouns, investigated.**
+- Pronoun-only overlap occurred once (Cho, "him"), and there it named the same person, a legitimate signal. A pronoun stopword list isn't recommended.
+- Found instead: "No. 1" is read as a negation (#105). Proposed narrow fix: ignore "No." followed by a number.
+
+**Tests:** 422 pass and typecheck is clean.
+
+**Status:** Awaiting review; no commit.
+
+### October 29, 2026 — adjudicate-v2 experiment (6 calls, approved)
+
+**What was built.**
+- **Prompt `adjudicate-v2`, a new version beside v1** (v1 stays the default):
+  - a qualified statement can still contradict;
+  - no invented explanations to dismiss a conflict;
+  - a hypothetical reconciliation becomes a marked alternative explanation;
+  - different events are still a false positive;
+  - `conflictBasis` is `none` for false positives;
+  - `needsMoreContext` only when specific missing lines would change the answer.
+- **Schema `VerdictV2`** adds `alternativeSupport` (established, plausible or speculative).
+- **Consistency check** (`adjudicate/consistency.ts`, categorical fields only). Inconsistent verdicts are kept with `verdicts.consistency_issues` (migration 0010); their finding is unscored (`inconsistent_verdict`) and goes to `needs_context`.
+- **Verdicts are kept per prompt version.**
+
+**Run.**
+- Budget `webb-synthetic-v2` ($0.20), run one at a time: **$0.0490**, 31 s.
+- 6 valid verdicts, 0 consistency issues, every citation verified, thinking 0, latency 3.5–7.5 s.
+- The v2 system prompt is 3,511 tokens (v1: 2,738).
+
+**v1 → v2, against the labels:**
+
+| Case | Label | v1 | v2 |
+| --- | --- | --- | --- |
+| Cho | direct | false positive (inconsistent: `value_conflict`) | **inferential**, 60 Medium. A conflict was found, but not the labelled subtype; it names the timing assumption. |
+| Bedtime | direct | false positive (inconsistent) | **direct** ✓, 67 Medium, both sides qualified |
+| Home | direct | false positive | **direct** ✓, 66 Medium, side B qualified |
+| Pizza | false positive | false positive ✓ | false positive ✓, 80 High, low priority |
+| Alone | false positive | false positive ✓ (inconsistent fields) | **direct ✗, a regression**, 70 Medium. It relied on context lines outside the cited exchanges (10:02 "home all evening", 40:03 groceries). |
+| Hargrove | false positive | false positive ✓ (inconsistent fields) | false positive ✓, 75 High, low priority |
+
+**Exact agreement:** v1 3/6, v2 4/6. Under v2, every conflict was flagged as a conflict (3/3), and 2/3 compatible cases were kept.
+
+**Other observations:**
+- `alternativeSupport` was "plausible" on 6 of 6 calls, so it doesn't yet discriminate.
+- Of the 6 stored v1 synthetic verdicts, the consistency check would flag 4. It flags none of the Ellison pilot verdicts.
+
+**Tests:** 432 pass and typecheck is clean.
+
+**Status:** Awaiting review; no commit.
+
+### October 30, 2026 — Overnight sprint: stabilize, workflow, review app (no paid calls)
+
+The detailed log is `docs/overnight-progress.md`.
+
+**Phase 1 (stabilize):**
+- **Inference chain rule:** the steps together must cite both exchanges, and each step must cite only valid IDs. A step with an invalid ID gates scoring.
+- **Page-break bug:** the fixture was malformed (25 lines on a 22-line layout). Synthetic storage now runs the real `validateDeposition`, with regression tests.
+- **v3:** completed, with v1 and v2 prompts pinned by hash.
+- **Client build:** `client/tsconfig.json` restored to the Vite project references.
+
+**Phase 2 (backend workflow):**
+- migration 0011 (`analyses`, `verdicts.origin`/`replay_of`, `depositions.original_filename`);
+- analysis job with demo replay and live mode under the budget;
+- the gate on `ALLOW_PAID_CALLS`;
+- case, analysis and finding endpoints;
+- tests, including a real two-PDF end to end.
+
+**Phase 3 (review app):** Tailwind; cases, case and analysis pages; side-by-side evidence view; plain-language labels; demo labelling.
+
+**Phases 4 and 5:**
+- performance measured;
+- demo script;
+- docs;
+- 470 tests pass and typecheck is clean;
+- client build passes;
+- one intermittent failure in `worker.test.ts`, recorded.
+
+**Status:** No commit, no paid calls.
+
+## October 30: whole-product benchmark (no paid calls)
+
+**Goal:** measure the real product on the two Ellison PDFs, and prepare a paid benchmark for approval.
+
+**Added:**
+- `server/src/timing.ts`, optional stage timings around upload, ingestion, retrieval and adjudication; off unless `BENCHMARK_TIMING_FILE` is set;
+- `scripts/benchmark.ts` and `scripts/benchmark-browser.ts`, resumable runs with a real headless Chrome and no new dependency;
+- Haiku calls now record latency;
+- replay now finds stored verdicts by file hash, parser version and exchange group, so the same PDFs in a new case replay, with their exchange IDs changed to the new ones (one new test).
+
+**Measured:** two runs. Both files stored in about 4 s, analysis complete 3.8 to 4.7 s after the click, 0 model calls.
+
+**Found:**
+- a fresh upload has no claims, so the run was Path B only;
+- only 4 of 300 selected pairs have a stored verdict;
+- the progress panel shows "Both transcripts are read" while queued.
+
+**Status:** 471 tests pass; typecheck and client build pass. No commit, no paid calls. The live benchmark awaits approval.
+
+## October 30: adjudication strategies (no paid calls)
+
+**Goal:** reduce a 300-pair analysis from about 17 minutes without losing accuracy.
+
+**Added:**
+- a bounded worker pool, strategies A to F and control P, and `adjudicate-batch-v1`, built from v3's text;
+- `adjudication_requests` (migration 0012), recording every request once;
+- cancel, shutdown and restart handling: a live analysis found mid-run is marked interrupted, and only an explicit resume continues it;
+- response checks for missing, duplicate, unknown and cross-candidate verdicts.
+
+**Closed out analysis 9:** interrupted, with its open reservation counted in full. Dates corrected on depositions 24 and 26.
+
+**Found:** batching should save only about 8%, and little time, because output dominates both. Concurrency should do the work. This is unmeasured until the live run.
+
+**Status:** no commit, no paid calls. Strategy A stays the default.
+
+## October 30: live strategy comparison (approved, $3.00 limit)
+
+Ran B, D and C on the 40-pair sample; spent $0.7287.
+
+- **C (10 at once):** 20.3 s, 7 of 7 contradictions found, 2 of 9 compatible pairs flagged.
+- **B (5 at once):** 39.6 s, the same classification on all 40 pairs.
+- **D (batches of 10):** 45.3 s, 5 of 7 found, 7 pairs with no verdict, 3 "placeholder" explanations.
+
+**Fixed:** `readBatch` now rejects unreasoned explanations; the experiment report handles candidates with no verdict, and `report` writes results from stored rows.
+
+**Status:** recommendation is C with v3. The app defaults are unchanged. No commit.
+
+## October 30: strategy C promoted (approved)
+
+New analyses default to strategy C (10 independent single-pair requests) with `adjudicate-v3`. A remains the sequential fallback, and `maxConcurrency` is configurable. Batch strategies are refused by the API and absent from the UI and worker; they remain for `scripts/adjudication-experiment.ts`. Demo replay no longer uses batch verdicts. Mode still defaults to demo, and paid calls still need `ALLOW_PAID_CALLS=true`.
+
+Added `benchmark.ts preflight` and full-run measures. No paid calls, no commit.
+
+## October 30: full Ellison benchmark (approved, $3.00 limit)
+
+Analysis 11: 300 of 300 pairs, strategy C, `adjudicate-v3`, Path A + B with reused claims. 109.7 s, $1.8867, peak 10, no rate limits or failures, no retries. Sonnet found 0 direct or inferential pairs (288 false positive, 12 insufficient evidence), and only 4 pairs were judged the same event, which points at retrieval precision. 297 of 300 citations verified. Inspection in the benchmark folder. No commit.

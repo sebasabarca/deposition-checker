@@ -68,3 +68,33 @@ export async function createIngestQueues(boss: PgBoss, overrides: QueueOptions =
 export async function enqueueIngest(boss: PgBoss, client: PoolClient, job: IngestJob): Promise<void> {
   await boss.send(INGEST_QUEUE, job, { db: { executeSql: (text, values) => client.query(text, values) } });
 }
+
+// Analyses: one job per analysis (singletonKey), so a duplicate request never runs it twice at once.
+// A job that throws is a system failure (database, bug): retried twice, then the analysis is marked
+// failed by its dead-letter worker. Model call failures don't throw; runAnalysis records them.
+export const ANALYSIS_QUEUE = "run-analysis";
+export const ANALYSIS_FAILED_QUEUE = "run-analysis-failed";
+export const ANALYSIS_QUEUE_OPTIONS: QueueOptions = { retryLimit: 2, retryDelay: 10, retryBackoff: true, heartbeatSeconds: 30, expireInSeconds: 60 * 60 };
+export const PARSING_RECHECK_SECONDS = 5;
+
+const AnalysisJobData = z.object({ analysisId: z.number().int().positive() });
+export type AnalysisJob = z.infer<typeof AnalysisJobData>;
+export const parseAnalysisJob = (data: unknown): AnalysisJob => AnalysisJobData.parse(data);
+
+export async function createAnalysisQueues(boss: PgBoss, overrides: QueueOptions = {}): Promise<void> {
+  const ensure = async (name: string, options: QueueOptions & { deadLetter?: string }) => {
+    if (await boss.getQueue(name)) await boss.updateQueue(name, options);
+    else await boss.createQueue(name, options);
+  };
+  await ensure(ANALYSIS_FAILED_QUEUE, { ...INGEST_FAILED_QUEUE_OPTIONS, ...overrides });
+  await ensure(ANALYSIS_QUEUE, { ...ANALYSIS_QUEUE_OPTIONS, ...overrides, deadLetter: ANALYSIS_FAILED_QUEUE });
+}
+
+// Queues an analysis, inside the caller's transaction when `client` is given, or on its own.
+export async function enqueueAnalysis(boss: PgBoss, job: AnalysisJob, { client, startAfterSeconds }: { client?: PoolClient; startAfterSeconds?: number } = {}): Promise<void> {
+  await boss.send(ANALYSIS_QUEUE, job, {
+    singletonKey: `analysis-${job.analysisId}`,
+    ...(startAfterSeconds ? { startAfter: startAfterSeconds } : {}),
+    ...(client ? { db: { executeSql: (text, values) => client.query(text, values) } } : {}),
+  });
+}

@@ -15,6 +15,9 @@ export type RecordedCall = {
   attempt: number; // 1 for the first try
   items: number; // pairs or exchanges the call carried
   batch?: boolean;
+  rawOutput?: string | null; // the response text as received, kept for diagnosis
+  effort?: string | null; // the effort setting sent, when the call set one
+  latencyMs?: number | null; // from sending the request to receiving the whole response
 };
 
 // Writes one llm_calls row for a successful call. Every v2 model call goes through here. A model
@@ -36,6 +39,10 @@ export async function recordCall(db: Database, call: RecordedCall) {
       cacheReadTokens: tokens.cacheRead,
       batch: call.batch ?? false,
       attempt: call.attempt,
+      thinkingTokens: call.usage.output_tokens_details?.thinking_tokens ?? null,
+      rawOutput: call.rawOutput ?? null,
+      effort: call.effort ?? null,
+      latencyMs: call.latencyMs ?? null,
       priceVersion: priced?.priceVersion ?? null,
       costUsd: priced?.costUsd ?? null,
     })
@@ -70,4 +77,19 @@ export async function jobCost(db: Database, jobId: number): Promise<JobCost> {
   const unpricedCalls = rows.reduce((n, r) => n + r.unpricedCalls, 0);
   const pricedUsd = Math.round(rows.reduce((n, r) => n + Number(r.pricedUsd), 0) * 1e8) / 1e8;
   return { calls, unpricedCalls, pricedUsd, totalUsd: unpricedCalls > 0 ? null : pricedUsd, byStage };
+}
+
+// The measured ratio of output tokens to everything the model read (uncached input, cache writes and
+// reads), over a stage's recorded calls, or null when fewer than `minCalls` exist to measure from.
+export async function measuredOutputShare(db: Database, stage: Stage, minCalls = 4): Promise<{ share: number; calls: number } | null> {
+  const [row] = await db
+    .select({
+      calls: sql<number>`count(*)::int`,
+      read: sql<number>`coalesce(sum(${llmCalls.inputTokens} + ${llmCalls.cacheWrite5mTokens} + ${llmCalls.cacheWrite1hTokens} + ${llmCalls.cacheReadTokens}), 0)::int`,
+      output: sql<number>`coalesce(sum(${llmCalls.outputTokens}), 0)::int`,
+    })
+    .from(llmCalls)
+    .where(eq(llmCalls.stage, stage));
+  if (row.calls < minCalls || row.read === 0) return null;
+  return { share: row.output / row.read, calls: row.calls };
 }

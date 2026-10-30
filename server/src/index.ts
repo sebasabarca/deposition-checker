@@ -4,9 +4,9 @@ import { z } from "zod";
 import { parseTranscript } from "./transcript";
 import { analyze } from "./analyze";
 import { TRANSCRIPT_1, TRANSCRIPT_2 } from "./data/samples";
-import { depositionRoutes } from "./api";
+import { analysisRoutes, caseRoutes, depositionRoutes } from "./api";
 import { connect } from "./db/client";
-import { createIngestQueues, startBoss } from "./jobs";
+import { createAnalysisQueues, createIngestQueues, startBoss } from "./jobs";
 
 const app = express();
 app.use(express.json({ limit: "200kb" }));
@@ -58,6 +58,9 @@ async function mountDepositionRoutes() {
     const { db, pool } = connect();
     const boss = await startBoss(process.env.DATABASE_URL!, { supervise: false });
     await createIngestQueues(boss);
+    await createAnalysisQueues(boss);
+    app.use("/api", caseRoutes({ db }));
+    app.use("/api", analysisRoutes({ db, pool, boss }));
     app.use("/api", depositionRoutes({ db, pool, boss }));
   } catch (error) {
     console.warn(

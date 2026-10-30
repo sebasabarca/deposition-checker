@@ -1,0 +1,1 @@
+ALTER TABLE "verdicts" ADD COLUMN "consistency_issues" text[] DEFAULT '{}'::text[] NOT NULL;

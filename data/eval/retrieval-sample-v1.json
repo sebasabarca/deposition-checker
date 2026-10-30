@@ -1,0 +1,5841 @@
+{
+  "version": 1,
+  "about": "Retrieval evaluation sample: candidate pairs from both paths for manual judgement, and source exchanges for finding related testimony neither path retrieved. References only; the review CSVs carry the text. Evaluation fields are null until reviewed (true / false / 'unsure').",
+  "generatedFrom": {
+    "extractorVersion": "claims-v2+claude-haiku-5-5",
+    "parserVersion": "pdfjs-ellison-doj-v1-r1",
+    "pathBMode": "rare_terms",
+    "depositionId": 2,
+    "mergedCandidates": 2987,
+    "groups": {
+      "path_a_only": 148,
+      "path_b_only": 2812,
+      "both": 27
+    }
+  },
+  "documents": {
+    "1c18756bfef9": "1c18756bfef969e4150d6bdd4aac22a1cf0bbf1803c762f2d5490169580cbe63",
+    "3a2596bc5814": "3a2596bc581409a8a6f34b1bd2539a15c593b146821fe705236c7d4a5cffce1e"
+  },
+  "fields": {
+    "correctAttribution": "Both statements are the witness's own (or a question he plainly adopted), as cited.",
+    "sameProposition": "Both are about the same proposition or event.",
+    "potentialContradiction": "They could conflict as stated; to be adjudicated.",
+    "compatible": "Both can be true together.",
+    "insufficientContext": "Can't tell without more surrounding testimony.",
+    "worthLawyerReview": "A lawyer preparing cross-examination would want to see this pair."
+  },
+  "pairs": [
+    {
+      "id": "P01",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 5,
+        "claims": 1
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 47,
+        "parts": [
+          {
+            "part": 47,
+            "first": {
+              "page": 46,
+              "line": 9
+            },
+            "last": {
+              "page": 48,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 184,
+        "parts": [
+          {
+            "part": 1573,
+            "first": {
+              "page": 163,
+              "line": 10
+            },
+            "last": {
+              "page": 163,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 142,
+        "claimB": 1004
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P02",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 25,
+        "claims": 12
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 238,
+        "parts": [
+          {
+            "part": 239,
+            "first": {
+              "page": 179,
+              "line": 6
+            },
+            "last": {
+              "page": 179,
+              "line": 14
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 136,
+        "parts": [
+          {
+            "part": 1524,
+            "first": {
+              "page": 79,
+              "line": 12
+            },
+            "last": {
+              "page": 80,
+              "line": 3
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "buy",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 416,
+        "claimB": 941
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P03",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 46,
+        "claims": 22
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 167,
+        "parts": [
+          {
+            "part": 167,
+            "first": {
+              "page": 107,
+              "line": 20
+            },
+            "last": {
+              "page": 108,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 184,
+        "parts": [
+          {
+            "part": 1573,
+            "first": {
+              "page": 163,
+              "line": 10
+            },
+            "last": {
+              "page": 163,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "compete",
+        "sharedEntities": [],
+        "claimA": 291,
+        "claimB": 1004
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P04",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 66,
+        "claims": 32
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 413,
+        "parts": [
+          {
+            "part": 414,
+            "first": {
+              "page": 265,
+              "line": 2
+            },
+            "last": {
+              "page": 265,
+              "line": 10
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 67,
+        "parts": [
+          {
+            "part": 1453,
+            "first": {
+              "page": 51,
+              "line": 13
+            },
+            "last": {
+              "page": 51,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "buy",
+        "sharedEntities": [],
+        "claimA": 639,
+        "claimB": 79
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P05",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 88,
+        "claims": 43
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 47,
+        "parts": [
+          {
+            "part": 47,
+            "first": {
+              "page": 46,
+              "line": 9
+            },
+            "last": {
+              "page": 48,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 46,
+        "parts": [
+          {
+            "part": 1432,
+            "first": {
+              "page": 32,
+              "line": 10
+            },
+            "last": {
+              "page": 32,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 142,
+        "claimB": 834
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P06",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 109,
+        "claims": 54
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 79,
+        "parts": [
+          {
+            "part": 79,
+            "first": {
+              "page": 61,
+              "line": 14
+            },
+            "last": {
+              "page": 62,
+              "line": 4
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 101,
+        "parts": [
+          {
+            "part": 1487,
+            "first": {
+              "page": 63,
+              "line": 9
+            },
+            "last": {
+              "page": 63,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "plan",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 180,
+        "claimB": 896
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P07",
+      "group": "path_a_only",
+      "stratum": "high",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 128,
+        "claims": 63
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 128,
+        "parts": [
+          {
+            "part": 128,
+            "first": {
+              "page": 90,
+              "line": 6
+            },
+            "last": {
+              "page": 91,
+              "line": 13
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 46,
+        "parts": [
+          {
+            "part": 1432,
+            "first": {
+              "page": 32,
+              "line": 10
+            },
+            "last": {
+              "page": 32,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "sap"
+        ],
+        "claimA": 245,
+        "claimB": 834
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P08",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 130,
+        "claims": 64
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 128,
+        "parts": [
+          {
+            "part": 128,
+            "first": {
+              "page": 90,
+              "line": 6
+            },
+            "last": {
+              "page": 91,
+              "line": 13
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 160,
+        "parts": [
+          {
+            "part": 1548,
+            "first": {
+              "page": 129,
+              "line": 10
+            },
+            "last": {
+              "page": 129,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "peoplesoft"
+        ],
+        "claimA": 245,
+        "claimB": 970
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P09",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 147,
+        "claims": 73
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 186,
+        "parts": [
+          {
+            "part": 186,
+            "first": {
+              "page": 116,
+              "line": 22
+            },
+            "last": {
+              "page": 117,
+              "line": 11
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 45,
+        "parts": [
+          {
+            "part": 1431,
+            "first": {
+              "page": 32,
+              "line": 7
+            },
+            "last": {
+              "page": 32,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "sap"
+        ],
+        "claimA": 320,
+        "claimB": 831
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P10",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 163,
+        "claims": 82
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 193,
+        "parts": [
+          {
+            "part": 193,
+            "first": {
+              "page": 140,
+              "line": 8
+            },
+            "last": {
+              "page": 141,
+              "line": 10
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 46,
+        "parts": [
+          {
+            "part": 1432,
+            "first": {
+              "page": 32,
+              "line": 10
+            },
+            "last": {
+              "page": 32,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 339,
+        "claimB": 834
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P11",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 183,
+        "claims": 92
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 200,
+        "parts": [
+          {
+            "part": 200,
+            "first": {
+              "page": 143,
+              "line": 17
+            },
+            "last": {
+              "page": 145,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 164,
+        "parts": [
+          {
+            "part": 1553,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 133,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 357,
+        "claimB": 977
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P12",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 201,
+        "claims": 101
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 207,
+        "parts": [
+          {
+            "part": 208,
+            "first": {
+              "page": 148,
+              "line": 15
+            },
+            "last": {
+              "page": 151,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 41,
+        "parts": [
+          {
+            "part": 1427,
+            "first": {
+              "page": 29,
+              "line": 3
+            },
+            "last": {
+              "page": 29,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "sell",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 370,
+        "claimB": 76
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P13",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 220,
+        "claims": 110
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 210,
+        "parts": [
+          {
+            "part": 211,
+            "first": {
+              "page": 153,
+              "line": 2
+            },
+            "last": {
+              "page": 153,
+              "line": 12
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 172,
+        "parts": [
+          {
+            "part": 1561,
+            "first": {
+              "page": 151,
+              "line": 5
+            },
+            "last": {
+              "page": 151,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "measure",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 378,
+        "claimB": 985
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P14",
+      "group": "path_a_only",
+      "stratum": "medium",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 236,
+        "claims": 118
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 239,
+        "parts": [
+          {
+            "part": 240,
+            "first": {
+              "page": 179,
+              "line": 15
+            },
+            "last": {
+              "page": 180,
+              "line": 1
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 160,
+        "parts": [
+          {
+            "part": 1548,
+            "first": {
+              "page": 129,
+              "line": 10
+            },
+            "last": {
+              "page": 129,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "peoplesoft"
+        ],
+        "claimA": 417,
+        "claimB": 970
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P15",
+      "group": "path_a_only",
+      "stratum": "low",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 239,
+        "claims": 120
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 249,
+        "parts": [
+          {
+            "part": 250,
+            "first": {
+              "page": 182,
+              "line": 18
+            },
+            "last": {
+              "page": 183,
+              "line": 2
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 45,
+        "parts": [
+          {
+            "part": 1431,
+            "first": {
+              "page": 32,
+              "line": 7
+            },
+            "last": {
+              "page": 32,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 428,
+        "claimB": 831
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P16",
+      "group": "path_a_only",
+      "stratum": "low",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 259,
+        "claims": 130
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 282,
+        "parts": [
+          {
+            "part": 283,
+            "first": {
+              "page": 196,
+              "line": 18
+            },
+            "last": {
+              "page": 197,
+              "line": 3
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 161,
+        "parts": [
+          {
+            "part": 1549,
+            "first": {
+              "page": 129,
+              "line": 17
+            },
+            "last": {
+              "page": 130,
+              "line": 11
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 476,
+        "claimB": 971
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P17",
+      "group": "path_a_only",
+      "stratum": "low",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 283,
+        "claims": 141
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 341,
+        "parts": [
+          {
+            "part": 342,
+            "first": {
+              "page": 234,
+              "line": 18
+            },
+            "last": {
+              "page": 234,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 46,
+        "parts": [
+          {
+            "part": 1432,
+            "first": {
+              "page": 32,
+              "line": 10
+            },
+            "last": {
+              "page": 32,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "sap"
+        ],
+        "claimA": 545,
+        "claimB": 834
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P18",
+      "group": "path_a_only",
+      "stratum": "low",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 301,
+        "claims": 151
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 351,
+        "parts": [
+          {
+            "part": 352,
+            "first": {
+              "page": 244,
+              "line": 7
+            },
+            "last": {
+              "page": 244,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 46,
+        "parts": [
+          {
+            "part": 1432,
+            "first": {
+              "page": 32,
+              "line": 10
+            },
+            "last": {
+              "page": 32,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "sap"
+        ],
+        "claimA": 564,
+        "claimB": 834
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P19",
+      "group": "path_a_only",
+      "stratum": "low",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 324,
+        "claims": 162
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 372,
+        "parts": [
+          {
+            "part": 373,
+            "first": {
+              "page": 248,
+              "line": 19
+            },
+            "last": {
+              "page": 248,
+              "line": 21
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 162,
+        "parts": [
+          {
+            "part": 1550,
+            "first": {
+              "page": 130,
+              "line": 12
+            },
+            "last": {
+              "page": 130,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 581,
+        "claimB": 973
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P20",
+      "group": "path_a_only",
+      "stratum": "low",
+      "groupSize": 148,
+      "ranks": {
+        "merged": 345,
+        "claims": 175
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 419,
+        "parts": [
+          {
+            "part": 420,
+            "first": {
+              "page": 268,
+              "line": 8
+            },
+            "last": {
+              "page": 268,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 74,
+        "parts": [
+          {
+            "part": 1460,
+            "first": {
+              "page": 56,
+              "line": 13
+            },
+            "last": {
+              "page": 56,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "measure",
+        "sharedEntities": [],
+        "claimA": 649,
+        "claimB": 871
+      },
+      "pathB": null,
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P21",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 4,
+        "fulltext": 1
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 30,
+        "parts": [
+          {
+            "part": 30,
+            "first": {
+              "page": 37,
+              "line": 1
+            },
+            "last": {
+              "page": 37,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 202,
+        "parts": [
+          {
+            "part": 1591,
+            "first": {
+              "page": 216,
+              "line": 22
+            },
+            "last": {
+              "page": 217,
+              "line": 1
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 1,
+        "sharedTerms": [
+          "area",
+          "applic"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P22",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 322,
+        "fulltext": 161
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 384,
+        "parts": [
+          {
+            "part": 385,
+            "first": {
+              "page": 254,
+              "line": 16
+            },
+            "last": {
+              "page": 254,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 67,
+        "parts": [
+          {
+            "part": 1453,
+            "first": {
+              "page": 51,
+              "line": 13
+            },
+            "last": {
+              "page": 51,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.3333,
+        "sharedTerms": [
+          "buy",
+          "custom"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P23",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 488,
+        "fulltext": 320
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 390,
+        "parts": [
+          {
+            "part": 391,
+            "first": {
+              "page": 255,
+              "line": 20
+            },
+            "last": {
+              "page": 255,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 164,
+        "parts": [
+          {
+            "part": 1552,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 132,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.2718,
+        "sharedTerms": [
+          "sell",
+          "differ",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P24",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 645,
+        "fulltext": 477
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 58,
+        "parts": [
+          {
+            "part": 58,
+            "first": {
+              "page": 55,
+              "line": 3
+            },
+            "last": {
+              "page": 55,
+              "line": 11
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 140,
+        "parts": [
+          {
+            "part": 1528,
+            "first": {
+              "page": 97,
+              "line": 15
+            },
+            "last": {
+              "page": 97,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.23,
+        "sharedTerms": [
+          "e-busi",
+          "e",
+          "suit",
+          "sell",
+          "busi",
+          "custom",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P25",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 801,
+        "fulltext": 634
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 232,
+        "parts": [
+          {
+            "part": 233,
+            "first": {
+              "page": 175,
+              "line": 5
+            },
+            "last": {
+              "page": 175,
+              "line": 8
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 18,
+        "parts": [
+          {
+            "part": 1404,
+            "first": {
+              "page": 16,
+              "line": 13
+            },
+            "last": {
+              "page": 17,
+              "line": 21
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1974,
+        "sharedTerms": [
+          "manufactur",
+          "sap",
+          "one",
+          "think"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P26",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 957,
+        "fulltext": 791
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 273,
+        "parts": [
+          {
+            "part": 274,
+            "first": {
+              "page": 193,
+              "line": 7
+            },
+            "last": {
+              "page": 193,
+              "line": 10
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 84,
+        "parts": [
+          {
+            "part": 1470,
+            "first": {
+              "page": 58,
+              "line": 20
+            },
+            "last": {
+              "page": 59,
+              "line": 1
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1768,
+        "sharedTerms": [
+          "ask",
+          "let"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P27",
+      "group": "path_b_only",
+      "stratum": "high",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1113,
+        "fulltext": 949
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 220,
+        "parts": [
+          {
+            "part": 221,
+            "first": {
+              "page": 164,
+              "line": 14
+            },
+            "last": {
+              "page": 164,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 194,
+        "parts": [
+          {
+            "part": 1583,
+            "first": {
+              "page": 192,
+              "line": 7
+            },
+            "last": {
+              "page": 192,
+              "line": 14
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.16,
+        "sharedTerms": [
+          "geograph",
+          "area"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P28",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1114,
+        "fulltext": 950
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 389,
+        "parts": [
+          {
+            "part": 390,
+            "first": {
+              "page": 255,
+              "line": 14
+            },
+            "last": {
+              "page": 255,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 141,
+        "parts": [
+          {
+            "part": 1529,
+            "first": {
+              "page": 98,
+              "line": 1
+            },
+            "last": {
+              "page": 98,
+              "line": 12
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.16,
+        "sharedTerms": [
+          "larg",
+          "sell",
+          "market"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P29",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1270,
+        "fulltext": 1108
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 194,
+        "parts": [
+          {
+            "part": 194,
+            "first": {
+              "page": 141,
+              "line": 11
+            },
+            "last": {
+              "page": 141,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 159,
+        "parts": [
+          {
+            "part": 1547,
+            "first": {
+              "page": 126,
+              "line": 13
+            },
+            "last": {
+              "page": 126,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1469,
+        "sharedTerms": [
+          "compon",
+          "piec",
+          "includ"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P30",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1426,
+        "fulltext": 1266
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 253,
+        "parts": [
+          {
+            "part": 254,
+            "first": {
+              "page": 183,
+              "line": 12
+            },
+            "last": {
+              "page": 183,
+              "line": 14
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 59,
+        "parts": [
+          {
+            "part": 1445,
+            "first": {
+              "page": 37,
+              "line": 18
+            },
+            "last": {
+              "page": 38,
+              "line": 5
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1354,
+        "sharedTerms": [
+          "microsoft",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P31",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1583,
+        "fulltext": 1423
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 418,
+        "parts": [
+          {
+            "part": 419,
+            "first": {
+              "page": 266,
+              "line": 9
+            },
+            "last": {
+              "page": 268,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 141,
+        "parts": [
+          {
+            "part": 1529,
+            "first": {
+              "page": 98,
+              "line": 1
+            },
+            "last": {
+              "page": 98,
+              "line": 12
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1266,
+        "sharedTerms": [
+          "chang",
+          "larg",
+          "system",
+          "want",
+          "go",
+          "one",
+          "compani",
+          "softwar",
+          "custom"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P32",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1739,
+        "fulltext": 1582
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 400,
+        "parts": [
+          {
+            "part": 401,
+            "first": {
+              "page": 258,
+              "line": 19
+            },
+            "last": {
+              "page": 259,
+              "line": 21
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 161,
+        "parts": [
+          {
+            "part": 1549,
+            "first": {
+              "page": 129,
+              "line": 17
+            },
+            "last": {
+              "page": 130,
+              "line": 11
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1174,
+        "sharedTerms": [
+          "reli",
+          "larger",
+          "forc",
+          "larg",
+          "sell",
+          "market",
+          "compani",
+          "re"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P33",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 1895,
+        "fulltext": 1740
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 280,
+        "parts": [
+          {
+            "part": 281,
+            "first": {
+              "page": 196,
+              "line": 13
+            },
+            "last": {
+              "page": 196,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 205,
+        "parts": [
+          {
+            "part": 1594,
+            "first": {
+              "page": 218,
+              "line": 10
+            },
+            "last": {
+              "page": 220,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.1083,
+        "sharedTerms": [
+          "industri",
+          "compani"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P34",
+      "group": "path_b_only",
+      "stratum": "medium",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2051,
+        "fulltext": 1898
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 443,
+        "parts": [
+          {
+            "part": 444,
+            "first": {
+              "page": 277,
+              "line": 10
+            },
+            "last": {
+              "page": 277,
+              "line": 21
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 16,
+        "parts": [
+          {
+            "part": 1402,
+            "first": {
+              "page": 15,
+              "line": 11
+            },
+            "last": {
+              "page": 15,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0999,
+        "sharedTerms": [
+          "intellig",
+          "might",
+          "sale"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P35",
+      "group": "path_b_only",
+      "stratum": "low",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2052,
+        "fulltext": 1899
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 478,
+        "parts": [
+          {
+            "part": 479,
+            "first": {
+              "page": 286,
+              "line": 14
+            },
+            "last": {
+              "page": 286,
+              "line": 20
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 5,
+        "parts": [
+          {
+            "part": 1391,
+            "first": {
+              "page": 12,
+              "line": 6
+            },
+            "last": {
+              "page": 12,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0998,
+        "sharedTerms": [
+          "may",
+          "ask"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P36",
+      "group": "path_b_only",
+      "stratum": "low",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2239,
+        "fulltext": 2088
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 181,
+        "parts": [
+          {
+            "part": 181,
+            "first": {
+              "page": 112,
+              "line": 8
+            },
+            "last": {
+              "page": 112,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 131,
+        "parts": [
+          {
+            "part": 1517,
+            "first": {
+              "page": 74,
+              "line": 10
+            },
+            "last": {
+              "page": 76,
+              "line": 8
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0905,
+        "sharedTerms": [
+          "global",
+          "call",
+          "think"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P37",
+      "group": "path_b_only",
+      "stratum": "low",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2426,
+        "fulltext": 2276
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 185,
+        "parts": [
+          {
+            "part": 185,
+            "first": {
+              "page": 115,
+              "line": 14
+            },
+            "last": {
+              "page": 116,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 125,
+        "parts": [
+          {
+            "part": 1511,
+            "first": {
+              "page": 70,
+              "line": 13
+            },
+            "last": {
+              "page": 70,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0801,
+        "sharedTerms": [
+          "internet",
+          "server",
+          "applic"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P38",
+      "group": "path_b_only",
+      "stratum": "low",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2613,
+        "fulltext": 2463
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 94,
+        "parts": [
+          {
+            "part": 94,
+            "first": {
+              "page": 74,
+              "line": 5
+            },
+            "last": {
+              "page": 74,
+              "line": 8
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 185,
+        "parts": [
+          {
+            "part": 1574,
+            "first": {
+              "page": 163,
+              "line": 16
+            },
+            "last": {
+              "page": 164,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0688,
+        "sharedTerms": [
+          "said",
+          "year"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P39",
+      "group": "path_b_only",
+      "stratum": "low",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2800,
+        "fulltext": 2652
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 128,
+        "parts": [
+          {
+            "part": 128,
+            "first": {
+              "page": 90,
+              "line": 6
+            },
+            "last": {
+              "page": 91,
+              "line": 13
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 53,
+        "parts": [
+          {
+            "part": 1439,
+            "first": {
+              "page": 35,
+              "line": 4
+            },
+            "last": {
+              "page": 35,
+              "line": 8
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0558,
+        "sharedTerms": [
+          "oracl",
+          "applic",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P40",
+      "group": "path_b_only",
+      "stratum": "low",
+      "groupSize": 2812,
+      "ranks": {
+        "merged": 2987,
+        "fulltext": 2839
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 237,
+        "parts": [
+          {
+            "part": 238,
+            "first": {
+              "page": 177,
+              "line": 21
+            },
+            "last": {
+              "page": 179,
+              "line": 5
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 147,
+        "parts": [
+          {
+            "part": 1535,
+            "first": {
+              "page": 115,
+              "line": 11
+            },
+            "last": {
+              "page": 115,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": null,
+      "pathB": {
+        "score": 0.0251,
+        "sharedTerms": [
+          "oracl",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P41",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 1,
+        "claims": 29,
+        "fulltext": 3
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 375,
+        "parts": [
+          {
+            "part": 376,
+            "first": {
+              "page": 249,
+              "line": 13
+            },
+            "last": {
+              "page": 250,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 67,
+        "parts": [
+          {
+            "part": 1453,
+            "first": {
+              "page": 51,
+              "line": 13
+            },
+            "last": {
+              "page": 51,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "buy",
+        "sharedEntities": [],
+        "claimA": 71,
+        "claimB": 79
+      },
+      "pathB": {
+        "score": 0.8984,
+        "sharedTerms": [
+          "outsourc",
+          "buy",
+          "servic",
+          "softwar"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P42",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 2,
+        "claims": 9,
+        "fulltext": 78
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 205,
+        "parts": [
+          {
+            "part": 205,
+            "first": {
+              "page": 146,
+              "line": 18
+            },
+            "last": {
+              "page": 148,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 184,
+        "parts": [
+          {
+            "part": 1573,
+            "first": {
+              "page": 163,
+              "line": 10
+            },
+            "last": {
+              "page": 163,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 364,
+        "claimB": 1004
+      },
+      "pathB": {
+        "score": 0.4162,
+        "sharedTerms": [
+          "experi",
+          "base",
+          "area",
+          "compet",
+          "sale",
+          "microsoft",
+          "softwar"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P43",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 7,
+        "claims": 5,
+        "fulltext": 1703
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 134,
+        "parts": [
+          {
+            "part": 134,
+            "first": {
+              "page": 92,
+              "line": 13
+            },
+            "last": {
+              "page": 93,
+              "line": 10
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 136,
+        "parts": [
+          {
+            "part": 1524,
+            "first": {
+              "page": 79,
+              "line": 12
+            },
+            "last": {
+              "page": 80,
+              "line": 3
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "buy",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 252,
+        "claimB": 941
+      },
+      "pathB": {
+        "score": 0.1106,
+        "sharedTerms": [
+          "attract",
+          "get",
+          "go",
+          "one",
+          "oracl",
+          "softwar",
+          "custom"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P44",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 16,
+        "claims": 79,
+        "fulltext": 72
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 189,
+        "parts": [
+          {
+            "part": 189,
+            "first": {
+              "page": 137,
+              "line": 15
+            },
+            "last": {
+              "page": 139,
+              "line": 8
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 182,
+        "parts": [
+          {
+            "part": 1571,
+            "first": {
+              "page": 162,
+              "line": 13
+            },
+            "last": {
+              "page": 162,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "measure",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 329,
+        "claimB": 1001
+      },
+      "pathB": {
+        "score": 0.4342,
+        "sharedTerms": [
+          "compar",
+          "cost",
+          "microsoft",
+          "look",
+          "custom"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P45",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 22,
+        "claims": 20,
+        "fulltext": 510
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 58,
+        "parts": [
+          {
+            "part": 58,
+            "first": {
+              "page": 55,
+              "line": 3
+            },
+            "last": {
+              "page": 55,
+              "line": 11
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 138,
+        "parts": [
+          {
+            "part": 1526,
+            "first": {
+              "page": 96,
+              "line": 4
+            },
+            "last": {
+              "page": 96,
+              "line": 13
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "opposite_polarity",
+        "predicate": "sell",
+        "sharedEntities": [],
+        "claimA": 154,
+        "claimB": 944
+      },
+      "pathB": {
+        "score": 0.2204,
+        "sharedTerms": [
+          "e-busi",
+          "e",
+          "suit",
+          "sell",
+          "busi",
+          "oracl"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P46",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 36,
+        "claims": 50,
+        "fulltext": 196
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 59,
+        "parts": [
+          {
+            "part": 59,
+            "first": {
+              "page": 55,
+              "line": 12
+            },
+            "last": {
+              "page": 56,
+              "line": 2
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 134,
+        "parts": [
+          {
+            "part": 1521,
+            "first": {
+              "page": 77,
+              "line": 4
+            },
+            "last": {
+              "page": 79,
+              "line": 1
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "sell",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 156,
+        "claimB": 938
+      },
+      "pathB": {
+        "score": 0.3168,
+        "sharedTerms": [
+          "e-busi",
+          "e",
+          "new",
+          "suit",
+          "buy",
+          "mean",
+          "say",
+          "busi",
+          "peoplesoft",
+          "oracl",
+          "custom",
+          "applic"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P47",
+      "group": "both",
+      "stratum": "high",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 60,
+        "claims": 40,
+        "fulltext": 805
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 43,
+        "parts": [
+          {
+            "part": 43,
+            "first": {
+              "page": 43,
+              "line": 5
+            },
+            "last": {
+              "page": 44,
+              "line": 3
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 45,
+        "parts": [
+          {
+            "part": 1431,
+            "first": {
+              "page": 32,
+              "line": 7
+            },
+            "last": {
+              "page": 32,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "sap"
+        ],
+        "claimA": 137,
+        "claimB": 831
+      },
+      "pathB": {
+        "score": 0.1752,
+        "sharedTerms": [
+          "ibm",
+          "offer",
+          "sap",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P48",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 67,
+        "claims": 41,
+        "fulltext": 1027
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 43,
+        "parts": [
+          {
+            "part": 43,
+            "first": {
+              "page": 43,
+              "line": 5
+            },
+            "last": {
+              "page": 44,
+              "line": 3
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 46,
+        "parts": [
+          {
+            "part": 1432,
+            "first": {
+              "page": 32,
+              "line": 10
+            },
+            "last": {
+              "page": 32,
+              "line": 19
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "sap"
+        ],
+        "claimA": 137,
+        "claimB": 834
+      },
+      "pathB": {
+        "score": 0.1533,
+        "sharedTerms": [
+          "aggress",
+          "ibm",
+          "offer",
+          "talk",
+          "sap",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P49",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 74,
+        "claims": 42,
+        "fulltext": 1462
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 47,
+        "parts": [
+          {
+            "part": 47,
+            "first": {
+              "page": 46,
+              "line": 9
+            },
+            "last": {
+              "page": 48,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 45,
+        "parts": [
+          {
+            "part": 1431,
+            "first": {
+              "page": 32,
+              "line": 7
+            },
+            "last": {
+              "page": 32,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 142,
+        "claimB": 831
+      },
+      "pathB": {
+        "score": 0.1246,
+        "sharedTerms": [
+          "ibm",
+          "microsoft",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P50",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 82,
+        "claims": 137,
+        "fulltext": 137
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 296,
+        "parts": [
+          {
+            "part": 297,
+            "first": {
+              "page": 202,
+              "line": 11
+            },
+            "last": {
+              "page": 203,
+              "line": 1
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 162,
+        "parts": [
+          {
+            "part": 1550,
+            "first": {
+              "page": 130,
+              "line": 12
+            },
+            "last": {
+              "page": 130,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 497,
+        "claimB": 973
+      },
+      "pathB": {
+        "score": 0.3529,
+        "sharedTerms": [
+          "scale",
+          "acquisit",
+          "compet",
+          "microsoft",
+          "peoplesoft"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P51",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 90,
+        "claims": 48,
+        "fulltext": 2650
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 47,
+        "parts": [
+          {
+            "part": 47,
+            "first": {
+              "page": 46,
+              "line": 9
+            },
+            "last": {
+              "page": 48,
+              "line": 6
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 173,
+        "parts": [
+          {
+            "part": 1562,
+            "first": {
+              "page": 153,
+              "line": 13
+            },
+            "last": {
+              "page": 153,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 142,
+        "claimB": 988
+      },
+      "pathB": {
+        "score": 0.0558,
+        "sharedTerms": [
+          "microsoft",
+          "go",
+          "one"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P52",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 95,
+        "claims": 104,
+        "fulltext": 233
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 208,
+        "parts": [
+          {
+            "part": 209,
+            "first": {
+              "page": 152,
+              "line": 1
+            },
+            "last": {
+              "page": 152,
+              "line": 14
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 162,
+        "parts": [
+          {
+            "part": 1550,
+            "first": {
+              "page": 130,
+              "line": 12
+            },
+            "last": {
+              "page": 130,
+              "line": 16
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "peoplesoft"
+        ],
+        "claimA": 374,
+        "claimB": 973
+      },
+      "pathB": {
+        "score": 0.3025,
+        "sharedTerms": [
+          "acquisit",
+          "back",
+          "compet",
+          "let",
+          "peoplesoft"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P53",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 122,
+        "claims": 67,
+        "fulltext": 1888
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 161,
+        "parts": [
+          {
+            "part": 161,
+            "first": {
+              "page": 106,
+              "line": 6
+            },
+            "last": {
+              "page": 106,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 41,
+        "parts": [
+          {
+            "part": 1427,
+            "first": {
+              "page": 29,
+              "line": 3
+            },
+            "last": {
+              "page": 29,
+              "line": 15
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "sell",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 287,
+        "claimB": 76
+      },
+      "pathB": {
+        "score": 0.1002,
+        "sharedTerms": [
+          "manag",
+          "system",
+          "oracl",
+          "think",
+          "applic",
+          "product"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P54",
+      "group": "both",
+      "stratum": "medium",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 143,
+        "claims": 86,
+        "fulltext": 1141
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 193,
+        "parts": [
+          {
+            "part": 193,
+            "first": {
+              "page": 140,
+              "line": 8
+            },
+            "last": {
+              "page": 141,
+              "line": 10
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 164,
+        "parts": [
+          {
+            "part": 1553,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 133,
+              "line": 7
+            }
+          },
+          {
+            "part": 1552,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 132,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 339,
+        "claimB": 977
+      },
+      "pathB": {
+        "score": 0.1439,
+        "sharedTerms": [
+          "obvious",
+          "combin",
+          "innov",
+          "huge",
+          "dollar",
+          "kind",
+          "price",
+          "two",
+          "compet",
+          "microsoft",
+          "busi",
+          "go",
+          "one",
+          "think"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P55",
+      "group": "both",
+      "stratum": "low",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 169,
+        "claims": 93,
+        "fulltext": 2535
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 200,
+        "parts": [
+          {
+            "part": 200,
+            "first": {
+              "page": 143,
+              "line": 17
+            },
+            "last": {
+              "page": 145,
+              "line": 9
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 173,
+        "parts": [
+          {
+            "part": 1562,
+            "first": {
+              "page": 153,
+              "line": 13
+            },
+            "last": {
+              "page": 153,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 357,
+        "claimB": 988
+      },
+      "pathB": {
+        "score": 0.064,
+        "sharedTerms": [
+          "microsoft",
+          "see",
+          "one"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P56",
+      "group": "both",
+      "stratum": "low",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 218,
+        "claims": 125,
+        "fulltext": 1951
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 249,
+        "parts": [
+          {
+            "part": 250,
+            "first": {
+              "page": 182,
+              "line": 18
+            },
+            "last": {
+              "page": 183,
+              "line": 2
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 164,
+        "parts": [
+          {
+            "part": 1553,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 133,
+              "line": 7
+            }
+          },
+          {
+            "part": 1552,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 132,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 428,
+        "claimB": 977
+      },
+      "pathB": {
+        "score": 0.0973,
+        "sharedTerms": [
+          "competit",
+          "microsoft",
+          "say",
+          "go"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P57",
+      "group": "both",
+      "stratum": "low",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 251,
+        "claims": 148,
+        "fulltext": 1723
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 346,
+        "parts": [
+          {
+            "part": 347,
+            "first": {
+              "page": 237,
+              "line": 5
+            },
+            "last": {
+              "page": 238,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 205,
+        "parts": [
+          {
+            "part": 1594,
+            "first": {
+              "page": 218,
+              "line": 10
+            },
+            "last": {
+              "page": 220,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "measure",
+        "sharedEntities": [
+          "oracle"
+        ],
+        "claimA": 556,
+        "claimB": 1028
+      },
+      "pathB": {
+        "score": 0.1091,
+        "sharedTerms": [
+          "mass",
+          "fact",
+          "back",
+          "come",
+          "industri",
+          "lot",
+          "sale",
+          "use",
+          "like",
+          "look",
+          "go",
+          "compani",
+          "oracl",
+          "re",
+          "think"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P58",
+      "group": "both",
+      "stratum": "low",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 265,
+        "claims": 161,
+        "fulltext": 1443
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 372,
+        "parts": [
+          {
+            "part": 373,
+            "first": {
+              "page": 248,
+              "line": 19
+            },
+            "last": {
+              "page": 248,
+              "line": 21
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 161,
+        "parts": [
+          {
+            "part": 1549,
+            "first": {
+              "page": 129,
+              "line": 17
+            },
+            "last": {
+              "page": 130,
+              "line": 11
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 581,
+        "claimB": 971
+      },
+      "pathB": {
+        "score": 0.1257,
+        "sharedTerms": [
+          "competit",
+          "microsoft"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P59",
+      "group": "both",
+      "stratum": "low",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 270,
+        "claims": 163,
+        "fulltext": 1444
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 372,
+        "parts": [
+          {
+            "part": 373,
+            "first": {
+              "page": 248,
+              "line": 19
+            },
+            "last": {
+              "page": 248,
+              "line": 21
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 164,
+        "parts": [
+          {
+            "part": 1553,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 133,
+              "line": 7
+            }
+          },
+          {
+            "part": 1552,
+            "first": {
+              "page": 130,
+              "line": 20
+            },
+            "last": {
+              "page": 132,
+              "line": 17
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "compete",
+        "sharedEntities": [
+          "microsoft"
+        ],
+        "claimA": 581,
+        "claimB": 977
+      },
+      "pathB": {
+        "score": 0.1257,
+        "sharedTerms": [
+          "competit",
+          "microsoft"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P60",
+      "group": "both",
+      "stratum": "low",
+      "groupSize": 27,
+      "ranks": {
+        "merged": 305,
+        "claims": 174,
+        "fulltext": 2210
+      },
+      "a": {
+        "document": "1c18756bfef9",
+        "depositionId": 1,
+        "group": 346,
+        "parts": [
+          {
+            "part": 347,
+            "first": {
+              "page": 237,
+              "line": 5
+            },
+            "last": {
+              "page": 238,
+              "line": 7
+            }
+          }
+        ]
+      },
+      "b": {
+        "document": "3a2596bc5814",
+        "depositionId": 2,
+        "group": 172,
+        "parts": [
+          {
+            "part": 1561,
+            "first": {
+              "page": 151,
+              "line": 5
+            },
+            "last": {
+              "page": 151,
+              "line": 22
+            }
+          }
+        ]
+      },
+      "pathA": {
+        "signal": "different_value",
+        "predicate": "measure",
+        "sharedEntities": [],
+        "claimA": 558,
+        "claimB": 986
+      },
+      "pathB": {
+        "score": 0.084,
+        "sharedTerms": [
+          "20",
+          "probabl",
+          "take",
+          "lot",
+          "get",
+          "re"
+        ]
+      },
+      "evaluation": {
+        "correctAttribution": null,
+        "sameProposition": null,
+        "potentialContradiction": null,
+        "compatible": null,
+        "insufficientContext": null,
+        "worthLawyerReview": null,
+        "note": ""
+      }
+    }
+  ],
+  "sourceExchanges": [
+    {
+      "id": "S01",
+      "document": "3a2596bc5814",
+      "group": 1,
+      "part": 1387,
+      "retrieved": [
+        {
+          "group": 344,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 613
+        },
+        {
+          "group": 44,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 723
+        },
+        {
+          "group": 460,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 724
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S02",
+      "document": "3a2596bc5814",
+      "group": 12,
+      "part": 1398,
+      "retrieved": [
+        {
+          "group": 469,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 59
+        },
+        {
+          "group": 404,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 124
+        },
+        {
+          "group": 150,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 299
+        },
+        {
+          "group": 399,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 309
+        },
+        {
+          "group": 271,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 476
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S03",
+      "document": "3a2596bc5814",
+      "group": 23,
+      "part": 1409,
+      "retrieved": [
+        {
+          "group": 418,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 456
+        },
+        {
+          "group": 270,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 758
+        },
+        {
+          "group": 186,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1153
+        },
+        {
+          "group": 381,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1835
+        },
+        {
+          "group": 443,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1836
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S04",
+      "document": "3a2596bc5814",
+      "group": 34,
+      "part": 1420,
+      "retrieved": [
+        {
+          "group": 332,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 150
+        },
+        {
+          "group": 401,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 483
+        },
+        {
+          "group": 448,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 597
+        },
+        {
+          "group": 305,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 879
+        },
+        {
+          "group": 430,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 899
+        },
+        {
+          "group": 194,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1042
+        },
+        {
+          "group": 175,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1062
+        },
+        {
+          "group": 83,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1101
+        },
+        {
+          "group": 21,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1279
+        },
+        {
+          "group": 145,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1463
+        },
+        {
+          "group": 384,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1543
+        },
+        {
+          "group": 146,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1659
+        },
+        {
+          "group": 226,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1767
+        },
+        {
+          "group": 142,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1848
+        },
+        {
+          "group": 380,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1930
+        },
+        {
+          "group": 413,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2015
+        },
+        {
+          "group": 255,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2039
+        },
+        {
+          "group": 269,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2097
+        },
+        {
+          "group": 346,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2104
+        },
+        {
+          "group": 161,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2158
+        },
+        {
+          "group": 104,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2215
+        },
+        {
+          "group": 208,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2448
+        },
+        {
+          "group": 419,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2472
+        },
+        {
+          "group": 307,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2565
+        },
+        {
+          "group": 342,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2580
+        },
+        {
+          "group": 348,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2832
+        },
+        {
+          "group": 191,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2878
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S05",
+      "document": "3a2596bc5814",
+      "group": 45,
+      "part": 1431,
+      "retrieved": [
+        {
+          "group": 43,
+          "depositionId": 1,
+          "sources": [
+            "claims",
+            "fulltext"
+          ],
+          "mergedRank": 60
+        },
+        {
+          "group": 282,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 72
+        },
+        {
+          "group": 47,
+          "depositionId": 1,
+          "sources": [
+            "claims",
+            "fulltext"
+          ],
+          "mergedRank": 74
+        },
+        {
+          "group": 128,
+          "depositionId": 1,
+          "sources": [
+            "claims",
+            "fulltext"
+          ],
+          "mergedRank": 113
+        },
+        {
+          "group": 186,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 147
+        },
+        {
+          "group": 188,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 151
+        },
+        {
+          "group": 193,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 162
+        },
+        {
+          "group": 200,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 176
+        },
+        {
+          "group": 205,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 186
+        },
+        {
+          "group": 209,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 208
+        },
+        {
+          "group": 231,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 227
+        },
+        {
+          "group": 249,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 239
+        },
+        {
+          "group": 279,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 252
+        },
+        {
+          "group": 296,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 269
+        },
+        {
+          "group": 341,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 280
+        },
+        {
+          "group": 342,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 289
+        },
+        {
+          "group": 346,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 293
+        },
+        {
+          "group": 351,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 300
+        },
+        {
+          "group": 356,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 308
+        },
+        {
+          "group": 372,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 316
+        },
+        {
+          "group": 373,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 328
+        },
+        {
+          "group": 420,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 518
+        },
+        {
+          "group": 238,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 911
+        },
+        {
+          "group": 285,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1267
+        },
+        {
+          "group": 237,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1334
+        },
+        {
+          "group": 410,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1335
+        },
+        {
+          "group": 340,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1905
+        },
+        {
+          "group": 207,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2099
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S06",
+      "document": "3a2596bc5814",
+      "group": 56,
+      "part": 1442,
+      "retrieved": [
+        {
+          "group": 95,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 660
+        },
+        {
+          "group": 446,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 661
+        },
+        {
+          "group": 160,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1519
+        },
+        {
+          "group": 189,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1520
+        },
+        {
+          "group": 205,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1521
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S07",
+      "document": "3a2596bc5814",
+      "group": 67,
+      "part": 1453,
+      "retrieved": [
+        {
+          "group": 375,
+          "depositionId": 1,
+          "sources": [
+            "claims",
+            "fulltext"
+          ],
+          "mergedRank": 1
+        },
+        {
+          "group": 531,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 10
+        },
+        {
+          "group": 530,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 26
+        },
+        {
+          "group": 262,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 61
+        },
+        {
+          "group": 413,
+          "depositionId": 1,
+          "sources": [
+            "claims"
+          ],
+          "mergedRank": 66
+        },
+        {
+          "group": 88,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 139
+        },
+        {
+          "group": 263,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 142
+        },
+        {
+          "group": 379,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 148
+        },
+        {
+          "group": 421,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 321
+        },
+        {
+          "group": 384,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 322
+        },
+        {
+          "group": 418,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 763
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S08",
+      "document": "3a2596bc5814",
+      "group": 78,
+      "part": 1464,
+      "retrieved": [
+        {
+          "group": 136,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 337
+        },
+        {
+          "group": 205,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 339
+        },
+        {
+          "group": 375,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 342
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S09",
+      "document": "3a2596bc5814",
+      "group": 89,
+      "part": 1475,
+      "retrieved": [
+        {
+          "group": 207,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 749
+        },
+        {
+          "group": 342,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 982
+        },
+        {
+          "group": 59,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2306
+        },
+        {
+          "group": 60,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2307
+        },
+        {
+          "group": 237,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2308
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S10",
+      "document": "3a2596bc5814",
+      "group": 100,
+      "part": 1486,
+      "retrieved": [],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S11",
+      "document": "3a2596bc5814",
+      "group": 110,
+      "part": 1496,
+      "retrieved": [
+        {
+          "group": 47,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1192
+        },
+        {
+          "group": 142,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2235
+        },
+        {
+          "group": 319,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2374
+        },
+        {
+          "group": 59,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2393
+        },
+        {
+          "group": 189,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2646
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S12",
+      "document": "3a2596bc5814",
+      "group": 121,
+      "part": 1507,
+      "retrieved": [
+        {
+          "group": 88,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 137
+        },
+        {
+          "group": 227,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 365
+        },
+        {
+          "group": 292,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 940
+        },
+        {
+          "group": 273,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 959
+        },
+        {
+          "group": 102,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1167
+        },
+        {
+          "group": 461,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1418
+        },
+        {
+          "group": 497,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1429
+        },
+        {
+          "group": 211,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1491
+        },
+        {
+          "group": 506,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2100
+        },
+        {
+          "group": 318,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2138
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S13",
+      "document": "3a2596bc5814",
+      "group": 132,
+      "part": 1519,
+      "retrieved": [
+        {
+          "group": 213,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1029
+        },
+        {
+          "group": 224,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1030
+        },
+        {
+          "group": 219,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1206
+        },
+        {
+          "group": 292,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1423
+        },
+        {
+          "group": 189,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1696
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S14",
+      "document": "3a2596bc5814",
+      "group": 143,
+      "part": 1531,
+      "retrieved": [
+        {
+          "group": 307,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 657
+        },
+        {
+          "group": 183,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1025
+        },
+        {
+          "group": 99,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1200
+        },
+        {
+          "group": 44,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1534
+        },
+        {
+          "group": 124,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1535
+        },
+        {
+          "group": 405,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2336
+        },
+        {
+          "group": 128,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2629
+        },
+        {
+          "group": 180,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2630
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S15",
+      "document": "3a2596bc5814",
+      "group": 154,
+      "part": 1542,
+      "retrieved": [
+        {
+          "group": 491,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 336
+        },
+        {
+          "group": 419,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 446
+        },
+        {
+          "group": 205,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1442
+        },
+        {
+          "group": 207,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1443
+        },
+        {
+          "group": 322,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1579
+        },
+        {
+          "group": 29,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1897
+        },
+        {
+          "group": 198,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2432
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S16",
+      "document": "3a2596bc5814",
+      "group": 165,
+      "part": 1554,
+      "retrieved": [
+        {
+          "group": 118,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 449
+        },
+        {
+          "group": 268,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 450
+        },
+        {
+          "group": 348,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 451
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S17",
+      "document": "3a2596bc5814",
+      "group": 176,
+      "part": 1565,
+      "retrieved": [],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S18",
+      "document": "3a2596bc5814",
+      "group": 187,
+      "part": 1576,
+      "retrieved": [
+        {
+          "group": 305,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 352
+        },
+        {
+          "group": 452,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 362
+        },
+        {
+          "group": 51,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 524
+        },
+        {
+          "group": 272,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 662
+        },
+        {
+          "group": 306,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 676
+        },
+        {
+          "group": 459,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 744
+        },
+        {
+          "group": 213,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 826
+        },
+        {
+          "group": 214,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 916
+        },
+        {
+          "group": 449,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1023
+        },
+        {
+          "group": 359,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1036
+        },
+        {
+          "group": 211,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1073
+        },
+        {
+          "group": 330,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1874
+        },
+        {
+          "group": 216,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1878
+        },
+        {
+          "group": 22,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1980
+        },
+        {
+          "group": 9,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2128
+        },
+        {
+          "group": 388,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2170
+        },
+        {
+          "group": 112,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2795
+        },
+        {
+          "group": 423,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2871
+        },
+        {
+          "group": 136,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2901
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S19",
+      "document": "3a2596bc5814",
+      "group": 198,
+      "part": 1587,
+      "retrieved": [
+        {
+          "group": 387,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 416
+        },
+        {
+          "group": 406,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 726
+        },
+        {
+          "group": 237,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1551
+        },
+        {
+          "group": 323,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1697
+        },
+        {
+          "group": 228,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2047
+        },
+        {
+          "group": 59,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2604
+        },
+        {
+          "group": 491,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2902
+        },
+        {
+          "group": 70,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2928
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    },
+    {
+      "id": "S20",
+      "document": "3a2596bc5814",
+      "group": 209,
+      "part": 1599,
+      "retrieved": [
+        {
+          "group": 276,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 288
+        },
+        {
+          "group": 361,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 541
+        },
+        {
+          "group": 278,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1008
+        },
+        {
+          "group": 316,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1009
+        },
+        {
+          "group": 295,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1221
+        },
+        {
+          "group": 279,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1241
+        },
+        {
+          "group": 60,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1545
+        },
+        {
+          "group": 493,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1594
+        },
+        {
+          "group": 478,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1621
+        },
+        {
+          "group": 292,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 1779
+        },
+        {
+          "group": 282,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2091
+        },
+        {
+          "group": 293,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2092
+        },
+        {
+          "group": 323,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2093
+        },
+        {
+          "group": 335,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2125
+        },
+        {
+          "group": 42,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2161
+        },
+        {
+          "group": 86,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2162
+        },
+        {
+          "group": 347,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2266
+        },
+        {
+          "group": 342,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2275
+        },
+        {
+          "group": 439,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2460
+        },
+        {
+          "group": 129,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2770
+        },
+        {
+          "group": 394,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2772
+        },
+        {
+          "group": 395,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2835
+        },
+        {
+          "group": 249,
+          "depositionId": 1,
+          "sources": [
+            "fulltext"
+          ],
+          "mergedRank": 2841
+        }
+      ],
+      "review": {
+        "relatedTestimonyFound": [],
+        "note": ""
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { depositions } from "../db/schema";
 import { depositionLockKey, PARSER_VERSION, readDeposition, readUpload, saveDeposition, UPLOADS_DIR, type SaveResult } from "../ingest";
+import { timed } from "../timing";
 import type { IngestJob } from "./queue";
 
 const MAX_ERROR_LENGTH = 2000;
@@ -38,13 +39,13 @@ export async function runIngestJob(db: Database, job: IngestJob, uploadsDir = UP
     if (adopted !== "adopted") return { outcome: "skipped", status: adopted };
   }
 
-  const data = await readUpload(deposition.storageKey, uploadsDir);
+  const data = await timed("ingest.read_file", () => readUpload(deposition.storageKey, uploadsDir));
   const read = await readDeposition(data);
   // The run is checked again inside the save, under its lock: parsing takes time, and meanwhile this
   // attempt may have been given up on (marked failed, then retried as a newer run). saveDeposition
   // throws if the result would land on another deposition, so a job never succeeds while leaving its
   // deposition processing.
-  const saved = await saveDeposition(
+  const saved = await timed("ingest.save_total", () => saveDeposition(
     db,
     {
       caseId: deposition.caseId,
@@ -55,7 +56,7 @@ export async function runIngestJob(db: Database, job: IngestJob, uploadsDir = UP
       read,
     },
     job,
-  );
+  ));
   return saved.outcome === "not_current" ? { outcome: "skipped", status: saved.status } : saved;
 }
 

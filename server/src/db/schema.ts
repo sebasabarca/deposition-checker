@@ -19,6 +19,7 @@ import {
   integer,
   jsonb,
   numeric,
+  real,
   pgEnum,
   pgTable,
   primaryKey,
@@ -27,6 +28,7 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 import type { Validation } from "../ingest/validate";
+import { CLAIM_SOURCES, EPISTEMIC, POLARITIES, PREDICATE_NAMES } from "../claims/vocabulary";
 
 // processing: uploaded, waiting for or in the ingest worker. ready / needs_review / unsupported:
 // what validation decided about the file. failed: the worker itself failed (a crash or an
@@ -115,6 +117,7 @@ export const depositions = pgTable(
     takenOn: date("taken_on"), // null when the transcript doesn't state it (P3173)
     fileSha256: text("file_sha256").notNull(),
     storageKey: text("storage_key").notNull(), // path under data/uploads/ now; an S3 key later
+    originalFilename: text("original_filename"), // as uploaded; null for depositions stored before it was kept
     sourceFormat: sourceFormat("source_format").notNull().default("pdf"),
     // page_count and validation are null until the file has been read (status processing, or failed
     // before any attempt finished); never a placeholder.
@@ -334,6 +337,10 @@ export const llmCalls = pgTable(
     cacheReadTokens: integer("cache_read_tokens").notNull(),
     batch: boolean("batch").notNull().default(false),
     attempt: integer("attempt").notNull(), // 1 for the first try; retries are billed too
+    thinkingTokens: integer("thinking_tokens"), // the part of outputTokens spent thinking, when the API reports it
+    effort: text("effort"), // the output_config.effort the call was made with, when set
+    latencyMs: integer("latency_ms"), // wall-clock time of the request
+    rawOutput: text("raw_output"), // the response's text as received, for diagnosing extraction (null when none)
     priceVersion: text("price_version"),
     costUsd: numeric("cost_usd", { precision: 14, scale: 8, mode: "number" }),
     createdAt: createdAt(),
@@ -347,5 +354,374 @@ export const llmCalls = pgTable(
     check("llm_calls_counts_check", sql`${t.items} >= 1 and ${t.attempt} >= 1`),
     // Priced calls have both a cost and the price version behind it; unpriced calls have neither.
     check("llm_calls_priced_check", sql`(${t.costUsd} is null) = (${t.priceVersion} is null) and (${t.costUsd} is null or ${t.costUsd} >= 0)`),
+  ],
+);
+
+// Path A: claims extracted from witness testimony (DESIGN.md, "Candidate retrieval"). The model's
+// reading is kept apart from what code verified: status, scores, reasons and evidence lines are code's.
+export const claimPredicate = pgEnum("claim_predicate", PREDICATE_NAMES);
+export const claimPolarity = pgEnum("claim_polarity", POLARITIES);
+export const claimEpistemic = pgEnum("claim_epistemic", EPISTEMIC);
+export const claimSource = pgEnum("claim_source", CLAIM_SOURCES);
+export const claimStatus = pgEnum("claim_status", ["verified", "approximate", "rejected"]);
+export const taggingStatus = pgEnum("tagging_status", ["tagged", "failed", "refused"]);
+
+export const claims = pgTable(
+  "claims",
+  {
+    id: id(),
+    // The exchange part the model cited. Null only for a rejected claim citing a part that wasn't in
+    // its batch; citedExchange then keeps what the model wrote.
+    exchangeId: ref("exchange_id"),
+    citedExchange: text("cited_exchange").notNull(),
+    depositionId: ref("deposition_id").notNull(),
+    witnessId: ref("witness_id").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    ordinal: integer("ordinal").notNull(), // position in the model's output for that part
+    // The model's reading.
+    source: claimSource("source").notNull(),
+    keyPhrase: text("key_phrase").notNull(), // the witness's words, or the question an answer adopted
+    answerPhrase: text("answer_phrase"), // adopted_question only: the witness's yes or no
+    subject: text("subject").notNull(),
+    predicate: claimPredicate("predicate").notNull(),
+    object: text("object"),
+    polarity: claimPolarity("polarity").notNull(),
+    epistemic: claimEpistemic("epistemic").notNull(),
+    time: text("time"), // as stated; ambiguity.ts compares times as written
+    place: text("place"),
+    quantity: text("quantity"),
+    entities: text("entities").array().notNull().default(sql`'{}'::text[]`), // normalized names grounded in the exchange's words
+    ungroundedEntities: text("ungrounded_entities").array().notNull().default(sql`'{}'::text[]`), // named by the model but not in the exchange
+    dependsOnEarlier: boolean("depends_on_earlier"), // the model's reading; null for extractor versions that didn't ask
+    // Code's verification against the stored source lines.
+    status: claimStatus("status").notNull(),
+    rejectionReason: text("rejection_reason"),
+    matchScore: real("match_score").notNull(),
+    answerMatchScore: real("answer_match_score"),
+    evidenceLineIds: bigint("evidence_line_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
+    hedge: text("hedge"), // a hedge code found governing the key phrase ("I think"); null when none
+    // Code's finding that the claim's meaning depends on an earlier exchange outside its evidence.
+    // Such claims are kept and counted but never enter retrieval.
+    contextDependent: boolean("context_dependent").notNull().default(false),
+    contextReason: text("context_reason"),
+    llmCallId: ref("llm_call_id")
+      .notNull()
+      .references(() => llmCalls.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // One row per claim of a model response. Re-tagging a part replaces its claims by exchange_id.
+    unique("claims_response_unique").on(t.llmCallId, t.citedExchange, t.ordinal),
+    // A cited part must be in the claim's deposition, and the deposition the witness's.
+    foreignKey({
+      name: "claims_exchange_fk",
+      columns: [t.exchangeId, t.depositionId],
+      foreignColumns: [exchanges.id, exchanges.depositionId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "claims_deposition_witness_fk",
+      columns: [t.depositionId, t.witnessId],
+      foreignColumns: [depositions.id, depositions.witnessId],
+    }).onDelete("cascade"),
+    index("claims_witness_predicate_idx").on(t.witnessId, t.predicate),
+    index("claims_entities_idx").using("gin", t.entities),
+    check("claims_rejected_check", sql`(${t.status}::text = 'rejected') = (${t.rejectionReason} is not null)`),
+    check("claims_exchange_check", sql`${t.exchangeId} is not null or ${t.status}::text = 'rejected'`),
+    check("claims_answer_phrase_check", sql`(${t.source}::text = 'adopted_question') = (${t.answerPhrase} is not null)`),
+    check("claims_context_check", sql`${t.contextDependent} = (${t.contextReason} is not null)`),
+  ],
+);
+
+// One row per exchange part attempted by an extractor version: whether it was tagged, failed or
+// refused. Every attempt is counted, and a re-run of the same version skips the tagged parts.
+export const claimTagging = pgTable(
+  "claim_tagging",
+  {
+    exchangeId: ref("exchange_id").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    depositionId: ref("deposition_id").notNull(),
+    status: taggingStatus("status").notNull(),
+    claims: integer("claims").notNull().default(0), // claims the model returned for the part
+    error: text("error"), // why it failed or was refused
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id), // null when no response came back
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: "claim_tagging_pk", columns: [t.exchangeId, t.extractorVersion] }),
+    foreignKey({
+      name: "claim_tagging_exchange_fk",
+      columns: [t.exchangeId, t.depositionId],
+      foreignColumns: [exchanges.id, exchanges.depositionId],
+    }).onDelete("cascade"),
+    index("claim_tagging_deposition_idx").on(t.depositionId, t.extractorVersion),
+    check("claim_tagging_error_check", sql`(${t.status}::text = 'tagged') = (${t.error} is null)`),
+  ],
+);
+
+// Budgets for paid model calls (DESIGN.md, "Per-job budget, enforced"). A budget's spent amount is
+// reconciled actual cost; its reserved amount is the worst-case cost of calls in flight. A call may
+// be dispatched only after its worst case is reserved, atomically: spent + reserved + the new
+// reservation must stay within the limit, so concurrent workers can never overspend it together.
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: id(),
+    name: text("name").notNull().unique(),
+    limitUsd: numeric("limit_usd", { precision: 14, scale: 8, mode: "number" }).notNull(),
+    spentUsd: numeric("spent_usd", { precision: 14, scale: 8, mode: "number" }).notNull().default(0),
+    reservedUsd: numeric("reserved_usd", { precision: 14, scale: 8, mode: "number" }).notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // The limit is enforced where reservations are made (costs/budget.ts), not here: settling a call
+    // whose actual cost exceeded its reservation must never fail.
+    check("budgets_amounts_check", sql`${t.limitUsd} >= 0 and ${t.spentUsd} >= 0 and ${t.reservedUsd} >= 0`),
+  ],
+);
+
+// One row per paid request: reserved before dispatch, then settled at its actual cost, released
+// when the request certainly wasn't billed, or kept as uncertain (counted at its full reservation)
+// when it's unknown whether it was. A reservation left `reserved` by a crash keeps counting until
+// reconciled.
+export const reservationStatus = pgEnum("reservation_status", ["reserved", "settled", "released", "uncertain"]);
+export const budgetReservations = pgTable(
+  "budget_reservations",
+  {
+    id: id(),
+    budgetId: ref("budget_id")
+      .notNull()
+      .references(() => budgets.id),
+    purpose: text("purpose").notNull(), // e.g. "claim_tagging deposition 1, 12 parts"
+    maxUsd: numeric("max_usd", { precision: 14, scale: 8, mode: "number" }).notNull(),
+    actualUsd: numeric("actual_usd", { precision: 14, scale: 8, mode: "number" }),
+    status: reservationStatus("status").notNull().default("reserved"),
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    note: text("note"), // why it was released or left uncertain
+    createdAt: createdAt(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("budget_reservations_budget_idx").on(t.budgetId, t.status),
+    check("budget_reservations_max_check", sql`${t.maxUsd} >= 0`),
+  ],
+);
+
+// Merged retrieval candidates (DESIGN.md, "Merging and ranking"), stored so a verdict always points
+// back to the exact evidence retrieval found. Until analysis jobs exist, candidates are grouped in a
+// named set instead of a job. exchange_a / exchange_b are the representative parts of the two logical
+// exchanges; evidence keeps every path's parts, claims and signals.
+export const candidateStatus = pgEnum("candidate_status", ["selected", "deferred", "audit", "adjudicated"]);
+export const candidates = pgTable(
+  "candidates",
+  {
+    id: id(),
+    candidateSet: text("candidate_set").notNull(),
+    jobId: ref("job_id"), // null until analysis jobs exist
+    witnessId: ref("witness_id").notNull(),
+    depositionA: ref("deposition_a").notNull(),
+    groupA: integer("group_a").notNull(),
+    depositionB: ref("deposition_b").notNull(),
+    groupB: integer("group_b").notNull(),
+    exchangeA: ref("exchange_a").notNull(),
+    exchangeB: ref("exchange_b").notNull(),
+    sources: text("sources").array().notNull(),
+    rankClaims: integer("rank_claims"),
+    rankFulltext: integer("rank_fulltext"),
+    rrfScore: real("rrf_score").notNull(),
+    mergedRank: integer("merged_rank").notNull(),
+    evidence: jsonb("evidence").notNull(), // every path's evidence, as retrieval returned it
+    status: candidateStatus("status").notNull().default("selected"),
+    deferredReason: text("deferred_reason"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("candidates_pair_unique").on(t.candidateSet, t.depositionA, t.groupA, t.depositionB, t.groupB),
+    foreignKey({ name: "candidates_exchange_a_fk", columns: [t.exchangeA, t.depositionA], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
+    foreignKey({ name: "candidates_exchange_b_fk", columns: [t.exchangeB, t.depositionB], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
+    check("candidates_order_check", sql`(${t.depositionA}, ${t.groupA}) < (${t.depositionB}, ${t.groupB})`),
+  ],
+);
+
+// The model's output for a candidate, kept as received (DESIGN.md `verdicts`), whether or not it
+// passed the strict schema. Only a valid verdict becomes a finding.
+export const verdictStatus = pgEnum("verdict_status", ["valid", "schema_invalid", "refused", "cut_off"]);
+export const verdicts = pgTable(
+  "verdicts",
+  {
+    id: id(),
+    candidateId: ref("candidate_id")
+      .notNull()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    model: text("model").notNull(), // the model that answered, as the response reported it
+    promptVersion: text("prompt_version").notNull(),
+    effort: text("effort").notNull(),
+    status: verdictStatus("status").notNull(),
+    raw: text("raw"), // the response text as received
+    parsed: jsonb("parsed"), // the validated verdict, when valid
+    error: text("error"), // why it isn't valid
+    // A valid verdict whose own fields contradict each other (adjudicate/consistency.ts): kept as
+    // received, its finding unscored for review.
+    consistencyIssues: text("consistency_issues")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    packet: jsonb("packet").notNull(), // the evidence packet sent: exchange IDs and the line IDs shown
+    // Where the verdict came from. Only `model` is a model's answer to this candidate, made with a
+    // recorded call. Demo analyses never call a model: `replayed` copies a stored model verdict for
+    // the same pair of exchanges (replay_of), and `fixture` is a prepared synthetic verdict written
+    // by hand for a test suite. The UI labels both as such; neither is ever shown as live output.
+    origin: text("origin").notNull().default("model"),
+    replayOf: ref("replay_of"),
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    requestId: ref("request_id").references(() => adjudicationRequests.id), // the request that produced it, when recorded
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("verdicts_valid_check", sql`(${t.status}::text = 'valid') = (${t.parsed} is not null)`),
+    check("verdicts_origin_check", sql`${t.origin} in ('model', 'replayed', 'fixture') and (${t.origin} = 'model') = (${t.llmCallId} is not null) and (${t.origin} = 'replayed') = (${t.replayOf} is not null)`),
+  ],
+);
+
+// The scored result of a valid verdict (DESIGN.md `findings`): code's evidence status and attribution
+// levels, the rubric's assessment, and the review priority. A verdict whose evidence fails the gate,
+// or that Claude calls insufficient_evidence, is still a finding, unscored with its reason.
+export const findings = pgTable(
+  "findings",
+  {
+    id: id(),
+    caseId: ref("case_id")
+      .notNull()
+      .references(() => cases.id),
+    candidateId: ref("candidate_id")
+      .notNull()
+      .references(() => candidates.id, { onDelete: "cascade" }),
+    verdictId: ref("verdict_id")
+      .notNull()
+      .unique()
+      .references(() => verdicts.id, { onDelete: "cascade" }),
+    type: text("type").notNull(), // Claude's classification
+    evidenceStatus: text("evidence_status").notNull(), // code: verified | approximate | wrong_reference | unsupported
+    attributionA: text("attribution_a").notNull(), // combined level: clear | qualified | uncertain | not_adopted | no_recall
+    attributionB: text("attribution_b").notNull(),
+    score: integer("score"),
+    band: text("band"),
+    unscoredReason: text("unscored_reason"),
+    factors: jsonb("factors").notNull(),
+    caps: jsonb("caps").notNull(),
+    checks: jsonb("checks").notNull(), // code's source, attribution, context, corroboration and time checks
+    rubricVersion: text("rubric_version").notNull(),
+    priority: text("priority").notNull(),
+    // Claude asked for lines outside the packet. Shown on the finding; for a false positive it no
+    // longer forces the needs_context priority.
+    contextRequested: boolean("context_requested").notNull().default(false),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("findings_case_review_idx").on(t.caseId, t.reviewState, t.priority, t.score, t.id),
+    check("findings_score_check", sql`(${t.score} is null) = (${t.band} is null) and (${t.score} is null or ${t.score} between 0 and 100)`),
+  ],
+);
+
+// One requested comparison of two depositions of a witness, run in the background (DESIGN.md
+// "jobs", simplified): retrieval, then adjudication of the selected candidates under a budget. Its
+// candidates carry its ID (candidates.job_id) in the set `analysis-<id>`. `live` calls the model and
+// needs credentials and ALLOW_PAID_CALLS; `demo` never calls a model, replaying stored verdicts.
+// One request to the adjudication model: one candidate or a batch. The charge lives once in llm_calls
+// (null when no response came back); a candidate's share is an allocation of it, never a second charge.
+export const adjudicationRequestStatus = pgEnum("adjudication_request_status", ["sent", "completed", "partial", "failed", "rate_limited", "aborted", "oversize"]);
+export const adjudicationRequests = pgTable(
+  "adjudication_requests",
+  {
+    id: id(),
+    batchId: text("batch_id").notNull(),
+    analysisId: ref("analysis_id"), // null for experiment runs, which name their candidate set instead
+    candidateSet: text("candidate_set").notNull(),
+    candidateIds: bigint("candidate_ids", { mode: "number" }).array().notNull(),
+    strategy: text("strategy").notNull(),
+    maxConcurrency: integer("max_concurrency").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    status: adjudicationRequestStatus("status").notNull().default("sent"),
+    providerRequestId: text("provider_request_id"), // the API's request ID, when a response came back
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    reservationId: ref("reservation_id").references(() => budgetReservations.id),
+    estimatedInputTokens: integer("estimated_input_tokens").notNull(),
+    maxOutputTokens: integer("max_output_tokens").notNull(),
+    maxCostUsd: numeric("max_cost_usd", { precision: 14, scale: 8, mode: "number" }).notNull(),
+    latencyMs: integer("latency_ms"),
+    errorKind: text("error_kind"), // rate_limited, overloaded, aborted, api_error, network, cut_off, refused, unparseable, oversize
+    error: text("error"),
+    retryAfterMs: integer("retry_after_ms"),
+    missingCandidateIds: bigint("missing_candidate_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
+    duplicateCandidateIds: bigint("duplicate_candidate_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
+    unknownCandidateIds: text("unknown_candidate_ids").array().notNull().default(sql`'{}'::text[]`),
+    contaminatedCandidateIds: bigint("contaminated_candidate_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
+    suspectedCandidateIds: bigint("suspected_candidate_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
+    splitReason: text("split_reason"), // why this batch is smaller than the strategy's size
+    startedAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("adjudication_requests_set_idx").on(t.candidateSet), index("adjudication_requests_analysis_idx").on(t.analysisId)],
+);
+
+export const analysisStatus = pgEnum("analysis_status", [
+  "queued",
+  "parsing", // waiting for a deposition still being read
+  "retrieving",
+  "adjudicating",
+  "completed",
+  "failed",
+  "blocked_budget", // stopped before a call the budget couldn't cover; completed work is kept
+  "blocked_credentials", // live mode without an API key or permission for paid calls
+  "cancelled", // stopped by the user; completed work is kept
+  "interrupted", // its worker stopped mid-run; nothing continues until someone resumes it
+]);
+export const analyses = pgTable(
+  "analyses",
+  {
+    id: id(),
+    caseId: ref("case_id")
+      .notNull()
+      .references(() => cases.id),
+    witnessId: ref("witness_id")
+      .notNull()
+      .references(() => witnesses.id),
+    depositionA: ref("deposition_a")
+      .notNull()
+      .references(() => depositions.id),
+    depositionB: ref("deposition_b")
+      .notNull()
+      .references(() => depositions.id),
+    mode: text("mode").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    effort: text("effort").notNull(),
+    maxCandidates: integer("max_candidates").notNull(),
+    budgetUsd: numeric("budget_usd", { precision: 14, scale: 8, mode: "number" }).notNull(),
+    budgetId: ref("budget_id").references(() => budgets.id),
+    // How adjudication runs (adjudicate/strategies.ts). A is one candidate per call, one at a time.
+    strategy: text("strategy").notNull().default("A"),
+    candidatesPerRequest: integer("candidates_per_request").notNull().default(1),
+    maxConcurrency: integer("max_concurrency").notNull().default(1),
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    // The worker running this analysis, and when it last said so: a second delivery of the job sees a
+    // live runner and leaves; a runner gone silent means the previous worker died.
+    runnerId: text("runner_id"),
+    runnerSeenAt: timestamp("runner_seen_at", { withTimezone: true }),
+    status: analysisStatus("status").notNull().default("queued"),
+    // Counts as the stages finish: { candidates: { selected, deferred }, adjudicated, replayed,
+    // fixture, withoutVerdict, failed, findings }. Never a percentage.
+    progress: jsonb("progress").notNull().default(sql`'{}'::jsonb`),
+    error: text("error"),
+    createdAt: createdAt(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("analyses_case_idx").on(t.caseId, t.id),
+    check("analyses_mode_check", sql`${t.mode} in ('live', 'demo')`),
+    check("analyses_pair_check", sql`${t.depositionA} <> ${t.depositionB}`),
+    check("analyses_budget_check", sql`${t.budgetUsd} >= 0 and ${t.maxCandidates} > 0`),
   ],
 );

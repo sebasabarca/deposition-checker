@@ -17,6 +17,7 @@ import { depositions, exchangeLines, exchanges, lines } from "../db/schema";
 import type { DepositionRead } from "./index";
 import type { DepositionStatus, Validation } from "./validate";
 import { lineIdsByPosition, toExchangeLineRows, toExchangeRows, toLineRows } from "./rows";
+import { recordTiming, timed } from "../timing";
 
 // Rows per INSERT, keeping each statement well under Postgres's 65,535 parameter limit.
 const BATCH_SIZE = 1000;
@@ -159,7 +160,10 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
     if (!read.exchanges) return result;
     const { lines: attributed, exchanges: whole, parts } = read.exchanges;
 
-    for (const batch of batches(toLineRows(depositionId, attributed))) await tx.insert(lines).values(batch);
+    await timed("ingest.save_lines", async () => {
+      for (const batch of batches(toLineRows(depositionId, attributed))) await tx.insert(lines).values(batch);
+    });
+    const exchangesStarted = performance.now();
     const storedLines = await tx
       .select({ id: lines.id, printedPage: lines.printedPage, lineNo: lines.lineNo })
       .from(lines)
@@ -179,6 +183,7 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
       await tx.insert(exchangeLines).values(batch);
     }
 
+    recordTiming("ingest.save_exchanges", performance.now() - exchangesStarted);
     return { ...result, lines: attributed.length, exchanges: whole.length, parts: parts.length };
   });
 }

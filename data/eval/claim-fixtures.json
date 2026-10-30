@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "about": "Known extraction failures from the first Path A pilot (claims-v1), as checks on later extractor versions. Each case points at a page:line inside the exchange (by the deposition PDF's SHA-256) and states what a correct extraction yields there. Expectations describe the claim, never transcript text beyond short phrase fragments. Checked by `scripts/patha.ts report`.",
+  "documents": {
+    "p3171": "1c18756bfef969e4150d6bdd4aac22a1cf0bbf1803c762f2d5490169580cbe63",
+    "p3173": "3a2596bc581409a8a6f34b1bd2539a15c593b146821fe705236c7d4a5cffce1e"
+  },
+  "cases": [
+    {
+      "name": "missed: outsourcers don't buy software (general statement phrased with 'if')",
+      "at": { "document": "p3171", "page": 249, "line": 19 },
+      "expect": { "claim": { "predicate": "buy", "polarity": "denies", "keyPhraseIncludes": "not buying any software", "contextDependent": false } }
+    },
+    {
+      "name": "qualifier: 'I don't know that for a fact, but it has to go to Safra Catz'",
+      "at": { "document": "p3171", "page": 35, "line": 3 },
+      "expect": { "claim": { "keyPhraseIncludes": "Safra Catz", "qualified": true } }
+    },
+    {
+      "name": "qualifier: 'I think business process outsourcing had become a very hot topic'",
+      "at": { "document": "p3171", "page": 249, "line": 14 },
+      "expect": { "claim": { "keyPhraseIncludes": "hot topic", "qualified": true } }
+    },
+    {
+      "name": "qualifier: 'I think in everything listed here'",
+      "at": { "document": "p3173", "page": 29, "line": 7 },
+      "expect": { "claim": { "keyPhraseIncludes": "everything listed", "qualified": true } }
+    },
+    {
+      "name": "no knowledge: 'Will the enhanced Oracle product…? I don't know.'",
+      "at": { "document": "p3171", "page": 99, "line": 3 },
+      "expect": { "claim": { "source": "adopted_question", "epistemic": "does_not_know", "polarity": "affirms", "contextDependent": false } }
+    },
+    {
+      "name": "fragment: 'Approximation? I don't know.' depends on the previous exchange",
+      "at": { "document": "p3171", "page": 61, "line": 2 },
+      "expect": { "noUsableClaim": true }
+    },
+    {
+      "name": "fragment: '-- to the customer, I mean? Yes.'",
+      "at": { "document": "p3171", "page": 310, "line": 3 },
+      "expect": { "noUsableClaim": true }
+    },
+    {
+      "name": "fragment: 'it will make it a lot harder'",
+      "at": { "document": "p3171", "page": 152, "line": 22 },
+      "expect": { "noUsableClaim": true }
+    },
+    {
+      "name": "fragment: 'In the applications area? Yes.'",
+      "at": { "document": "p3173", "page": 217, "line": 1 },
+      "expect": { "noUsableClaim": true }
+    },
+    {
+      "name": "fragment: 'More customers.'",
+      "at": { "document": "p3173", "page": 130, "line": 19 },
+      "expect": { "noUsableClaim": true }
+    },
+    {
+      "name": "control: 'does Oracle supply that type of software? No, we don't.'",
+      "at": { "document": "p3173", "page": 23, "line": 13 },
+      "expect": { "claim": { "source": "adopted_question", "predicate": "sell", "polarity": "denies" } }
+    },
+    {
+      "name": "control: 'does the customer buy the software? Yes, they do.'",
+      "at": { "document": "p3173", "page": 51, "line": 15 },
+      "expect": { "claim": { "source": "adopted_question", "predicate": "buy", "polarity": "affirms" } }
+    },
+    {
+      "name": "control: 'I'm sure I've seen something similar' is not hedged",
+      "at": { "document": "p3171", "page": 204, "line": 19 },
+      "expect": { "claim": { "keyPhraseIncludes": "something similar", "qualified": false } }
+    }
+  ]
+}

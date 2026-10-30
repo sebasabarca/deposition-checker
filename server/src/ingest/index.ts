@@ -9,6 +9,7 @@ import { validateDeposition, type Validation } from "./validate";
 import type { Database } from "../db/client";
 import { saveDeposition, type SaveResult } from "./store";
 import { storeUpload, UPLOADS_DIR } from "./uploads";
+import { timed, timedSync } from "../timing";
 
 export { ELLISON_DOJ_V1, PARSER_VERSION };
 export type { LayoutProfile } from "./layout";
@@ -37,7 +38,7 @@ export type DepositionRead = {
 export async function readDeposition(data: Uint8Array, layout: LayoutProfile = ELLISON_DOJ_V1): Promise<DepositionRead> {
   let pdf: ExtractedPdf;
   try {
-    pdf = await extractPdf(data, layout);
+    pdf = await timed("ingest.pdf_parse", () => extractPdf(data, layout));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -57,8 +58,8 @@ export async function readDeposition(data: Uint8Array, layout: LayoutProfile = E
       },
     };
   }
-  const validation = validateDeposition(pdf.pages, layout);
-  const exchanges = validation.status === "ready" ? buildExchangeParts(pdf.pages.flatMap((p) => p.lines), layout) : null;
+  const validation = timedSync("ingest.validate", () => validateDeposition(pdf.pages, layout));
+  const exchanges = validation.status === "ready" ? timedSync("ingest.build_exchanges", () => buildExchangeParts(pdf.pages.flatMap((p) => p.lines), layout)) : null;
   return { parserVersion: PARSER_VERSION, pdf, validation, exchanges };
 }
 

@@ -11,6 +11,7 @@ import { withTransaction, type Database } from "../db/client";
 import { cases, depositions, exchanges, lines, witnesses } from "../db/schema";
 import { depositionLockKey, isPdf, PARSER_VERSION, storeUpload, UPLOADS_DIR } from "../ingest";
 import { enqueueIngest } from "../jobs";
+import { timed, timedSync } from "../timing";
 
 export const MAX_UPLOAD_MB = 50;
 
@@ -20,6 +21,8 @@ const Id = z.coerce.number().int().positive();
 const UploadQuery = z.object({
   witness: z.string().trim().min(1).max(200),
   takenOn: z.iso.date().optional(),
+  // The name the file had on the user's computer, kept for display only; never used as a path.
+  filename: z.string().trim().min(1).max(255).optional(),
 });
 
 // The deposition as the API shows it. Fields that only exist once the file has been read are null
@@ -41,6 +44,7 @@ export async function depositionView(db: Database, id: number) {
     caseId: d.caseId,
     witness: { id: d.witnessId, name: row.witnessName },
     takenOn: d.takenOn,
+    originalFilename: d.originalFilename,
     status: d.status,
     error: d.ingestError,
     ingestRun: d.ingestRun,
@@ -75,17 +79,17 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     if (body === undefined || (Buffer.isBuffer(body) && body.length === 0)) {
       return res.status(400).json({ error: "Send the PDF file as the request body." });
     }
-    if (!Buffer.isBuffer(body) || !isPdf(body)) return res.status(415).json({ error: "The file is not a PDF." });
+    if (!Buffer.isBuffer(body) || !timedSync("upload.validate", () => isPdf(body))) return res.status(415).json({ error: "The file is not a PDF." });
 
     const [kase] = await db.select({ id: cases.id }).from(cases).where(eq(cases.id, caseId.data));
     if (!kase) return res.status(404).json({ error: "Case not found." });
 
     const data = new Uint8Array(body);
-    const { fileSha256, storageKey } = await storeUpload(data, uploadsDir);
+    const { fileSha256, storageKey } = await timed("upload.store_file", () => storeUpload(data, uploadsDir));
 
     // Under the same lock as saveDeposition, so concurrent uploads of one file create one deposition
     // and one job. The job is queued in this transaction: both are committed, or neither.
-    const { id, created } = await withTransaction(pool, async (tx, client) => {
+    const { id, created } = await timed("upload.record", () => withTransaction(pool, async (tx, client) => {
       const lockKey = depositionLockKey(kase.id, fileSha256, PARSER_VERSION);
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
       const [existing] = await tx
@@ -109,13 +113,14 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
           takenOn: query.data.takenOn ?? null,
           fileSha256,
           storageKey,
+          originalFilename: query.data.filename ? (query.data.filename.split(/[\\/]/).pop() ?? null) : null,
           parserVersion: PARSER_VERSION,
           status: "processing",
         })
         .returning({ id: depositions.id, run: depositions.ingestRun });
       await enqueueIngest(boss, client, { depositionId: deposition.id, run: deposition.run });
       return { id: deposition.id, created: true };
-    });
+    }));
 
     return res.status(created ? 202 : 200).json({ created, deposition: await depositionView(db, id) });
   });

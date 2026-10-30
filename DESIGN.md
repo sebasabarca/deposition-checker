@@ -20,6 +20,13 @@ Due end of day Tuesday, November 3, 2026, Pacific, as a reply to Edward's thread
 6. **Optional features moved to a prioritized stretch backlog** that cannot delay the core.
 7. **Final corrections (October 28, evening).** Attribution caps and yes-or-no polarity in scoring, every test value recomputed, Path B's query mode and the per-exchange cap chosen by measurement, cost assumptions labelled, and real-deposition processing reported separately from PDF parsing.
 
+**What changed in the October 30 revision (approved October 30)**
+
+1. **Retrieval moves from pairs to topics.** The first full Ellison run (analysis #11: 300 pairs, 110 s, $1.89) found no contradictions. 266 of the 300 adjudicated pairs were about different events, and 2,687 of 2,987 candidates were never assessed, 1,639 of them because of the per-exchange cap. Lexical overlap finds the same topic, not the same event, and published contradiction-retrieval work shows the same failure. Path A is redesigned as **statement cards** grouped into a **topic map**, and Sonnet adjudicates **one topic packet at a time** instead of one pair at a time.
+2. **The per-exchange cap and the 300-pair budget are removed.** The budget becomes a dollar ceiling over topic packets. Nothing is cut by rank.
+3. **Path B stays, as a safety net.** It no longer feeds adjudication directly. Its best pairs that the topic map put in different topics are an audit sample, which measures what the map missed.
+4. **Scoring, verification and the verdict schema are unchanged.** Each finding is still a pair of exchanges with one verdict, scored by `RUBRIC_V1`.
+
 The four open decisions were approved on October 28 and are recorded in the last section. Planning is complete.
 
 ## Where v1 stands
@@ -67,46 +74,45 @@ No model call sees more than about 10 pages, state lives in Postgres instead of 
 4. **Idempotent by design.** A deposition is keyed by `file_sha256` plus `parser_version`. A re-run rewrites that deposition's lines and exchanges inside one transaction, so a retry can never duplicate source records.
 5. **Input and storage (approved October 27).** Production ingests PDFs only. The DOJ HTML reader stays a validation tool and fallback candidate, not part of production ingestion. For the demo, uploaded PDFs are stored locally under `data/uploads/`, with an S3-ready `storage_key`. A command-line ingester is acceptable during development, but the finished application runs ingestion as a background job, so no user request waits on parsing. **Built October 28:** the upload endpoint stores the file, records the deposition as `processing` and queues a pg-boss job in the same transaction, then answers at once; a separate worker process reads and saves it. Ingestion progress is tracked by the deposition's status (`processing`, then `ready`, `needs_review`, `unsupported` or `failed`), not by `job_stages`, which arrives with the analysis jobs. pg-boss makes 3 attempts with exponential backoff and a 30-second heartbeat, so a crashed worker's job is retried within about 30 seconds. After the last attempt, the job moves to a dead-letter queue whose worker records the failure, retrying for about 3 hours if the database is down. Uploading a file already in the case returns the existing deposition without queuing it again. Requires Node 22.12 or later (pg-boss 12).
 
-## Candidate retrieval: two independent paths
+## Candidate retrieval: statement cards and a topic map
 
-Candidates come from two paths behind one interface, and a claim the extractor missed never removes an exchange from consideration. A pair is always two exchanges from the same witness in different sessions; contradictions within one session are out of scope for this build.
+A contradiction needs the same event and the same slot (time, place, amount, action) with different values. Shared words only show the same topic, so v2 first works out what each answer is about, groups answers by event or topic, and compares testimony inside each group. This is the design of the legal tools that describe their method (DiscoverLex, Eve, CaseMap's fact records) and of the research on testimony and event matching (MIND/INTEND's who-what-when-where slots; LLM event summaries for cross-document coreference; Claimify's decontextualized claims; contextual retrieval). A pair is still two exchanges from the same witness in different sessions.
 
-**Path A: structured claims.** Input is the verified claim ledger. SQL pairs claims from the same witness in different sessions that share an entity or a normalized predicate, and that show at least one conflict signal: opposite polarity, or a different value in the same slot (date, time, place, quantity, action). The extraction prompt maps synonyms onto a short predicate vocabulary, so "never authorized the purchase" and "gave final approval" land on the same predicate (`approve`) with opposite polarity. Claims tagged `does_not_recall`, `hypothetical` or `reported_by_other` never create a polarity conflict. An asserted claim paired with a later `does_not_recall` is kept with the signal `recollection_change`, ranked last.
+**Step 1: statement cards (Haiku, `claims/`, once per deposition).** The model reads one chunk of about 10 pages, overlapping the next chunk by one page, as `dialogue_text` with exchange IDs. For every `qa` exchange part in the chunk it returns one card:
 
-**Path B: original testimony.** This path reads only exchanges, so it works even if claim tagging fails completely. No user query is needed: each exchange in one session becomes a query against the witness's other sessions, run as an OR query with `ts_rank_cd` in Postgres full-text search, keeping the top 5 matches per exchange. Procedural exchanges (name and address, exhibit marking, objection-only) and exchanges with fewer than 3 content terms are skipped. Two ways of building the query are compared on Thursday instead of assuming one is better: **rare terms** (the exchange's 12 rarest content terms in the case) and **all meaningful terms** (every content term in the question and answer once stopwords and procedural words are removed, as conventional full-text search does). Both run on the same index against the same labelled pairs. The mode with the higher recall@300 becomes the default, with recall@100 as the tiebreak and all meaningful terms, the simpler one, on a full tie. Both stay available as a setting.
+```ts
+type Stance = 'asserts' | 'denies' | 'hedged' | 'does_not_recall' | 'not_answered' | 'unclear'
+type StatementCard = {
+  exchangeId: string                 // must be a qa part in this chunk; checked by code
+  standaloneQuestion: string         // the question rewritten to stand alone: pronouns and "that meeting" resolved
+  event: string                      // one line: what event or topic the answer is about, with its date if known
+  who: string[]; what: string | null; when: string | null; where: string | null; amount: string | null
+  stance: Stance                     // the witness's stance toward standaloneQuestion
+}   // strict schema; no confidence, score or quotation fields
+```
 
-**Path B as built (October 28, approved; revised after review).** `exchanges.tsv` is a generated column, `to_tsvector('english', question_text || ' ' || answer_text)`, with a GIN index, so Postgres keeps it in sync and no indexing step can be skipped or go stale. There is no stored `content_terms` column: content terms are counted at query time as the part's distinct stemmed terms minus a courtroom word list (`retrieve/procedural.ts`: procedure such as *objection, form, foundation, exhibit, counsel, record, strike*, plus filler such as *sir, okay, yes, right, correct, would, got*), so changing the list never needs a migration. Procedural exchanges (kind other than `qa`, and name-and-address questions) are counted and neither query nor are matched; parts with fewer than 3 content terms don't query but can still be found. Path B has three separate steps:
+Code checks every card: the exchange ID exists, it is a `qa` part in that chunk, and no exchange gets two cards (the overlap page keeps the first). Parts the model skips get a placeholder card with stance `unclear` and the event "unassigned", and are counted. A card is a **retrieval signal only**: it never becomes evidence, its text is never shown as testimony, and it earns no points in scoring. Cards are cached by deposition, parser version and extractor version, so a re-run costs nothing.
 
-1. **Discovery (Postgres).** Each part queries the other side, in **both directions** between the new deposition and the witness's other ready sessions, and keeps its top 5 **logical exchanges** by `ts_rank_cd` (one part per logical exchange, so a split answer can't take several slots) **among the eligible ones**: those sharing at least 2 weighted content terms with the querying part, the same rule that gives a final score above 0. The rule is applied in the SQL `WHERE` clause, before the top-5 cut, so a match that would score 0 can never take a slot from one that wouldn't, and there is no over-fetch limit to tune. `ts_rank_cd` only finds candidates; its scores depend on each query's terms and aren't comparable between queries, so they are not kept.
-2. **Scoring (pure, `retrieve/score.ts`).** One symmetric score per pair, from the two exchanges' own content terms, independent of the query that found it: each term is weighted by its rarity in the case, `idf = ln(N / df)` over logical exchanges, and the score is the **weighted overlap coefficient**: the shared terms' squared weights divided by the smaller exchange's total, from 0 to 1, or 0 when fewer than 2 shared terms carry any weight; pairs scoring 0 are never returned, and a pair's reported shared terms are only those carrying weight. Sums run over terms in sorted order, so the score is exact, symmetric and stable without rounding. In plain words: how much of the smaller exchange's distinctive vocabulary the other exchange shares. It is **retrieval relevance, not contradiction confidence.** Chosen over plain Jaccard (every word weighs the same, and short-against-long pairs score near zero), cosine on the same weights (short exchanges sharing one uncommon word filled the top), and the plain sum of shared weights (the longest answers filled the top), measured on Ellison before choosing (`docs/agent-log.md`).
-3. **Deduplication and ranking (pure, `retrieve/rank.ts`).** One candidate per pair of logical exchanges `(deposition, group)`, from either direction, keeping the best-scoring part pair and its part IDs as the exact source references; ranked by score, ties broken by deposition and group so the order never changes between runs.
+**Step 2: topic map (Haiku, `claims/`, once per witness and change).** One call reads only the short `event` lines of every card from all of the witness's ready sessions, with their card IDs, and returns named topics, each listing its card IDs. Every card belongs to exactly one topic; code assigns any card the model left out to "unassigned" and counts it. A topic's name is a label for the lawyer, never evidence. When a new session arrives, its cards are assigned to the existing topics in the same way (a new topic is allowed), so earlier sessions are not re-read. Above about 2,000 cards, the map is built per session first and the per-session topics are merged, so no call exceeds the 10-page rule's spirit.
 
-Path B sends 4 SQL statements. Measured on Ellison P3171 against P3173 (747 parts, 700 queries): rare-terms 2,839 pairs in 0.6 s, all-terms 3,105 pairs in 2.2 s, all with a score above 0 (the eligibility check roughly doubled the time from 0.3 s and 1.3 s). The GIN index is used for every query. Known limits, left for the labelled evaluation to measure: two exchanges of exactly two content terms each can't find each other, since neither runs a query (a fallback letting them query was measured and rejected: it put 14 perfect-score follow-up fragments in the top 20 and pushed the best real candidate from rank 3 to 15); very short exchanges wholly contained in another score 1.0 however little they say ("In the applications area? — Yes."), the overlap coefficient's weak spot, which a minimum size for the smaller exchange could address; numbers are split by Postgres's parser (`$10,000,000` and `$10,000` both give `10` and `000`); conversational words not on the courtroom list (*ask, let, clear, take, know*, the contraction fragments *ll* and *re*) still create procedural-looking pairs; and lexical overlap can't see paraphrases, which Path A covers. `scripts/pathb.ts` previews the ranked pairs with both passages printed from the stored source lines.
+**Step 3: packets (code, `adjudicate/`).** Each topic with exchanges from at least two sessions becomes one packet: every exchange in the topic, as `dialogue_text` with IDs, grouped by session and in page order, plus the session dates. A packet over the size limit (about 10 pages, 7,000 tokens) is split by the cards' `when` value, then by page order, into parts that each keep both sessions; every split is counted and shown. Topics with only one session, and "unassigned", are counted in the ledger and not adjudicated.
 
-**Embeddings are a measured add-on, not a default.** The first build uses full-text only. Embeddings are added on Sunday only if Path B misses labelled pairs that an embedding search of those same pairs would find. Embedding every exchange of a 300-page deposition is roughly 90K tokens, so cost is not the reason to wait; the extra moving part is.
+**Path B: safety net and audit.** Path B runs as built (both query modes, scoring, ranking; no cap). Its top 200 pairs whose exchanges landed in **different** topics are the audit pool, and a random sample of 20 is adjudicated as ordinary pairs. Any finding there is a pair the topic map missed and is reported as such. Path B never decides what the topic adjudication sees.
 
-**Merging and ranking**
-
-1. Union both lists and deduplicate on the unordered pair, stored as `exchange_a < exchange_b`.
-2. Rank with reciprocal rank fusion: score = sum over lists of 1 / (60 + rank). The 60 is the standard constant from the original RRF paper; it is not tuned, which keeps the ranking explainable.
-3. Cap each exchange at 3 selected pairs by default, so one long exchange cannot fill the budget. The cap is a setting to be validated, not an assumption: the evaluation reports recall before the cap, recall after it, and how many labelled relevant pairs it excluded. If it excludes any labelled relevant pair or lowers recall@300 by 5 points or more, the default is raised (5 is tried next), re-measured, and the change reported. Pairs cut by the cap are stored as deferred with the reason `cap`.
-4. Select the top pairs up to the job's pair budget (default 300 for two sessions). The rest are stored as `deferred` with their rank, and the ledger shows the count.
-5. Adjudicate a random sample of 20 deferred pairs per job (about $0.08). This estimates what the budget cut off instead of assuming nothing.
-
-Entity and topic keys only ever add candidates. They never filter Path B, so a wrong event key cannot exclude evidence. Each candidate stores its sources and per-path ranks, so the evaluation can report recall for Path A alone, Path B alone, and both together.
+**Embeddings remain a measured add-on**, now for one purpose only: if the audit shows the map splitting one event across topics, embedding the `event` lines and merging near-duplicate topics is the first fix tried.
 
 ## Evidence verification: three layers
 
 Only the first layer is deterministic. The other two are model interpretation with deterministic cross-checks, and the UI labels them that way.
 
-**Layer 1: source verification (code).** For each side of a verdict: the exchange ID exists, it is one of the two exchanges in the packet, its deposition belongs to the finding's witness, its line range resolves, and the model's key phrase is found in that exchange (`quoteMatchScore`). The displayed text always comes from `lines`. The result is one evidence status:
+**Layer 1: source verification (code).** For each side of a verdict: the exchange ID exists, both IDs are in the packet, and they come from different sessions of the same witness, its deposition belongs to the finding's witness, its line range resolves, and the model's key phrase is found in that exchange (`quoteMatchScore`). The displayed text always comes from `lines`. The result is one evidence status:
 
 - `verified`: IDs valid and the key phrase matches exactly.
 - `approximate`: IDs valid, key phrase matches at 0.6 to 0.99.
 - `wrong_reference`: the phrase is found in a different exchange than the one cited.
 - `unsupported`: an invalid ID, or a phrase found nowhere.
 
-Only `verified` and `approximate` findings are scored. The other two go to an "Unverified, check manually" section with no confidence band. Layer 1 also records where the phrase sits: in the witness's answer, in a question followed by a plain affirmative answer, in a question followed by a plain denial, in a question with any other answer, or in an attorney's statement, objection or colloquy with no witness answer.
+A finding citing an exchange outside the packet is `unsupported`. Only `verified` and `approximate` findings are scored. The other two go to an "Unverified, check manually" section with no confidence band. Layer 1 also records where the phrase sits: in the witness's answer, in a question followed by a plain affirmative answer, in a question followed by a plain denial, in a question with any other answer, or in an attorney's statement, objection or colloquy with no witness answer.
 
 **Layer 2: claim attribution (code and model, cross-checked).** The adjudicator labels each side as `asserted`, `qualified`, `does_not_recall`, `reported_by_other`, `hypothetical`, `attorney_statement` or `unclear`, and says whether the witness `affirms` or `denies` the proposition in the key phrase. Code makes its own reading of each side, and the side's attribution level is the lower of the two readings, in this order: `clear`, `qualified`, `uncertain`, then `not_adopted` or `no_recall`. The code's rules:
 
@@ -299,13 +305,17 @@ Cost is measured, not asserted. Every model call writes a row with its usage and
 - **Estimated cost** is shown after parsing and before any model call, with its assumptions on screen. Tagging cost = the deposition's measured tokens × the extraction price, plus an output allowance of 40% of input. Adjudication cost = calls × system-prompt and schema tokens (at the cache-read price after the first call) + pairs × packet tokens × input price + pairs × output tokens × output price. Packet and output tokens use the planning assumptions until a measured run exists, then the measured median and 90th percentile, shown as a typical and a high estimate.
 - **Actual cost** is the sum of `llm_calls.cost_usd` for the job, broken down by stage, and updated live.
 
-**Planning case.** Two 300-page sessions from one witness. These are planning assumptions, not measurements: 300 tokens per page; Claude Haiku 5.5 for tagging at $0.10 / $0.50 per million input / output tokens; Claude Sonnet 5.5 for adjudication at $2 / $10; **600 input and 300 output tokens per pair**, everything included, batched 10 pairs per call; skeptic pass off. At those assumptions, adjudicating 300 pairs costs $1.26. That is arithmetic on the assumptions, not evidence about real depositions.
+**Planning case (October 30).** Ellison, two sessions, 310 pages at 300 tokens per page (93K tokens), about 750 exchange parts, about 80 topics shared by both sessions, 500 output tokens per topic. Assumptions, not measurements.
 
-| Adjudicated pairs | Tagging | Adjudication | Deferred-pair audit (20 pairs) | Total | Total with skeptic on 20% of pairs |
-| --- | --- | --- | --- | --- | --- |
-| 100 | $0.07 | $0.42 | $0.08 | $0.57 | $0.65 |
-| 300 (default) | $0.07 | $1.26 | $0.08 | $1.41 | $1.66 |
-| 1,000 | $0.07 | $4.20 | $0.08 | $4.35 | $5.19 |
+| Stage | Model | Input | Output | Cost |
+| --- | --- | --- | --- | --- |
+| Statement cards | Haiku | ~150K (31 chunks, prompts, one-page overlap) | ~75K | ~$0.05 |
+| Topic map | Haiku | ~20K | ~10K | ~$0.01 |
+| Topic adjudication | Sonnet | at most ~93K of testimony, plus cached prompts | ~40K | ~$0.60 |
+| Path B audit (20 pairs) | Sonnet | ~24K | ~10K | ~$0.15 |
+| **Total** | | | | **~$0.80** |
+
+Sonnet reads each exchange once, inside its topic, instead of once per pair it appears in, so cost grows with pages, not pairs. Output is the uncertain part: 1,000 tokens per topic adds about $0.40. The $3 ceiling is kept; a budget stop marks the remaining packets `skipped_budget` and the ledger lists them.
 
 **What the 600 / 300 assumption may miss.** A packet carries two whole exchanges plus 5 context lines on each side, so a long answer (split at 40 lines) can double or triple the input. Each call adds a system prompt and the verdict schema. Output is the expensive side at $10 per million tokens: every extra 100 output tokens per pair adds $0.30 per 300 pairs, and the verdict's fields plus Claude's reasoning may well exceed 300. Retries are billed and logged with their attempt number. A stress case of 1,200 input and 700 output tokens per pair costs about $2.82 to adjudicate 300 pairs; with tagging ($0.07) and the audit sample ($0.19) that is about $3.08. The $3 ceiling would then stop the job at about 290 pairs, with status `partial_budget`, and the ledger would list the other 10 as not adjudicated (budget). Other sensitivities: 450 tokens per page raises tagging to about $0.10; Sonnet for tagging raises it to about $1.30; embeddings, if added, cost under $0.01 per deposition.
 
@@ -392,13 +402,11 @@ interface CandidateSource {
 }
 type PathBQueryMode = 'rare_terms' | 'all_terms'             // chosen by measured recall@K, not assumed
 type RankedPair = { exchangeA: string; exchangeB: string; rank: number; signals: string[] }
-mergeCandidates(lists: RankedPair[][], opts: { budget: number; perExchangeCap: number /* default 3, measured */; rrfK: 60; auditSample: 20 }):
-  { selected: Candidate[]; deferred: (Candidate & { reason: 'budget' | 'cap' })[]; audit: Candidate[] }
 
 // adjudication and verification
-buildPacket(c: Candidate): EvidencePacket      // both exchanges + 5 lines of context each, IDs, witness and session metadata
-adjudicate(p: EvidencePacket, jobId: string): Promise<Verdict>        // zod-validated structured output
-verifySource(v: Verdict, p: EvidencePacket): SourceCheck              // Layer 1, pure: verified | approximate | wrong_reference | unsupported
+buildTopicPackets(witnessId: string, topicMap: TopicMap, opts: { maxPacketTokens: 7000 }): TopicPacket[]
+adjudicateTopic(p: TopicPacket, jobId: string): Promise<TopicVerdict>   // zod-validated, recorded with recordCall()
+verifySource(v: Verdict, p: TopicPacket): SourceCheck                    // unchanged rules, plus the different-sessions check
 readAnswer(question: string, answer: string): 'affirms' | 'denies' | 'uncertain'   // Layer 2, pure; a plain "No." is never 'affirms'
 checkAttribution(v: Verdict, p: EvidencePacket, claims?: Claim[]): AttributionCheck   // Layer 2 levels per side, pure
 
@@ -411,6 +419,18 @@ estimate(jobPlan: JobPlan, measured?: MeasuredProfile): CostEstimate   // planni
 recordCall(jobId: string, stage: Stage, model: string, usage: Usage, attempt: number, items: number): Promise<void>
 assertBudget(jobId: string, maxCallCostUsd: number): Promise<void>     // throws BudgetExceeded, so the job ends partial_budget
 ```
+
+Sonnet sees one packet and returns a list of findings, each in the existing verdict shape:
+
+```ts
+type TopicVerdict = {
+  findings: Verdict[]    // each: two exchange IDs from different sessions in this packet, classification and fields as today
+}   // strict schema; at most 8 findings per packet
+```
+
+The prompt asks for every pair that conflicts (direct or inferential), and for the closest-looking pairs that do not conflict, as false positives with their reason (at most 3 per packet), so the false-positive section stays meaningful. Each finding is then verified and scored exactly as a pair verdict is today.
+
+`mergeCandidates`, RRF and `perExchangeCap` are removed.
 
 **Schema**
 
@@ -430,15 +450,19 @@ exchanges(id, deposition_id, witness_id, group_id, part_no, kind, first_line_id,
 exchange_lines(exchange_id, line_id, role)   -- role: question | answer | context | unknown; primary key (exchange_id, line_id)
           -- tsv: generated from question_text and answer_text, GIN-indexed (Path B); content terms are counted
           -- at query time, not stored; embedding only if embeddings are switched on
-entities(id, case_id, kind, canonical_name, aliases text[])
-claims(id, exchange_id, witness_id, subject, predicate, object, polarity, epistemic_status,
-       time_range tstzrange NULL, place, quantity, entity_ids int[], key_phrase, match_score, status, extractor_version)
-candidates(id, job_id, witness_id, exchange_a, exchange_b, sources text[],
-           rank_claims int NULL, rank_fulltext int NULL, rank_embedding int NULL, rrf_score real,
-           packet_tokens int NULL, status, deferred_reason NULL)
-           -- status: selected | deferred | audit | adjudicated; deferred_reason: budget | cap; check (exchange_a < exchange_b)
-verdicts(id, candidate_id, model, prompt_version, raw jsonb, created_at)        -- the model's output, kept as received
-findings(id, case_id, candidate_id, verdict_id, type, evidence_status, attribution_a, attribution_b,
+-- entities: no table yet (approved October 28); normalized names live on each claim, alias resolution is backlog item 9
+statement_cards(id, exchange_id, deposition_id, witness_id, standalone_question, event, who text[], what, "when", "where", amount,
+                stance, status, extractor_version)
+                -- status: model | placeholder; unique (exchange_id, extractor_version)
+topics(id, witness_id, map_version, name, sessions int)       -- sessions: how many depositions it spans
+topic_cards(topic_id, card_id)                                -- primary key (topic_id, card_id); a card is in one topic per map_version
+packets(id, job_id, topic_id, part_no, exchange_ids int[], packet_tokens int NULL, status)
+        -- status: selected | adjudicated | skipped_budget | failed
+audit_pairs(id, job_id, exchange_a, exchange_b, pathb_rank, status)   -- Path B pairs across topics; check (exchange_a < exchange_b)
+claim_tagging(exchange_id, extractor_version, deposition_id, status, claims, error NULL, llm_call_id NULL)
+       -- one row per part attempted: tagged | failed | refused; a re-run of the same version skips tagged parts
+verdicts(id, packet_id NULL, audit_pair_id NULL, model, prompt_version, raw jsonb, created_at)
+findings(id, case_id, packet_id NULL, audit_pair_id NULL, exchange_a, exchange_b, verdict_id, type, evidence_status, attribution_a, attribution_b,
          score int NULL, band NULL, factors jsonb, caps jsonb, rubric_version, priority, review_state)
          -- attribution_a/b hold the combined level: clear | qualified | uncertain | not_adopted | no_recall
 reviews(id, finding_id, user_id, decision, note, created_at)                    -- human decisions, apart from AI output
@@ -446,11 +470,13 @@ jobs(id, case_id, status, budget_usd, spent_usd, counts jsonb, error)
      -- status: queued | running | partial_budget | partial_failed | complete | failed
 job_stages(job_id, deposition_id, stage, status, attempts, input_hash, completed_at)  -- unique (job_id, deposition_id, stage)
 llm_calls(id, job_id NULL, stage, model, items int, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens,
-          batch bool, attempt, price_version NULL, cost_usd NULL, created_at)     -- items: pairs or exchanges in the call
+          batch bool, attempt, thinking_tokens NULL, raw_output NULL, price_version NULL, cost_usd NULL, created_at)     -- items: cards, card lines or packet exchanges, by stage
           -- price_version and cost_usd are null together for a model missing from the price table (unpriced, never free)
 -- evaluation labels: not a table; a versioned JSON file under data/eval/, anchored by file SHA-256 and page:line (see Evaluation method)
 case_summary(case_id, counts jsonb, cost_usd, updated_at)
 ```
+
+`llm_calls.items` counts cards, card lines or packet exchanges, by stage. Add `topic_mapping` to the stages in `costs/models.ts` (Haiku).
 
 **Indexes:** `lines (deposition_id, printed_page, line_no)` unique; `exchanges (witness_id, deposition_id)`; GIN on `exchanges.tsv` (added with Path B); `claims (witness_id, predicate)` and GIN on `claims.entity_ids`; `candidates (witness_id, exchange_a, exchange_b)` unique within a job; `findings (case_id, review_state, priority, score DESC, id)` for the navigator; `llm_calls (job_id, stage)`. HNSW on `exchanges.embedding` only once embeddings are switched on.
 
@@ -480,12 +506,17 @@ A small, carefully labelled set, with retrieval and classification measured sepa
 | Source citation validity | Share of findings whose cited lines resolve and render text identical to the source | Every finding produced |
 | Retrieval recall@K | Share of labelled relevant pairs found among the top K ranked candidates, for K = 100, 300, 1,000; reported for Path A, Path B, and both | Real labels |
 | Path B query mode | Recall@K for rare-term queries against all-meaningful-term queries, on the same labels and K | Real labels |
-| Per-exchange cap effect | Recall@300 before and after the cap, and the number of labelled relevant pairs the cap excluded | Real labels |
 | Path contribution | Labelled pairs found by only one path | Real and synthetic |
 | Classification precision | Of findings classified direct or inferential, the share labelled potentially contradictory; per band | Real and synthetic, reported separately |
 | False-positive handling | Of adjudicated compatible or different-event pairs, the share classified false positive or needs more context | Real and synthetic |
 | Uncertainty handling | Of adjudicated no-recall, qualified or ambiguous pairs, the share not classified direct | Real and synthetic |
 | Cost per analysis | Actual cost by stage from `llm_calls`, with per-pair input and output token distributions | Each real run |
+| Topic co-membership recall | Share of labelled retrieval-relevant pairs whose two exchanges share a topic (are in the same packet) | Real labels |
+| Topic purity (spot check) | In 10 random topics, the share of members a reviewer agrees are about that topic | Manual, n = 10 topics |
+| Map misses found by audit | Findings from the Path B audit sample, i.e. pairs the map split | Each run |
+| Packet splits | Topics split for size, and labelled pairs separated by a split | Each run |
+
+Recall@K for Path B stays, for comparison.
 
 ## Acceptance criteria
 
@@ -561,11 +592,11 @@ The key milestone stands: the full pipeline runs end to end on real deposition m
 - [x] **Wed Oct 28, morning: parser spike, decision by 1 p.m.** (done October 27) Commit `CLAUDE.md` and `DESIGN.md`. Get one deposition PDF and its DOJ HTML version (done on Ellison P3171 and P3173; see `docs/parser-spike.md`). Parse representative pages and rebuild at least 20 exchanges, including a multi-page exchange and short answers. Compare text and page:line against the HTML, list the formatting failures, and choose TypeScript or the PyMuPDF utility by the rule in Ingestion. If neither passes, switch the demo input to the DOJ HTML transcripts (approved fallback) and keep the PDF results for the README.
 - [ ] **Wed Oct 28, afternoon:** Docker Compose (Postgres with pgvector), Drizzle schema and migrations, `ingest/` for lines and exchanges with fixture tests (CLI ingestion for now; the pg-boss worker with `job_stages` and the upload endpoint move to the next stage, approved October 27, and remain required), `costs/` price table and `recordCall` (no model calls yet). *End of day:* both Ellison depositions ingested from the CLI as `ready`, with their lines and exchanges in Postgres.
 - [ ] **Thu Oct 29:** Path B full-text retrieval first, in both query modes, so candidates exist without any claims. Then Path A: claim tagging with epistemic status, key-phrase checks, structured retrieval. Then `merge.ts` (RRF, configurable cap, budget, deferred, audit sample). You label the real evaluation set (2 to 3 hours) while an agent writes the synthetic adversarial fixtures. *End of day:* ranked candidates for Ellison P3171 and P3173, with recall@K per path and per Path B query mode on the first labels, and the cap-effect numbers.
-- [ ] **Fri Oct 30, milestone:** packets, Sonnet adjudication, Layer 1 and 2 verification (including `readAnswer`), the ledger, budget guard and partial status, estimate endpoint, plus a plain findings list in the UI. Scoring is test-first: write the 16 required scoring tests from the test table (20 with variants) and the `readAnswer` unit tests, commit them failing, then implement `score()` and `prioritize()` until they pass. *End of day:* end-to-end run on Ellison P3171 and P3173 with verified citations, classified findings, calculated scores and measured cost, including per-pair token distributions.
-- [ ] **Sat Oct 31:** Contradiction Workbench: navigator, side-by-side passages, assessment panel, review states, unverified section, case overview with the ledger.
-- [ ] **Sun Nov 1:** full evaluation run and fixes (Path B query mode confirmed on the full label set; per-exchange cap changed only if it excluded labelled pairs; embeddings only if Path B recall is under target); dashboard and `case_summary`; indexes and seed data; k6 with a job running; kill-the-worker test; budget-exceeded test.
-- [ ] **Mon Nov 2:** `ARCHITECTURE.md` and README with measured cost and token distributions, k6 results, evaluation metrics with n, the source format tested (PDF or DOJ HTML) with the PDF parser's measured accuracy, limitations, and the agent workflow; record and caption the video, which names the format it ran on.
-- [ ] **Tue Nov 3:** buffer. Stretch features in backlog order only if every acceptance criterion passes. Fresh-clone test, then send the reply to Edward by mid-afternoon Pacific.
+- [ ] **Fri Oct 30 (evening):** this revision in `DESIGN.md`; `statement_cards` migration; the card schema, prompt and chunker in `claims/` with pure tests (chunking, ID checks, overlap dedupe, placeholders); cards for both Ellison sessions (about $0.05).
+- [ ] **Sat Oct 31:** topic map (`claims/topics.ts`) and its checks; packets and splitting (`adjudicate/packets.ts`, pure, tested); topic adjudication reusing the verdict schema, verification and scoring; Path B audit sample. *End of day:* end-to-end Ellison run with measured cost and the new ledger.
+- [ ] **Sun Nov 1:** Workbench on the new findings (navigator, side-by-side passages, assessment, review), topic shown on each finding; label 20 to 40 pairs and run the evaluation.
+- [ ] **Mon Nov 2:** k6 and the kill test (unchanged), README and video.
+- [ ] **Tue Nov 3:** buffer and submit.
 
 ## Risks and fallbacks
 
@@ -579,6 +610,9 @@ The key milestone stands: the full pipeline runs end to end on real deposition m
 | Packets and outputs are larger than planned, so cost overshoots | Medium | Measured on Friday; the budget guard stops with a disclosed partial status; then lower the default pair budget or context lines, or use the Haiku triage lever. |
 | Workbench UI takes longer than Saturday | High | A plain findings list exists from Friday; stretch UI features wait. |
 | Load test machine limits | Medium | Run locally in Docker, publish the machine specs, and label results as tested on one machine. |
+| The topic map splits one event across two topics, so a real pair is never compared | Medium | Path B audit sample measures it; merge near-duplicate topics by embedding the `event` lines if it happens |
+| A topic is too large for one packet | Medium | Split by `when`, then page order; splits counted and shown |
+| The redesign is not finished by Saturday night | Medium | The pair pipeline from analysis #11 stays in the repo and working; the demo uses whichever pipeline ran end to end, and says which |
 
 **Never cut:** page:line provenance, the Layer 1 gate, both retrieval paths, the token and cost log, budget enforcement, the evaluation with n, and the k6 numbers.
 
@@ -599,6 +633,93 @@ None of these start before every acceptance criterion passes. They are ranked by
 | 9 | More advanced entity resolution | 6 to 8 h | Claims | Medium: better Path A recall | High: hard to validate in time | 2 |
 | 10 | Cross-witness discrepancy analysis | 8 h or more | Both paths, new labels | High as a product, but new scope | High: new retrieval scope and evaluation | 2 |
 
+## Implementation notes: adjudication as built (October 29)
+
+This section describes the code as built. It is not part of the frozen specification above. Rubric v1 (weights, caps and bands) is unchanged. Each deviation from the specification is listed under "Deviations".
+
+**Budgets (`costs/budget.ts`).**
+- Budgets and their reservations are stored in Postgres.
+- **Before a call is sent, its worst case is reserved in one conditional update.** Input is bounded at one token per character, priced at the cache-write rate. Output is priced at the configured `max_tokens`, which caps thinking and the verdict together. Concurrent reservations can't overspend.
+- **After the call:**
+  - a response is settled at its recorded cost;
+  - a 4xx error is released, because it wasn't billed;
+  - a timeout, 5xx or lost connection is counted in full as uncertain;
+  - a reservation left open by a crash is reconciled as uncertain.
+- SDK retries are off, so every attempt reserves its own cost.
+- Path A tagging and adjudication both use this mechanism.
+
+**Packets (`adjudicate/packet.ts`).**
+- A packet holds the whole logical exchange from the stored lines, plus up to 5 context lines on each side, the witness, and the session dates. It carries no retrieval signals.
+- Context stops at a page skip, since excerpted exhibits omit page ranges, and the packet says pages are omitted.
+- The packet's line IDs are stored with its verdict.
+
+**The call (`adjudicate/model.ts`, `run.ts`).**
+- One Sonnet 5.5 call per packet: prompt `adjudicate-v1`, the strict `Verdict` schema, effort `medium` by default (configurable), `max_tokens` 8,000.
+- Every response is recorded with its effort and latency. Its verdict is stored as received: `valid`, `schema_invalid`, `refused` or `cut_off`.
+- Every valid verdict produces a finding, scored or not.
+
+**Layer 1 (`verify/source.ts`): additions to v1's matching.**
+- **An approximate match must be found within one sentence, with the same negation words as that sentence.** v1's word-share match accepted negation flips and words gathered from different sentences.
+- **A phrase that matches better outside the cited exchange is a wrong reference.**
+- **A key phrase that is only an answer ("Yes.", "Yes, they do.", "I don't recall.") stands for the question it answers.**
+  - The question and answer are read together, and the question becomes the side's proposition for code's checks.
+  - The evidence lines are the question and the answer, never a lone "Yes" or "No".
+  - A bare answer with no question in its exchange is unsupported.
+- **Compound questions.** When the key phrase cites only part of the question:
+  - a plain "No." to "A and B?" doesn't deny each part;
+  - a plain "Yes." to "A or B?" doesn't adopt either part.
+
+  Either answer leaves the side uncertain.
+
+**Layer 2 (`verify/attribution.ts`).** Code's reading has a scope:
+- **exact:** a plain yes or no, a whole no-recall answer, or a phrase only in an attorney's words. Code's reading stands, whether Sonnet overstated or understated it.
+- **upper bound:** a hedge (at most qualified), or conditional wording or an answer that isn't plain (at most uncertain).
+- **none:** the witness's own words, where code found nothing. Sonnet's reading stands there.
+
+Disagreements are recorded on the side. `readAnswer` accepts explicit denials and affirmatives ("No, never.", "Of course."), including elaboration that keeps the same direction and doesn't hedge or limit it. The hedge list adds "might have", "may have", "maybe", "perhaps", "possibly", "as far as I know/recall" and "if I recall". A hedge that is quoted, negated, or inside someone else's reported words doesn't count.
+
+**Scoring and priority (`score/`).**
+- `RUBRIC_V1` is frozen, and the 16 cases above pass with their exact values.
+- A valid false positive keeps its score-based priority when Sonnet asks for context. The request is stored as `findings.context_requested`. Mandatory context review stays for direct and inferential verdicts that need context, insufficient evidence, unscored findings, and the same-event inconsistency.
+
+**Cost estimate.** The worst case is the reservation above. The expected cost comes only from measured calls of the same prompt version.
+
+**Prompt versions and consistency.**
+- **Prompts are versioned** (`adjudicate-v1`, `adjudicate-v2`), and verdicts are kept per version. A new version runs beside the old one; repeating the same version is refused unless asked for. The default stays v1 until v2 is approved.
+- **v2's changes:**
+  - a qualified statement can still contradict;
+  - a hypothetical reconciliation is kept as an alternative explanation instead of dismissing the conflict;
+  - `alternativeSupport` (established, plausible or speculative) is added to the schema;
+  - `conflictBasis` is `none` for false positives.
+- **Consistency check (`adjudicate/consistency.ts`).** A schema-valid verdict whose categorical fields contradict each other is stored as received, with its issues in `verdicts.consistency_issues`. Its finding is unscored (`inconsistent_verdict`) and goes to review. It is never converted or retried. The explanation text isn't parsed.
+
+**Deviations from the specification:**
+- Candidates belong to a named `candidate_set` until analysis jobs exist.
+- Budgets are standalone tables, not `jobs.budget_usd`.
+- One pair per call, not 10.
+- Layer 2 is bounded rather than "the lower of the two readings": an exact code reading can raise a level that Sonnet understated.
+- False positives with `needsMoreContext` aren't routed to `needs_context` (approved October 29).
+- `SideAttribution` adds `approximation`, `codeBound`, `codeRule` and `disagreement`.
+- A semantically inconsistent verdict is unscored before scoring (`inconsistent_verdict`), a gate the specification doesn't have. Direct with `sameEvent` "no" keeps the rubric's cap of 25 instead.
+- The false-positive "different anchors" check compares dates only.
+
+**Product workflow (October 30).**
+- **Analyses.** The `analyses` table (migration 0011) holds one comparison of two sessions of a witness: mode, budget, status, stored progress counts and errors. Status runs queued, parsing, retrieving, adjudicating, then completed, or stops as failed, blocked_budget or blocked_credentials.
+- **Jobs.** The pg-boss queue `run-analysis` (singletonKey per analysis, 2 retries, dead letter) runs `jobs/analysis.ts`:
+  - waits for both depositions to be read;
+  - retrieves with Path A (stored claims only) and Path B, kept to the pair;
+  - saves the candidates as the set `analysis-<id>` (their `job_id` is the analysis);
+  - adjudicates in rank order. A re-run continues where it stopped and never adjudicates a candidate twice.
+- **Live mode** needs `ANTHROPIC_API_KEY` and `ALLOW_PAID_CALLS=true`; otherwise the analysis stops as blocked_credentials before any call. It stops as blocked_budget before any call the budget can't cover, and fails after 3 consecutive call failures. Blocked and failed analyses can be resumed, optionally with a larger budget.
+- **Demo mode never calls a model.** It replays a stored valid model verdict for the same pair of exchanges (`verdicts.origin = 'replayed'`, `replay_of`), or a synthetic fixture's prepared verdict (`origin = 'fixture'`), through the same `storeVerdict()` as a live call, so checks and scores are recomputed by current code. Each finding's source is shown in the UI.
+- **The review app** groups findings into four sections: potential contradictions, likely compatible, insufficient evidence, needs your review. It shows both passages verbatim from the stored lines with highlights, and labels the score as assessment support.
+
+**Further deviations (October 30):**
+- Analyses replace the planned `jobs` and `job_stages` tables, in simplified form.
+- Demo mode and verdict origins aren't in the specification.
+- New uploads aren't claim-tagged (paid), so their Path A is empty.
+- The default prompt is still adjudicate-v1 pending approval.
+
 ## Decisions (approved October 28)
 
 All four previously open decisions are approved. Planning is complete, and implementation starts with the Wednesday parser spike.
@@ -607,5 +728,11 @@ All four previously open decisions are approved. Planning is complete, and imple
 - [x] **Default budgets.** 300 adjudicated pairs, a $3 maximum per two-session analysis, and 20 deferred pairs sampled for audit. All configurable, and revisited against measured token use and retrieval coverage.
 - [x] **Parser fallback.** Use the DOJ HTML transcript when PDF extraction misses the source-fidelity threshold, and document the limitation openly.
 - [x] **Pair scope.** Same witness across different deposition sessions only. Within-session contradictions and cross-witness discrepancies stay out of the core build.
+- [x] **Topic map (approved October 30).** Statement cards and a topic map replace claim tagging and pair merging; adjudication is per topic packet; Path B becomes the audit; the per-exchange cap and pair budget are removed; the $3 ceiling stays.
 
 **Testing budget.** About $30 of Anthropic API use during development, tracked through `llm_calls` and checked daily, with every job under its own budget guard.
+
+
+## Implementation note: adjudication execution (October 30, approved)
+
+Adjudication runs independent single-pair requests, ten at a time, with `adjudicate-v3`; this replaces the earlier "no concurrency yet" rule. The sequential strategy remains as a fallback. A live comparison on 40 pairs (`reports/benchmarks/adjudication-strategies/runs/strategies-1/`, git-ignored) found ten at once as accurate as five and twice as fast, while batches of 10 lost recall, omitted verdicts and returned placeholder explanations. Batching stays only as an experiment. A live analysis found mid-run after a restart becomes `interrupted`, and only an explicit resume sends more paid requests.

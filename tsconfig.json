@@ -7,5 +7,7 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["server", "scripts", "tests", "drizzle.config.ts", "vitest.config.mts"]
+  "include": ["server", "scripts", "tests", "drizzle.config.ts", "vitest.config.mts"],
+  // The client is typechecked by its own build (bundler resolution); tests/client only runs under vitest.
+  "exclude": ["tests/client"]
 }

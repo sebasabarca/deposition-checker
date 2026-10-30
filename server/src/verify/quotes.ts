@@ -1,6 +1,6 @@
-import type { QAPair } from "./transcript";
+import type { QAPair } from "../transcript";
 
-const STOPWORDS = new Set([
+export const STOPWORDS = new Set([
   "i",
   "a",
   "an",
