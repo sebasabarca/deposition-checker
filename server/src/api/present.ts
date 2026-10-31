@@ -11,6 +11,8 @@
 // And where the verdict came from: a live model call, a stored model verdict replayed in a demo, or
 // a prepared synthetic fixture.
 
+import { countsToward, provenanceOf, type Provenance } from "../retrieve/provenance";
+
 export type FindingGroup = "contradictions" | "compatible" | "insufficient" | "review";
 export type FindingRow = {
   type: string;
@@ -46,6 +48,42 @@ export const UNSCORED_REASONS: Record<string, string> = {
   no_witness_assertion: "Neither passage is a statement the witness clearly made or adopted.",
   inconsistent_verdict: "The verdict's own fields contradict each other, so it isn't scored. Read both passages yourself.",
 };
+
+// Where every candidate of an analysis stands. Pure. Assessed and awaiting are separate on purpose: a
+// selected candidate with no valid verdict yet (a budget stop, a failed request) is awaiting, not lost.
+export type CandidateRow = { status: string; sources: readonly string[]; deferredReason: string | null; exclusionReason: string | null; selectedBy: string | null; n: number };
+export type CandidateCoverage = {
+  total: number;
+  assessed: number;
+  awaitingAssessment: number;
+  deferred: { total: number; reasons: Record<string, number> };
+  excluded: { total: number; reasons: Record<string, number> };
+  audit: number;
+  provenance: Record<Provenance, number>; // each candidate once
+  foundBy: { pathA: number; pathB: number }; // a candidate both paths found counts in both
+  selectedBy: { path_a: number; path_b: number };
+};
+
+export function candidateCoverage(rows: readonly CandidateRow[]): CandidateCoverage {
+  const c: CandidateCoverage = { total: 0, assessed: 0, awaitingAssessment: 0, deferred: { total: 0, reasons: {} }, excluded: { total: 0, reasons: {} }, audit: 0, provenance: { path_a: 0, path_b: 0, both: 0, other: 0 }, foundBy: { pathA: 0, pathB: 0 }, selectedBy: { path_a: 0, path_b: 0 } };
+  const bump = (group: { total: number; reasons: Record<string, number> }, reason: string | null, n: number) => {
+    group.total += n;
+    group.reasons[reason ?? "unspecified"] = (group.reasons[reason ?? "unspecified"] ?? 0) + n;
+  };
+  for (const r of rows) {
+    c.total += r.n;
+    if (r.status === "adjudicated") c.assessed += r.n;
+    else if (r.status === "selected") c.awaitingAssessment += r.n;
+    else if (r.status === "deferred") bump(c.deferred, r.deferredReason, r.n);
+    else if (r.status === "excluded") bump(c.excluded, r.exclusionReason, r.n);
+    else if (r.status === "audit") c.audit += r.n;
+    c.provenance[provenanceOf(r.sources)] += r.n;
+    if (countsToward(r.sources, "path_a")) c.foundBy.pathA += r.n;
+    if (countsToward(r.sources, "path_b")) c.foundBy.pathB += r.n;
+    if (r.selectedBy === "path_a" || r.selectedBy === "path_b") c.selectedBy[r.selectedBy] += r.n;
+  }
+  return c;
+}
 
 export type VerdictSource = "model" | "replayed" | "fixture";
 export const SOURCE_LABELS: Record<VerdictSource, string> = {

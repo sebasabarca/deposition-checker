@@ -83,7 +83,7 @@ export const COMPONENT: Record<string, string> = {
 export const formatDate = (iso: string | null) =>
   iso ? new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "Date not stated";
 
-export const formatUsd = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
+export const formatUsd = (n: number) => `$${n.toFixed(n > 0 && n < 1 ? 4 : 2)}`;
 
 // The score always says what it supports: the proposed classification, never a probability.
 export function scoreLabel(f: { classification: FindingSummary["classification"]; score: number | null; band: FindingSummary["band"] }) {
@@ -91,3 +91,19 @@ export function scoreLabel(f: { classification: FindingSummary["classification"]
   const band = f.band ? `${f.band[0].toUpperCase()}${f.band.slice(1)}` : "";
   return f.classification === "false_positive" ? `Support for “compatible”: ${f.score}/100 · ${band}` : `Assessment support: ${f.score}/100 · ${band}`;
 }
+
+export const GROUP_HELP: Record<FindingSummary["group"], string> = {
+  contradictions: "Verified passages the assessment treats as conflicting. Each still needs your judgement.",
+  compatible: "Passages that look related but can both be true. Shown so nothing is hidden.",
+  insufficient: "The two passages alone don't allow a judgement.",
+  review: "Couldn't be scored: an unverified quotation, a self-contradictory assessment, or missing context.",
+};
+
+export const EVIDENCE_STATUS: Record<FindingSummary["evidenceStatus"], string> = {
+  verified: "Citations verified",
+  approximate: "Citations verified (approximate)",
+  wrong_reference: "Citation not verified",
+  unsupported: "Citation not verified",
+};
+
+export const priorityTone = (p: FindingSummary["priority"]) => (p === "high" ? "contradiction" : p === "needs_context" ? "warn" : "neutral") as "contradiction" | "warn" | "neutral";

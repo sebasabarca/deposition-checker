@@ -1,0 +1,1 @@
+ALTER TABLE "analyses" ALTER COLUMN "retrieval" SET DEFAULT 'hybrid';

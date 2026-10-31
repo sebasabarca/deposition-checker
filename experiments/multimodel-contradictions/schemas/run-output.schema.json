@@ -1,0 +1,136 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "object",
+      "properties": {
+        "completion_status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "completion_status",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "finding_id": {
+            "type": "string"
+          },
+          "witness": {
+            "type": "string"
+          },
+          "session_a": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B"
+            ]
+          },
+          "citation_a": {
+            "type": "string"
+          },
+          "exact_excerpt_a": {
+            "type": "string"
+          },
+          "session_b": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B"
+            ]
+          },
+          "citation_b": {
+            "type": "string"
+          },
+          "exact_excerpt_b": {
+            "type": "string"
+          },
+          "shared_subject": {
+            "type": "string"
+          },
+          "comparable": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no",
+              "uncertain"
+            ]
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "direct_contradiction",
+              "inferential_contradiction",
+              "compatible",
+              "insufficient_evidence",
+              "uncertain_needs_context"
+            ]
+          },
+          "factual_proposition_a": {
+            "type": "string"
+          },
+          "factual_proposition_b": {
+            "type": "string"
+          },
+          "conflict_basis": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "alternative_explanation": {
+            "type": "string"
+          },
+          "missing_context": {
+            "type": "string"
+          },
+          "confidence_rationale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "witness",
+          "session_a",
+          "citation_a",
+          "exact_excerpt_a",
+          "session_b",
+          "citation_b",
+          "exact_excerpt_b",
+          "shared_subject",
+          "comparable",
+          "classification",
+          "factual_proposition_a",
+          "factual_proposition_b",
+          "conflict_basis",
+          "explanation",
+          "alternative_explanation",
+          "missing_context",
+          "confidence_rationale"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "summary",
+    "findings"
+  ],
+  "additionalProperties": false
+}

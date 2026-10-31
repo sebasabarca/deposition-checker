@@ -1,25 +1,3 @@
-export type ContradictionType = "direct" | "inferential" | "false_positive";
-
-export type QAPair = { id: string; question: string; answer: string };
-
-export type Finding = {
-  t1_id: string;
-  t2_id: string;
-  t1_quote: string;
-  t2_quote: string;
-  type: ContradictionType;
-  explanation: string;
-  status: "verified" | "unverified";
-  confidence: number | null;
-  band: "high" | "medium" | "low" | null;
-  priority: number;
-  runsAgreeing: number;
-  runsTotal: number;
-  reasons: string[];
-};
-
-export type AnalyzeResponse = { t1: QAPair[]; t2: QAPair[]; findings: Finding[] };
-
 // ---- v2: hand-duplicated from server/src/api (cases.ts, analyses.ts, depositions.ts). Update both
 // when the API shape changes.
 
@@ -44,6 +22,34 @@ export type DepositionRow = {
   needsOcrPages: number[];
   originalFilename: string | null;
   fileSha256: string;
+  createdAt: string;
+};
+
+export type OcrReadout = {
+  engine: string;
+  meanConfidence: number | null;
+  lowConfidenceWords: number;
+  annotations: { pdfPage: number; text: string }[];
+  noiseWords: number;
+  coverPages: number[];
+  inferredPages: number[];
+  markersCorrected: number;
+};
+export type DepositionView = {
+  id: number;
+  caseId: number;
+  witness: { id: number; name: string };
+  takenOn: string | null;
+  originalFilename: string | null;
+  status: DepositionStatus;
+  error: string | null;
+  ingestRun: number;
+  parserVersion: string;
+  pageCount: number | null;
+  needsOcrPages: number[];
+  blankPages: number[];
+  validation: { layout: string; pages: Record<string, number>; failedPages: number[]; reasons: unknown; ocr: OcrReadout | null } | null;
+  stored: { lines: number; exchanges: number; parts: number };
   createdAt: string;
 };
 
@@ -125,7 +131,10 @@ export type FindingSummary = {
 };
 export type FindingGroups = { groups: { group: FindingGroup; label: string; findings: FindingSummary[] }[] };
 
-export type EvidenceLine = { id: number; ref: string; text: string; role: string; highlighted: boolean };
+// ocrConfidence is 0-100 for a line read by OCR, null for a text layer. pdfPage is the file's page,
+// not the printed transcript page in ref. pageInferred: OCR couldn't read the printed page, so ref's
+// page came from its neighbours; a server without this change omits it.
+export type EvidenceLine = { id: number; ref: string; text: string; role: string; highlighted: boolean; ocrConfidence: number | null; pdfPage: number; pageInferred?: boolean };
 export type EvidenceSide = {
   exchangeId: string;
   deposition: { id: number; takenOn: string | null; originalFilename: string | null; witness: string };

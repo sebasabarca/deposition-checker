@@ -1,4 +1,5 @@
 // Public entry point of the eval module. So far, the label file format; recall@K comes next.
 
 export { LabelFile, LABELS, readLabelFile } from "./labels";
-export { checkClaimFixtures, ClaimFixtures, matchesExpectation, type FixtureResult } from "./claimFixtures";
+export { discoveryMetrics, distractors, runDiscovery, withDistractors, type DiscoveryMetrics, type DiscoveryRun, type TargetPair } from "./discovery";
+export { mockCardModel, mockTopicModel } from "./mockCards";

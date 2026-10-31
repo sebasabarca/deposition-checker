@@ -9,7 +9,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { withTransaction, type Database } from "../db/client";
 import { cases, depositions, exchanges, lines, witnesses } from "../db/schema";
-import { depositionLockKey, isPdf, PARSER_VERSION, storeUpload, UPLOADS_DIR } from "../ingest";
+import { depositionLockKey, isPdf, PARSER_VERSION, readUpload, storeUpload, UPLOADS_DIR } from "../ingest";
 import { enqueueIngest } from "../jobs";
 import { timed, timedSync } from "../timing";
 
@@ -53,7 +53,7 @@ export async function depositionView(db: Database, id: number) {
     needsOcrPages: d.needsOcrPages,
     blankPages: d.blankPages,
     validation: d.validation
-      ? { layout: d.validation.layout, pages: d.validation.counts, failedPages: d.validation.failedPages, reasons: d.validation.reasons }
+      ? { layout: d.validation.layout, pages: d.validation.counts, failedPages: d.validation.failedPages, reasons: d.validation.reasons, ocr: d.validation.ocr ?? null }
       : null,
     stored: { lines: await db.$count(lines, eq(lines.depositionId, id)), exchanges: stored.exchanges, parts: stored.parts },
     createdAt: d.createdAt,
@@ -131,6 +131,17 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     const deposition = await depositionView(db, id.data);
     if (!deposition) return res.status(404).json({ error: "Deposition not found." });
     return res.json({ deposition });
+  });
+
+  // The original file, so a reader can check OCR text against the scan. Open at #page=<pdfPage>.
+  router.get("/depositions/:id/pdf", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
+    const [row] = await db.select({ storageKey: depositions.storageKey }).from(depositions).where(eq(depositions.id, id.data));
+    if (!row) return res.status(404).json({ error: "Deposition not found." });
+    const data = await readUpload(row.storageKey, uploadsDir).catch(() => null);
+    if (!data) return res.status(404).json({ error: "The original file isn't available." });
+    return res.type("application/pdf").set("Content-Disposition", "inline").send(Buffer.from(data));
   });
 
   // Retry a failed deposition: back to processing as a new run, with a new job queued in the same

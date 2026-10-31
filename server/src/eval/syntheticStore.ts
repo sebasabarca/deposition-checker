@@ -21,10 +21,8 @@ export function syntheticPages(lines: readonly SourceLine[]): PageExtraction[] {
   return [...pages.entries()].map(([pdfPage, ls]) => ({ pdfPage, hasText: true, printedPage: ls[0].printedPage, footer: [], lines: ls, unnumbered: [] }));
 }
 
-export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_SUITE): Promise<Map<string, number>> {
-  const existing = await db.select({ id: candidates.id, evidence: candidates.evidence }).from(candidates).where(eq(candidates.candidateSet, suite.set));
-  if (existing.length > 0) return new Map(existing.map((c) => [(c.evidence as { fixture: string }[])[0].fixture, c.id]));
-
+// A suite's case, witness and both sessions, ingested through the real ingestion code.
+export async function storeSessions(db: Database, suite: SyntheticSuite) {
   let [org] = await db.select().from(orgs).where(eq(orgs.name, "Fixtures"));
   if (!org) [org] = await db.insert(orgs).values({ name: "Fixtures" }).returning();
   let [kase] = await db.select().from(cases).where(and(eq(cases.orgId, org.id), eq(cases.name, suite.caseName)));
@@ -45,6 +43,13 @@ export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_
     if (!("depositionId" in saved)) throw new Error("The synthetic deposition wasn't saved.");
     depositionIds.push(saved.depositionId);
   }
+  return { witnessId: witness.id, depositionIds };
+}
+
+export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_SUITE): Promise<Map<string, number>> {
+  const existing = await db.select({ id: candidates.id, evidence: candidates.evidence }).from(candidates).where(eq(candidates.candidateSet, suite.set));
+  if (existing.length > 0) return new Map(existing.map((c) => [(c.evidence as { fixture: string }[])[0].fixture, c.id]));
+  const { witnessId, depositionIds } = await storeSessions(db, suite);
 
   const find = async (depositionId: number, phrase: string) => {
     const rows = await db.select().from(exchanges).where(eq(exchanges.depositionId, depositionId));
@@ -60,7 +65,7 @@ export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_
       .insert(candidates)
       .values({
         candidateSet: suite.set,
-        witnessId: witness.id,
+        witnessId,
         depositionA: depositionIds[0],
         groupA: a.groupId,
         depositionB: depositionIds[1],

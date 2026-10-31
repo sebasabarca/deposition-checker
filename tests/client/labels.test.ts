@@ -7,12 +7,17 @@ import { href, parseRoute } from "../../client/src/lib/router";
 
 describe("client routes", () => {
   it("parses every route and round-trips the links it makes", () => {
-    expect(parseRoute("")).toEqual({ name: "cases" });
-    expect(parseRoute("#/")).toEqual({ name: "cases" });
+    expect(parseRoute("")).toEqual({ name: "dashboard" });
+    expect(parseRoute("#/")).toEqual({ name: "dashboard" });
+    expect(parseRoute(href.cases())).toEqual({ name: "cases" });
+    expect(parseRoute(href.depositions())).toEqual({ name: "depositions" });
+    expect(parseRoute(href.analyses())).toEqual({ name: "analyses" });
+    expect(parseRoute(href.findings())).toEqual({ name: "findings" });
+    expect(parseRoute(href.review())).toEqual({ name: "review" });
+    expect(parseRoute(href.help())).toEqual({ name: "help" });
     expect(parseRoute(href.case(7))).toEqual({ name: "case", id: 7 });
     expect(parseRoute(href.analysis(3))).toEqual({ name: "analysis", id: 3, findingId: null });
     expect(parseRoute(href.analysis(3, 41))).toEqual({ name: "analysis", id: 3, findingId: 41 });
-    expect(parseRoute(href.classic())).toEqual({ name: "classic" });
     expect(parseRoute("#/cases/abc")).toEqual({ name: "not_found" });
   });
 });

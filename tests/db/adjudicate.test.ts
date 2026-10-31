@@ -5,7 +5,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { adjudicateCandidate, formatPacket, loadPacket, persistCandidates, type Adjudicator, type Verdict } from "../../server/src/adjudicate";
+import { adjudicateCandidate, formatPacket, loadPacket, persistPool, type Adjudicator, type Verdict } from "../../server/src/adjudicate";
 import { BudgetExceeded, budgetStatus, ensureBudget } from "../../server/src/costs";
 import type { Database } from "../../server/src/db/client";
 import { budgetReservations, candidates, cases, exchanges, findings, llmCalls, orgs, verdicts, witnesses } from "../../server/src/db/schema";
@@ -13,7 +13,7 @@ import { PARSER_VERSION, saveDeposition } from "../../server/src/ingest";
 import { buildExchangeParts } from "../../server/src/ingest/exchanges";
 import { ELLISON_DOJ_V1 as LAYOUT } from "../../server/src/ingest/layout";
 import type { SourceLine } from "../../server/src/ingest/pdf";
-import type { Candidate } from "../../server/src/retrieve";
+import { unionCandidates, type RankedPair } from "../../server/src/retrieve";
 import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 const TURN = 112.5;
@@ -87,16 +87,8 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication (Postgres, fake adjudicator)",
     };
     const a = await part(d1, "approve the Hartley");
     const b = await part(d2, "approved the Hartley");
-    const candidate: Candidate = {
-      rank: 1,
-      rrfScore: 1 / 61,
-      a: { depositionId: d1, groupId: a.groupId },
-      b: { depositionId: d2, groupId: b.groupId },
-      sources: ["fulltext"],
-      ranks: { fulltext: 1 },
-      evidence: [{ path: "fulltext", rank: 1, exchangeA: a.id, exchangeB: b.id, score: 3, sharedTerms: ["hartley"] }],
-    };
-    await persistCandidates(db, { set: "test-set", witnessId: witness.id, selected: [candidate], deferred: [] });
+    const found: RankedPair = { rank: 1, score: 3, a: { depositionId: d1, groupId: a.groupId }, b: { depositionId: d2, groupId: b.groupId }, exchangeA: a.id, exchangeB: b.id, sharedTerms: ["hartley"], foundBy: "both" };
+    await persistPool(db, { set: "test-set", witnessId: witness.id, pool: unionCandidates({ fulltext: [found] }, { capacity: 1 }), retrievalVersion: "test", mapVersion: null });
     [{ id: candidateId }] = await db.select({ id: candidates.id }).from(candidates);
     ids = { a: `E${a.id}`, b: `E${b.id}` };
   });
@@ -205,6 +197,6 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication (Postgres, fake adjudicator)",
   });
 
   it("refuses to overwrite a candidate set", async () => {
-    await expect(persistCandidates(db, { set: "test-set", witnessId: 1, selected: [], deferred: [] })).rejects.toThrow("already exists");
+    await expect(persistPool(db, { set: "test-set", witnessId: 1, pool: unionCandidates({}, { capacity: 1 }), retrievalVersion: "test", mapVersion: null })).rejects.toThrow("already exists");
   });
 });

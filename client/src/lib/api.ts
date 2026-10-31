@@ -1,7 +1,7 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseDetail, CaseSummary, FindingDetail, FindingGroups } from "../types";
+import type { AnalysisView, CaseDetail, CaseSummary, DepositionView, FindingDetail, FindingGroups } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -36,6 +36,8 @@ export const api = {
     const q = new URLSearchParams({ witness, filename: file.name, ...(takenOn ? { takenOn } : {}) });
     return request<{ created: boolean; deposition: { id: number; status: string } }>("POST", `/cases/${caseId}/depositions?${q}`, undefined, { data: file, contentType: "application/pdf" });
   },
+  deposition: (id: number) => request<{ deposition: DepositionView }>("GET", `/depositions/${id}`),
+  depositionPdf: (id: number, pdfPage: number) => `/api/depositions/${id}/pdf#page=${pdfPage}`,
   retryDeposition: (id: number) => request<unknown>("POST", `/depositions/${id}/retry`),
   startAnalysis: (caseId: number, body: { depositionA: number; depositionB: number; mode: "demo" | "live"; budgetUsd?: number; maxCandidates?: number; strategy?: string }) =>
     request<{ created: boolean; analysis: AnalysisView }>("POST", `/cases/${caseId}/analyses`, body),

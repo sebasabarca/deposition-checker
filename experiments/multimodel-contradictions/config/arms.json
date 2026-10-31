@@ -1,0 +1,30 @@
+{
+  "verifiedOn": "2026-10-31",
+  "planning": { "charsPerToken": 3, "note": "Local upper estimate. No count_tokens call: that would upload transcript text." },
+  "output": { "discoveryMaxTokens": 32000, "pairMaxTokens": 4000, "discoveryExpectedTokens": 10000, "pairExpectedTokens": 900 },
+  "arms": {
+    "A": {
+      "label": "DeepSeek V4.1 Flash Free via OpenCode",
+      "provider": "opencode", "model": "opencode/deepseek-v4.1-flash-free", "kind": "external",
+      "contextTokens": 200000, "contextVerified": false, "contextNote": "Not in official docs. Third-party sources say 200K or 1M, so the lower is used.",
+      "maxOutputTokens": null, "versionVerified": false, "versionNote": "OpenCode doesn't state which DeepSeek build serves this ID. It must not be assumed equal to arm B.",
+      "rates": { "input": 0, "cacheRead": 0, "cacheWrite": 0, "output": 0 }, "cacheSupport": "not documented for the free model"
+    },
+    "B": {
+      "label": "DeepSeek V4.1 Flash, DeepSeek official API",
+      "provider": "deepseek", "model": "deepseek-flash", "kind": "external",
+      "contextTokens": 1000000, "contextVerified": true, "maxOutputTokens": 384000, "versionVerified": true, "version": "DeepSeek-V4.1-Flash-1017",
+      "rates": { "input": 0.3, "cacheRead": 0.006, "cacheWrite": 0.3, "output": 1.2 }, "ratesNote": "Peak rates, the higher. Off-peak is half.", "cacheSupport": "automatic"
+    },
+    "C": {
+      "label": "Claude Sonnet 5.5, Anthropic API",
+      "provider": "anthropic", "model": "claude-sonnet-5-5", "kind": "external", "effort": "medium",
+      "contextTokens": 1000000, "contextVerified": true, "maxOutputTokens": 128000, "versionVerified": true, "version": "claude-sonnet-5-5 (pinned snapshot)",
+      "rates": { "input": 2, "cacheRead": 0.1, "cacheWrite": 2.5, "output": 10 }, "cacheSupport": "explicit cache_control"
+    },
+    "D": {
+      "label": "Existing hybrid pipeline (Path A + B, Sonnet adjudication, verification, scoring)",
+      "provider": "stored", "kind": "stored", "note": "Read from stored results. Unchanged production code; never re-run by this harness."
+    }
+  }
+}

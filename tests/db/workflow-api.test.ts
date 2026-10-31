@@ -240,6 +240,16 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const [d] = await db.select().from(depositions).where(eq(depositions.id, c.depositionA));
     expect((await call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB, strategy: "Z" })).status).toBe(400);
   });
+
+  it("runs every new analysis as hybrid", async () => {
+    const stored = await storeSynthetic(db, WEBB_SUITE);
+    const [c] = await db.select().from(candidates).where(eq(candidates.id, [...stored.values()][0]));
+    const [d] = await db.select().from(depositions).where(eq(depositions.id, c.depositionA));
+    const started = await call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB });
+    const { analysis } = started.body as { analysis: { retrieval: string; coverage: { candidates: { total: number } } } };
+    expect(analysis.retrieval).toBe("hybrid");
+    expect(analysis.coverage.candidates.total).toBe(0);
+  });
 });
 
 void eq;

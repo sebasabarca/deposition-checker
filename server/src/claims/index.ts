@@ -1,13 +1,15 @@
-// Public entry point of the claims module: Path A's input. Claim extraction with Haiku, checked
-// against the stored source lines. Only this module and adjudicate/ call a model, and every call is
-// recorded with recordCall.
+// Public entry point of the claims module: Path A's input. Statement cards and the topic map with
+// Haiku, checked against the stored source lines. Only this module and adjudicate/ call a model, and
+// every call is recorded with recordCall.
 
-export { CARDS_JSON_SCHEMA, ExtractedCard, mergeCoverage, readCards, type CardReading, type CheckedCard, type Chunk, type ChunkExchange, type Coverage, type CoverageStatus, type ModelReply as CardModelReply } from "./cards";
-export { readAnswer, readRecollection, type AnswerReading, type RecollectionReading } from "../verify";
+export { addressedShare, CARDS_JSON_SCHEMA, ExtractedCard, isNegated, MIN_ADDRESSED_SHARE, mergeCoverage, readCards, screenNoAssertion, type CardReading, type CheckedCard, type Chunk, type ChunkExchange, type Coverage, type CoverageStatus, type ModelReply as CardModelReply } from "./cards";
+export { CARD_EXTRACTOR_VERSION, CARD_MAX_OUTPUT_TOKENS, CARDS_MODEL, CARDS_PROMPT_VERSION, CARDS_SYSTEM_PROMPT, CHUNK_OVERLAP_PAGES, chunkByPages, estimateCards, PAGES_PER_CHUNK, PLANNING_CARD_OUTPUT_SHARE, type CardEstimate } from "./cardPrompt";
+export { CARD_CONCURRENCY, cardSummary, extractCards, partLines, plannedChunks, screenStoredNoAssertions, type CardSummary, type ExtractOptions, type ExtractResult } from "./extract";
 export { normalizeEntities, normalizeEntity } from "./entities";
-export { anthropicClaimModel, type ClaimModel, type ModelReply } from "./model";
-export { BATCH_SIZE, CLAIMS_MODEL, estimateCost, EXTRACTOR_VERSION, formatBatch, PLANNING_OUTPUT_SHARE, PROMPT_VERSION, SYSTEM_PROMPT, type Estimate } from "./prompt";
-export { EXTRACTION_JSON_SCHEMA, ExtractionOutput, type ExtractedClaim } from "./schema";
-export { batchesOf, partLines, partsToTag, reverifyClaims, tagClaims, type TagPart, type TagResult } from "./tag";
-export { checkClaim, contentWords, contextReason, findHedge, groundEntities, locate, type ClaimCheck, type Part, type PartLine } from "./verify";
+export { anthropicCardModel, anthropicTopicModel, type ClaimModel, type ModelReply } from "./model";
+export { cardLabel, formatTopicInput, MAX_CARDS_PER_CALL, readTopicMap, topicReport, TOPICS_JSON_SCHEMA, TOPICS_MODEL, TOPICS_PROMPT_VERSION, UNASSIGNED, type MappedTopic, type TopicMember, type TopicReading, type TopicReport } from "./topicMap";
+export { buildTopicMap, latestMapVersion, mapMembers, type TopicMapResult } from "./topics";
+export { formatBatch } from "./prompt";
+export { readAnswer, readRecollection, type AnswerReading, type RecollectionReading } from "../verify";
+export { contentWords, findHedge, groundEntities, locate, type PartLine } from "./verify";
 export { PREDICATES, PREDICATE_NAMES, type Predicate } from "./vocabulary";

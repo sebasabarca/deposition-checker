@@ -1,8 +1,5 @@
 // Adjudication from the CLI, one stored candidate at a time (development only).
 //
-//   npx tsx scripts/adjudicate.ts persist --set <name> (--case-id <id> | --case <name>) --witness <name> [--deposition <id>]
-//     Runs Path A and Path B as they are (read-only), merges and selects (budget 300, cap 3), and
-//     stores every candidate, selected and deferred, in a new named set. No API call.
 //   npx tsx scripts/adjudicate.ts fixtures
 //     Stores the synthetic evaluation suites (eval/synthetic.ts: webb-synthetic-v1, development, and
 //     whitfield-synthetic-v1, held out) as fixture cases with one candidate per case, and lists them
@@ -31,26 +28,23 @@ import {
   formatPacket,
   loadPacket,
   maxPacketCost,
-  persistCandidates,
   DEFAULT_PROMPT_VERSION,
   MAX_OUTPUT_TOKENS,
   PROMPT_VERSIONS,
 } from "../server/src/adjudicate";
 import { coldCacheCost, expectedPacketCost, measure, measuredSamples, MIN_MEASURED_CALLS } from "../server/src/adjudicate/estimate";
-import { EXTRACTOR_VERSION } from "../server/src/claims";
 import { BudgetExceeded, budgetStatus, ensureBudget, reconcileStale } from "../server/src/costs";
 import { connect, type Database } from "../server/src/db/client";
 import { candidates, findings, lines, verdicts, exchanges } from "../server/src/db/schema";
 import { SYNTHETIC_SUITES } from "../server/src/eval/synthetic";
 import { storeSynthetic } from "../server/src/eval/syntheticStore";
-import { findPathA, findPathB, mergeCandidates, selectCandidates } from "../server/src/retrieve";
 import { resolveDeposition, resolveWitness } from "./cases";
 
 const PATH_B_MODE = "rare_terms" as const;
 const STALE_RESERVATION_MS = 15 * 60 * 1000;
 
 const Args = z.object({
-  command: z.enum(["persist", "fixtures", "list", "show", "estimate", "run"]),
+  command: z.enum(["fixtures", "list", "show", "estimate", "run"]),
   set: z.string().min(1).optional(),
   caseId: z.coerce.number().int().positive().optional(),
   case: z.string().optional(),
@@ -79,17 +73,6 @@ async function refs(db: Database, partIds: number[]) {
         .where(inArray(exchanges.id, partIds))
     : [];
   return new Map(rows.map((r) => [r.id, `${r.page}:${r.line}`]));
-}
-
-async function persist(db: Database, args: Args) {
-  if (!args.set) throw new Error("persist needs --set <name>.");
-  const target = await resolveWitness(db, { caseId: args.caseId, caseName: args.case, witnessName: args.witness ?? "" });
-  const depositionId = await resolveDeposition(db, target, args.deposition);
-  const pathA = await findPathA(db, { witnessId: target.witnessId, depositionId, extractorVersion: EXTRACTOR_VERSION });
-  const pathB = await findPathB(db, { witnessId: target.witnessId, depositionId, mode: PATH_B_MODE });
-  const { selected, deferred } = selectCandidates(mergeCandidates({ claims: pathA, fulltext: pathB.pairs }));
-  const saved = await persistCandidates(db, { set: args.set, witnessId: target.witnessId, selected, deferred });
-  console.log(`Set "${args.set}": ${saved.selected} selected, ${saved.deferred} deferred (Path A ${pathA.length} pairs, Path B ${PATH_B_MODE} ${pathB.pairs.length}).`);
 }
 
 async function fixtures(db: Database) {
@@ -207,7 +190,7 @@ async function main() {
   });
   const { db, pool } = connect();
   try {
-    await { persist, fixtures, list, show, estimate, run }[args.command](db, args);
+    await { fixtures, list, show, estimate, run }[args.command](db, args);
   } finally {
     await pool.end();
   }

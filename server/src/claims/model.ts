@@ -1,9 +1,11 @@
-// The real extraction model: one Messages API call per batch, with structured output. Only this
-// file talks to Anthropic for claims; the pipeline takes any ClaimModel, so tests use a fake one.
+// The real extraction models: one Messages API call per batch, with structured output. Only this
+// file talks to Anthropic for cards and topics; the pipelines take any ClaimModel, so tests
+// use a fake one.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { CLAIMS_MODEL, MAX_OUTPUT_TOKENS, SYSTEM_PROMPT } from "./prompt";
-import { EXTRACTION_JSON_SCHEMA } from "./schema";
+import { CARD_MAX_OUTPUT_TOKENS, CARDS_MODEL, CARDS_SYSTEM_PROMPT } from "./cardPrompt";
+import { CARDS_JSON_SCHEMA } from "./cards";
+import { TOPIC_MAX_OUTPUT_TOKENS, TOPICS_JSON_SCHEMA, TOPICS_MODEL, TOPICS_SYSTEM_PROMPT } from "./topicMap";
 
 export type ModelReply = {
   stopReason: string | null;
@@ -17,18 +19,18 @@ export type ClaimModel = {
 };
 
 // Automatic SDK retries are off: every attempt must reserve its own cost from the budget, so a retry
-// is a new, separately reserved request made by the caller (a re-run tags failed parts again).
-export function anthropicClaimModel(client = new Anthropic({ maxRetries: 0 })): ClaimModel {
+// is a new, separately reserved request made by the caller.
+function structuredModel({ model, system, schema, maxTokens }: { model: string; system: string; schema: Record<string, unknown>; maxTokens: number }, client: Anthropic): ClaimModel {
   return {
-    model: CLAIMS_MODEL,
+    model,
     async extract(batchText) {
       const response = await client.messages.create({
-        model: CLAIMS_MODEL,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        model,
+        max_tokens: maxTokens,
         // The fixed instructions are cached; only the batch changes between calls.
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         // Extraction, not reasoning: low effort keeps thinking short.
-        output_config: { effort: "low", format: { type: "json_schema", schema: EXTRACTION_JSON_SCHEMA } },
+        output_config: { effort: "low", format: { type: "json_schema", schema } },
         messages: [{ role: "user", content: batchText }],
       });
       const text = response.content.find((b) => b.type === "text");
@@ -36,3 +38,6 @@ export function anthropicClaimModel(client = new Anthropic({ maxRetries: 0 })): 
     },
   };
 }
+
+export const anthropicCardModel = (client = new Anthropic({ maxRetries: 0 })) => structuredModel({ model: CARDS_MODEL, system: CARDS_SYSTEM_PROMPT, schema: CARDS_JSON_SCHEMA, maxTokens: CARD_MAX_OUTPUT_TOKENS }, client);
+export const anthropicTopicModel = (client = new Anthropic({ maxRetries: 0 })) => structuredModel({ model: TOPICS_MODEL, system: TOPICS_SYSTEM_PROMPT, schema: TOPICS_JSON_SCHEMA, maxTokens: TOPIC_MAX_OUTPUT_TOKENS }, client);

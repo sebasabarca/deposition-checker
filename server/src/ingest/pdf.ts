@@ -14,6 +14,7 @@ export type SourceLine = {
   lineFromPosition: number; // line slot implied by the vertical position, for cross-checking
   indentX: number | null; // x of the text when it starts in its own item right of the gutter
   rawText: string; // the line's text without the line-number gutter
+  ocrConfidence?: number; // 0-100, mean of the line's words; absent on a text-layer line
 };
 
 export type PageExtraction = {

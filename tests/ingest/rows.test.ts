@@ -45,6 +45,7 @@ describe("toLineRows", () => {
       speakerName: null,
       rawText: "A. No, I didn't.",
       normText: "a no i didn t",
+      ocrConfidence: null,
     });
     expect(rows[3]).toMatchObject({ printedPage: 162, lineNo: 2, speakerRole: "colloquy", speakerName: "MR. RILL" });
   });

@@ -12,7 +12,8 @@ import { DEFAULT_EFFORT, DEFAULT_PROMPT_VERSION, DEFAULT_STRATEGY, EFFORTS, MAX_
 import { withTransaction, type Database } from "../db/client";
 import { analyses, budgets, candidates, depositions, exchangeLines, findings, lines, verdicts, witnesses } from "../db/schema";
 import { analysisCost, candidateSetOf, enqueueAnalysis } from "../jobs";
-import { compareFindings, findingGroup, GROUP_LABELS, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
+import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claims";
+import { candidateCoverage, compareFindings, findingGroup, GROUP_LABELS, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
 export const MAX_BUDGET_USD = 20;
@@ -27,7 +28,6 @@ const StartAnalysis = z.object({
   maxCandidates: z.number().int().min(1).max(MAX_CANDIDATES).default(MAX_CANDIDATES),
   promptVersion: z.enum(PROMPT_VERSIONS).default(DEFAULT_PROMPT_VERSION),
   effort: z.enum(EFFORTS).default(DEFAULT_EFFORT),
-  // Only independent single-pair strategies: batching is experimental (adjudicate/strategies.ts).
   strategy: z.enum(PRODUCTION_STRATEGY_IDS).default(DEFAULT_STRATEGY as (typeof PRODUCTION_STRATEGY_IDS)[number]),
   maxConcurrency: z.number().int().min(1).max(MAX_CONCURRENCY).optional(), // overrides the strategy's; A stays sequential
 });
@@ -35,6 +35,22 @@ const ACTIVE = ["queued", "parsing", "retrieving", "adjudicating"] as const;
 const RESUMABLE = ["blocked_budget", "blocked_credentials", "failed", "cancelled", "interrupted"];
 
 const ref = (page: number, line: number) => `${page}:${String(line).padStart(2, "0")}`;
+
+// Every candidate's status, and for a hybrid analysis what its cards and topic map cover.
+async function analysisCoverage(db: Database, a: typeof analyses.$inferSelect) {
+  const rows = await db
+    .select({ status: candidates.status, sources: candidates.sources, deferredReason: candidates.deferredReason, exclusionReason: candidates.exclusionReason, selectedBy: candidates.selectedBy, n: sql<number>`count(*)::int` })
+    .from(candidates)
+    .where(eq(candidates.candidateSet, candidateSetOf(a.id)))
+    .groupBy(candidates.status, candidates.sources, candidates.deferredReason, candidates.exclusionReason, candidates.selectedBy);
+  if (a.retrieval !== "hybrid") return { candidates: candidateCoverage(rows), cards: null, topics: null };
+  const mapVersion = await latestMapVersion(db, a.witnessId);
+  return {
+    candidates: candidateCoverage(rows),
+    cards: await Promise.all([a.depositionA, a.depositionB].map((d) => cardSummary(db, d))),
+    topics: mapVersion === null ? null : { mapVersion, ...topicReport(await mapMembers(db, a.witnessId, mapVersion)) },
+  };
+}
 
 export async function analysisView(db: Database, id: number) {
   const [a] = await db.select().from(analyses).where(eq(analyses.id, id));
@@ -57,9 +73,11 @@ export async function analysisView(db: Database, id: number) {
     caseId: a.caseId,
     witnessId: a.witnessId,
     mode: a.mode,
+    retrieval: a.retrieval,
     status: a.status,
     error: a.error,
     progress: a.progress,
+    coverage: await analysisCoverage(db, a),
     promptVersion: a.promptVersion,
     effort: a.effort,
     maxCandidates: a.maxCandidates,
@@ -150,7 +168,7 @@ export async function findingDetail(db: Database, id: number) {
   };
   const allIds = packet.sides.flatMap((s) => [...s.lineIds, ...s.contextLineIds]);
   const stored = new Map(
-    (allIds.length ? await db.select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, speaker: lines.speakerRole }).from(lines).where(inArray(lines.id, allIds)) : []).map((l) => [l.id, l]),
+    (allIds.length ? await db.select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, speaker: lines.speakerRole, ocrConfidence: lines.ocrConfidence, pdfPage: lines.pdfPage }).from(lines).where(inArray(lines.id, allIds)) : []).map((l) => [l.id, l]),
   );
   const roles = new Map(
     (allIds.length
@@ -159,7 +177,7 @@ export async function findingDetail(db: Database, id: number) {
     ).map((r) => [r.lineId, r.role]),
   );
   const docs = await db
-    .select({ id: depositions.id, takenOn: depositions.takenOn, originalFilename: depositions.originalFilename, witness: witnesses.name })
+    .select({ id: depositions.id, takenOn: depositions.takenOn, originalFilename: depositions.originalFilename, witness: witnesses.name, validation: depositions.validation })
     .from(depositions)
     .innerJoin(witnesses, eq(witnesses.id, depositions.witnessId))
     .where(inArray(depositions.id, [c.depositionA, c.depositionB]));
@@ -168,8 +186,9 @@ export async function findingDetail(db: Database, id: number) {
     const p = packet.sides.find((s) => s.session === (which === "a" ? "A" : "B"))!;
     const source = checks.source[which];
     const highlight = new Set(source.evidenceLineIds);
+    const inferred = new Set(docs.find((d) => d.id === p.depositionId)?.validation?.ocr?.inferredPages ?? []);
     const show = (ids: number[], kind: "context" | "exchange") =>
-      ids.map((lid) => stored.get(lid)).filter((l) => l !== undefined).map((l) => ({ id: l.id, ref: ref(l.page, l.line), text: l.text, role: kind === "exchange" ? (roles.get(l.id) ?? "unknown") : "context", highlighted: highlight.has(l.id) }));
+      ids.map((lid) => stored.get(lid)).filter((l) => l !== undefined).map((l) => ({ id: l.id, ref: ref(l.page, l.line), text: l.text, role: kind === "exchange" ? (roles.get(l.id) ?? "unknown") : "context", highlighted: highlight.has(l.id), ocrConfidence: l.ocrConfidence, pdfPage: l.pdfPage, pageInferred: inferred.has(l.pdfPage) }));
     const exchangeLineIds = new Set(p.lineIds);
     const firstId = p.lineIds[0];
     const lastId = p.lineIds[p.lineIds.length - 1];

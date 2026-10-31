@@ -148,7 +148,7 @@ describe("validateDeposition", () => {
     const result = depo(page(1, 8, lines(1, 22)), []);
     expect(result.status).toBe("needs_review");
     expect(result.needsOcrPages).toEqual([2]);
-    expect(result.reasons).toEqual(["1 of 2 pages have no text layer (OCR is not supported)"]);
+    expect(result.reasons).toEqual(["1 of 2 pages have no readable text"]);
   });
 
   it("needs review when some pages fail validation", () => {

@@ -1,1 +1,97 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* Tokens from the approved design (design-reference/design.html). Only the ones in use. */
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary-container: #0e1c2f;
+  --color-on-primary-container: #8d9ab2; /* lighter than the reference's #77849c: AA on navy */
+  --color-primary-fixed-dim: #bac7e1;
+  --color-surface: #faf8ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f2f3ff;
+  --color-surface-container: #eaedff;
+  --color-surface-container-high: #e2e7ff;
+  --color-surface-container-highest: #dae2fd;
+  --color-on-surface: #131b2e;
+  --color-on-surface-variant: #44474c;
+  --color-outline: #66686e; /* darker than the reference's #75777d: AA on white */
+  --color-outline-variant: #c5c6cd;
+  --color-secondary: #1d4ed8;
+  --color-secondary-container: #4069f2;
+  --color-secondary-fixed: #dce1ff;
+  --color-on-secondary-fixed: #001551;
+  --color-success: #1e7a3c;
+  --color-success-container: #dcf5e3;
+  --color-on-success-container: #0c4a22;
+  --color-warning-container: #fef3c7;
+  --color-on-warning-container: #7a4a06;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 0.875rem;
+  --spacing-space-lg: 1.25rem;
+  --spacing-space-xl: 2rem;
+
+  --text-label-sm: 11px;
+  --text-label-sm--line-height: 14px;
+  --text-label-sm--letter-spacing: 0.01em;
+  --text-label-sm--font-weight: 500;
+  --text-label-md: 12px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--letter-spacing: 0.02em;
+  --text-label-md--font-weight: 600;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 18px;
+  --text-body-md: 14px;
+  --text-body-md--line-height: 20px;
+  --text-headline-md: 16px;
+  --text-headline-md--line-height: 24px;
+  --text-headline-md--font-weight: 600;
+  --text-headline-lg: 20px;
+  --text-headline-lg--line-height: 28px;
+  --text-headline-lg--letter-spacing: -0.015em;
+  --text-headline-lg--font-weight: 600;
+  --text-headline-xl: 30px;
+  --text-headline-xl--line-height: 38px;
+  --text-headline-xl--letter-spacing: -0.025em;
+  --text-headline-xl--font-weight: 700;
+  --text-stat-metric: 28px;
+  --text-stat-metric--line-height: 32px;
+  --text-stat-metric--letter-spacing: -0.02em;
+  --text-stat-metric--font-weight: 700;
+}
+
+@layer base {
+  body {
+    background: var(--color-surface);
+    color: var(--color-on-surface);
+    font-family: var(--font-sans);
+    font-size: var(--text-body-md);
+    line-height: var(--text-body-md--line-height);
+  }
+  ::selection {
+    background: var(--color-secondary-fixed);
+    color: var(--color-on-secondary-fixed);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-secondary);
+    outline-offset: 2px;
+  }
+  dialog::backdrop {
+    background: rgb(14 28 47 / 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

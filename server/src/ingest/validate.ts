@@ -17,7 +17,8 @@ export type PageFailureReason =
   | "line_duplicate"
   | "line_out_of_order"
   | "unexpected_footer"
-  | "footer_page_mismatch";
+  | "footer_page_mismatch"
+  | "low_ocr_confidence";
 
 export type PageFailure = { reason: PageFailureReason; detail: string };
 
@@ -38,8 +39,13 @@ export type Validation = {
   blankPages: number[];
   failedPages: number[];
   reasons: string[]; // why the deposition is not ready; empty when it is
+  // Present when the text came from OCR: this text is a reading of a scan, not the file's own text.
+  ocr?: { engine: string; meanConfidence: number | null; lowConfidenceWords: number; annotations: { pdfPage: number; text: string }[]; noiseWords: number; coverPages: number[]; inferredPages: number[]; markersCorrected: number };
   pages: PageValidation[];
 };
+
+// Below this a page is unreliable as evidence. Start of a measured range, to revisit with more scans.
+export const MIN_PAGE_OCR_CONFIDENCE = 80;
 
 export function validatePage(page: PageExtraction, previousPrintedPage: number | null, layout: LayoutProfile): PageValidation {
   const result: PageValidation = {
@@ -83,6 +89,9 @@ export function validatePage(page: PageExtraction, previousPrintedPage: number |
     }
   }
 
+  const confidence = (page as { ocr?: { meanConfidence: number | null } }).ocr?.meanConfidence;
+  if (confidence != null && confidence < MIN_PAGE_OCR_CONFIDENCE) fail("low_ocr_confidence", `mean word confidence ${confidence}`);
+
   if (result.failures.length > 0) return { ...result, status: "failed" };
   return { ...result, status: isBlank ? "blank" : "text" };
 }
@@ -121,7 +130,7 @@ export function validateDeposition(pages: PageExtraction[], layout: LayoutProfil
   const pagesWith = (status: PageStatus) => results.filter((r) => r.status === status).map((r) => r.pdfPage);
 
   const reasons: string[] = [];
-  if (counts.needs_ocr > 0) reasons.push(`${counts.needs_ocr} of ${results.length} pages have no text layer (OCR is not supported)`);
+  if (counts.needs_ocr > 0) reasons.push(`${counts.needs_ocr} of ${results.length} pages have no readable text`);
   if (counts.failed > 0) reasons.push(`${counts.failed} of ${results.length} pages do not match layout ${layout.name}`);
   if (results.length === 0) reasons.push("the PDF has no pages");
 

@@ -3,7 +3,7 @@
 // analysis 9 (3.3 s, 368 output tokens): what it measures is the pipeline, never model performance.
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { Adjudicator, AdjudicatorReply, BatchAdjudicator, CallOptions } from "../adjudicate";
+import type { Adjudicator, AdjudicatorReply, CallOptions } from "../adjudicate";
 
 export const MOCK_MODEL = "claude-sonnet-5-5";
 export const ASSUMED_FIRST_TOKEN_MS = 400;
@@ -63,29 +63,6 @@ export function mockSingle(behaviour: MockBehaviour = {}): Adjudicator & MockSta
         const failure = fail?.(call);
         if (failure) throw failure;
         return { model: MOCK_MODEL, stopReason: stopReason?.(call) ?? "end_turn", usage: usage(packetText.length, 1), text: JSON.stringify(verdictFor(packetText)), latencyMs: Math.round(assumedMs(1)), requestId: `mock-${call}` };
-      } finally {
-        mock.inFlight--;
-      }
-    },
-  };
-  return mock;
-}
-
-export function mockBatch(behaviour: MockBehaviour = {}): BatchAdjudicator & MockStats {
-  const { timeScale = 0, fail, edit, stopReason } = behaviour;
-  const mock = {
-    model: MOCK_MODEL, effort: "medium" as const, promptChars: 12_000, calls: 0, inFlight: 0, peak: 0,
-    async adjudicate(batchText: string, _maxOutputTokens: number, options?: CallOptions): Promise<AdjudicatorReply> {
-      const call = ++mock.calls;
-      mock.peak = Math.max(mock.peak, ++mock.inFlight);
-      try {
-        const candidates = [...batchText.matchAll(/<candidate id="(C\d+)"[^>]*>\n([\s\S]*?)<\/candidate>/g)];
-        await wait(assumedMs(candidates.length) * timeScale, options?.signal);
-        const failure = fail?.(call);
-        if (failure) throw failure;
-        const reply = { verdicts: candidates.map((c) => ({ candidateId: c[1], ...verdictFor(c[2]) })) };
-        const edited = edit ? edit(reply, call) : reply;
-        return { model: MOCK_MODEL, stopReason: stopReason?.(call) ?? "end_turn", usage: usage(batchText.length, candidates.length), text: typeof edited === "string" ? edited : JSON.stringify(edited), latencyMs: Math.round(assumedMs(candidates.length)), requestId: `mock-${call}` };
       } finally {
         mock.inFlight--;
       }

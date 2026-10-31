@@ -2,6 +2,7 @@
 // so `npm test` still works on a fresh clone. The expected values are the measured results in
 // docs/parser-spike.md: production extraction must reproduce the validated spike exactly.
 
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { readDeposition } from "../../server/src/ingest";
@@ -104,6 +105,14 @@ describe.skipIf(!existsSync(`${RAW}/ellison/p3171.pdf`) || !existsSync(`${RAW}/e
   },
 );
 
+const ocrTools = (() => {
+  try {
+    execSync("tesseract --version && pdftoppm -v", { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 const gates = [
   { file: "gates8a.pdf", pages: 13 },
   { file: "gates8b.pdf", pages: 60 },
@@ -112,17 +121,31 @@ const gates = [
   { file: "gates8f.pdf", pages: 13 },
 ];
 
+// Without the tools, scans stay needs_ocr; with them, each page is read or reported.
+const noOcr = async () => ({ available: false as const, reason: "OCR tools aren't installed on this server" });
 describe.skipIf(!gates.every((g) => existsSync(`${RAW}/gates/${g.file}`)))("Gates depositions (image-only PDFs)", () => {
   for (const g of gates) {
     it(
-      `${g.file} is unsupported, with all ${g.pages} pages reported as needs_ocr`,
+      `${g.file} is unsupported without OCR, with all ${g.pages} pages reported as needs_ocr`,
       async () => {
-        const result = await readDeposition(bytes(`${RAW}/gates/${g.file}`));
+        const result = await readDeposition(bytes(`${RAW}/gates/${g.file}`), undefined, noOcr);
         expect(result.validation.status).toBe("unsupported");
         expect(result.validation.counts).toEqual({ text: 0, blank: 0, needs_ocr: g.pages, failed: 0 });
         expect(result.validation.needsOcrPages).toHaveLength(g.pages);
         expect(linesOf(result)).toEqual([]);
         expect(result.exchanges).toBeNull();
+      },
+      TIMEOUT,
+    );
+    it.skipIf(!ocrTools)(
+      `${g.file} is read by OCR, with every page accounted for`,
+      async () => {
+        const result = await readDeposition(bytes(`${RAW}/gates/${g.file}`));
+        const { counts, status, ocr } = result.validation;
+        expect(counts.text + counts.blank + counts.failed).toBe(g.pages);
+        expect(counts.needs_ocr).toBe(0);
+        expect(ocr?.meanConfidence).toBeGreaterThan(85);
+        expect(status === "ready").toBe(result.exchanges !== null);
       },
       TIMEOUT,
     );

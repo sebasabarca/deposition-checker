@@ -5,6 +5,7 @@
 import { ELLISON_DOJ_V1, PARSER_VERSION, type LayoutProfile } from "./layout";
 import { buildExchangeParts, type ExchangeResult } from "./exchanges";
 import { extractPdf, type ExtractedPdf } from "./pdf";
+import { inferPageNumbers, ocrDocument, SCANNED_25_V1, type OcrReader } from "./ocr";
 import { validateDeposition, type Validation } from "./validate";
 import type { Database } from "../db/client";
 import { saveDeposition, type SaveResult } from "./store";
@@ -25,6 +26,7 @@ export {
   type SaveOutcome,
   type SaveResult,
 } from "./store";
+export { inferPageNumbers, LOW_WORD_CONFIDENCE, MAX_OCR_PAGES, ocrDocument, parseTsv, readOcrPage, SCANNED_25_V1, type OcrPage, type OcrReader, type OcrResult, type OcrWord } from "./ocr";
 export { isPdf, readUpload, storeUpload, UPLOADS_DIR } from "./uploads";
 
 export type DepositionRead = {
@@ -35,7 +37,30 @@ export type DepositionRead = {
   exchanges: ExchangeResult | null;
 };
 
-export async function readDeposition(data: Uint8Array, layout: LayoutProfile = ELLISON_DOJ_V1): Promise<DepositionRead> {
+// A file with no text layer at all goes through OCR. A file mixing text and scanned pages stays as it
+// was, with those pages needs_ocr. shortcut: mixed files aren't OCR'd; add it when one appears.
+async function readScanned(pdf: ExtractedPdf, data: Uint8Array, ocr: OcrReader): Promise<DepositionRead | { unavailable: string }> {
+  const result = await timed("ingest.ocr", () => ocr(data, pdf.pageCount));
+  if (!result.available) return { unavailable: result.reason };
+  const pages = result.pages;
+  const inferredPages = inferPageNumbers(pages);
+  const validation = validateDeposition(pages, SCANNED_25_V1);
+  const confidences = pages.flatMap((p) => p.lines.map((l) => l.ocrConfidence!));
+  validation.ocr = {
+    engine: result.engine,
+    meanConfidence: confidences.length ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length) : null,
+    lowConfidenceWords: pages.reduce((n, p) => n + p.ocr.lowConfidenceWords, 0),
+    annotations: pages.flatMap((p) => p.ocr.annotations.map((text) => ({ pdfPage: p.pdfPage, text }))),
+    noiseWords: pages.reduce((n, p) => n + p.ocr.noiseWords, 0),
+    coverPages: pages.filter((p) => p.ocr.coverPage).map((p) => p.pdfPage),
+    inferredPages,
+    markersCorrected: pages.reduce((n, p) => n + p.ocr.markersCorrected, 0),
+  };
+  const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), SCANNED_25_V1) : null;
+  return { parserVersion: PARSER_VERSION, pdf: { pageCount: pdf.pageCount, pages }, validation, exchanges };
+}
+
+export async function readDeposition(data: Uint8Array, layout: LayoutProfile = ELLISON_DOJ_V1, ocr: OcrReader = ocrDocument): Promise<DepositionRead> {
   let pdf: ExtractedPdf;
   try {
     pdf = await timed("ingest.pdf_parse", () => extractPdf(data, layout));
@@ -58,7 +83,10 @@ export async function readDeposition(data: Uint8Array, layout: LayoutProfile = E
       },
     };
   }
+  const scanned = pdf.pages.length > 0 && pdf.pages.every((p) => !p.hasText) ? await readScanned(pdf, data, ocr) : null;
+  if (scanned && !("unavailable" in scanned)) return scanned;
   const validation = timedSync("ingest.validate", () => validateDeposition(pdf.pages, layout));
+  if (scanned) validation.reasons.push(scanned.unavailable);
   const exchanges = validation.status === "ready" ? timedSync("ingest.build_exchanges", () => buildExchangeParts(pdf.pages.flatMap((p) => p.lines), layout)) : null;
   return { parserVersion: PARSER_VERSION, pdf, validation, exchanges };
 }

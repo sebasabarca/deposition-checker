@@ -189,6 +189,7 @@ export const lines = pgTable(
     speakerName: text("speaker_name"),
     rawText: text("raw_text").notNull(), // as extracted, without the line-number gutter; the evidence
     normText: text("norm_text").notNull(), // lowercased, punctuation removed; for matching only
+    ocrConfidence: integer("ocr_confidence"), // 0-100 for a line read by OCR, whose text may differ from the scan; null for a text layer
   },
   (t) => [
     unique("lines_page_line_unique").on(
@@ -711,6 +712,9 @@ export const analyses = pgTable(
     budgetId: ref("budget_id").references(() => budgets.id),
     // How adjudication runs (adjudicate/strategies.ts). A is one candidate per call, one at a time.
     strategy: text("strategy").notNull().default("A"),
+    // Which pool found the candidates: `hybrid` (statement cards, topics and Path B). `pair`, the removed
+    // earlier pool, remains only on past analyses, whose stored results stay readable.
+    retrieval: text("retrieval").notNull().default("hybrid"),
     candidatesPerRequest: integer("candidates_per_request").notNull().default(1),
     maxConcurrency: integer("max_concurrency").notNull().default(1),
     cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
@@ -732,6 +736,7 @@ export const analyses = pgTable(
     index("analyses_case_idx").on(t.caseId, t.id),
     check("analyses_mode_check", sql`${t.mode} in ('live', 'demo')`),
     check("analyses_pair_check", sql`${t.depositionA} <> ${t.depositionB}`),
+    check("analyses_retrieval_check", sql`${t.retrieval} in ('pair', 'hybrid')`),
     check("analyses_budget_check", sql`${t.budgetUsd} >= 0 and ${t.maxCandidates} > 0`),
   ],
 );
@@ -793,7 +798,7 @@ export const statementCards = pgTable(
 
 // Whether each eligible exchange part was processed, per extractor version. An unprocessed part is
 // never read as having no claims: no_assertion is the model saying so, omitted is the model's silence.
-export const cardCoverageStatus = pgEnum("card_coverage_status", ["carded", "no_assertion", "omitted", "failed", "not_processed"]);
+export const cardCoverageStatus = pgEnum("card_coverage_status", ["carded", "no_assertion", "omitted", "failed", "not_processed", "suspected_omission"]);
 export const cardCoverage = pgTable(
   "card_coverage",
   {
@@ -804,6 +809,10 @@ export const cardCoverage = pgTable(
     cards: integer("cards").notNull().default(0), // usable cards
     error: text("error"), // why it failed
     llmCallId: ref("llm_call_id").references(() => llmCalls.id), // null when no response came back
+    // Why code doubted a noAssertion, and the response that said it. Kept after a re-extraction, so a
+    // recovered exchange still shows what the first response did. No status removes testimony from Path B.
+    suspicionSignals: text("suspicion_signals").array().notNull().default(sql`'{}'::text[]`),
+    suspectedCallId: ref("suspected_call_id").references(() => llmCalls.id),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

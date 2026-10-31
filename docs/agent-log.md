@@ -952,3 +952,118 @@ Added `benchmark.ts preflight` and full-run measures. No paid calls, no commit.
 ## October 30: full Ellison benchmark (approved, $3.00 limit)
 
 Analysis 11: 300 of 300 pairs, strategy C, `adjudicate-v3`, Path A + B with reused claims. 109.7 s, $1.8867, peak 10, no rate limits or failures, no retries. Sonnet found 0 direct or inferential pairs (288 false positive, 12 insufficient evidence), and only 4 pairs were judged the same event, which points at retrieval precision. 297 of 300 citations verified. Inspection in the benchmark folder. No commit.
+
+## October 30: Milestone 2, hybrid retrieval (no paid calls, no commit)
+
+Built statement-card extraction, the topic map, Path A from cards, the union with 60/40 allocation, the hybrid analysis option, discovery evaluation and `docs/api-contract-v1.md`. All mock models.
+
+What the agent got wrong, and what caught it:
+
+- Milestone 1's `CARDS_JSON_SCHEMA` carried `minLength`, which structured outputs reject and `messages.create` doesn't strip. The first paid call would have failed. Found by checking the API docs before relying on it.
+- The first discovery run scored badly and much of that was the test: distractors contradicted each other (one subject, several months). A later unit test caught a second case of the same bug (subjects repeat every 36, not 108). A distractor has to be a fair negative.
+- Ranking treated "shared person, different date" as a strong signal across unrelated events. Now a signal needs the same event, which is what DESIGN.md says a contradiction needs.
+- Capacity 300 selected only 176 pairs while 495 sat behind the per-exchange cap. Spare capacity now reaches them.
+
+The discovery numbers are development numbers: `topic-rank` changed after seeing results on these suites, so they can't be claimed as held-out recall.
+
+## October 30: statement-card pilot (approved, $0.10 limit)
+
+Four chunks of `cards-v1` with Haiku, two from each Ellison session (depositions 1 and 2, budget `cards-pilot-1`). Cost $0.01576768: 11,525 input, 2,256 cache-write, 6,768 cache-read and 28,531 output tokens. No retry, split, truncation or refusal; largest output 8,368 of 16,000 tokens. No topic map or Sonnet call.
+
+143 cards returned, 141 accepted (98.6% source-grounded), 2 rejected as `source_phrase_not_in_exchange`: one changed a word, one stitched question and answer together. 97 unique exchanges: 94 carded, 3 `no_assertion`, 0 omitted, 0 failed. Migration 0014 was applied to the development database first.
+
+Before the run, two gaps were closed: `--max-chunks` didn't cap calls (a cut-off chunk could split), and `cards` didn't check the deposition belonged to the witness.
+
+Grounding proves the words exist, not that the card reads them correctly. Reading the cards found what the rate can't see:
+
+- 14 of 141 statements are negative, against the positive-form rule; two are `denies` on a negative statement, a double negative.
+- The overlap dedupe never fired: 8 redundant cards on 7 overlap exchanges were reworded, so the normalized statements differ.
+- 45 of 141 cards use predicate `other`, which weakens the entity link.
+- 15 cards in P3173 have the exhibit's title as their event line, too coarse for topics or for `comparable`.
+- 1 card came from an exchange with no witness answer.
+
+The 141 `cards-v1` cards stay stored; `cards-v2` doesn't reuse them.
+
+## October 30: pilot fixes (approved, no API calls)
+
+`cards-v2` adds the prompt rules above. `readCards` now rejects `no_witness_answer` and `negated_denial`, counts other negated statements, and keeps the first chunk's cards on an overlap whatever the wording. `topic-rank-v2` stops predicate `other` from making entity links.
+
+## October 30: `cards-v2` check (approved, $0.10 limit)
+
+The same four chunks with `cards-v2` (budget `cards-pilot-2`). Cost $0.01361878: 11,525 input, 2,405 cache-write, 7,215 cache-read and 24,187 output tokens. No retry, split, truncation or refusal.
+
+131 cards returned: 123 usable, 5 `duplicate_card`, 1 `negated_denial`, 2 `source_phrase_not_in_exchange` (97.6% source-grounded). 97 unique exchanges: 84 carded, 8 `no_assertion`, 4 omitted, 1 failed. Against `cards-v1`: negated statements 15 to 4, the most repeated event line 15 cards to 6, distinct event lines 58 to 78, predicate `other` 32% to 28%, and the no-answer card is gone.
+
+New: 4 omissions, all short document-handling exchanges, one malformed ID in `noAssertion` (`E41X`, counted and ignored), and a card attached to the wrong exchange (rejected). The 11 exchanges carded by v1 but not v2 are mostly procedural; two are borderline (E13, E31). The check is one sample of 97 exchanges.
+
+## October 30: full `cards-v2` extraction (approved, $0.50 limit)
+
+27 calls, budget `cards-full-1`, $0.09550475: 76,324 input, 64,935 cache-read and 174,446 output tokens. No split, truncation, refusal or failed call; largest output 13,593 of 16,000 tokens. It also re-sent the 5 parts the check left omitted or failed.
+
+747 exchanges: 568 carded, 85 `no_assertion`, 78 omitted (10.4%), 16 failed. 856 usable cards; rejected: 25 `negated_denial`, 14 `source_phrase_not_in_exchange`, 3 `invalid_fields`; 87 `duplicate_card`. 95.3% source-grounded. 80 usable statements are still negated (9.3%). Path A has 252 pairs with no topic map (28 also found by Path B); 22 excluded.
+
+The check's reading of omissions was wrong. They are not scattered procedural exchanges: most sit in a few calls that ended normally having returned far too little, including long testimony on Microsoft, SAP and scale. A completed call isn't a complete chunk.
+
+## October 30: thin-chunk check and retry (approved, $0.10 limit)
+
+Added `thinChunks`: a readable response that addressed under half its parts is reported with its call. The retry (budget `cards-retry-1`) cost $0.02746513 over 9 calls: 17,076 input, 2,405 cache-write, 19,240 cache-read and 50,529 output tokens. One chunk was truncated at 16,000 tokens and split automatically, which is why 7 planned chunks became 9 calls.
+
+747 exchanges now: 625 carded, 117 `no_assertion`, 0 omitted, 5 failed. 967 usable cards, 94.9% source-grounded, 87 negated (9.0%). All card work so far: 44 calls, $0.15235634.
+
+The check has a gap. Call 621 listed substantive testimony in `noAssertion` (19 exchanges, 11 with answers over 40 characters), mostly PeopleSoft pricing after the merger. `noAssertion` counts as addressed and a re-run skips it, so neither the check nor a retry can catch it. Across the deposition, 16 `no_assertion` exchanges have answers over 40 characters. Not fixed yet.
+
+## October 30: noAssertion treated as an extraction result (approved, $0.05 limit)
+
+Path B was verified independent of card state. One model-driven gap was closed: card labels used to mark a pair `excluded`; such pairs now rank last and defer with that reason, still eligible. Added `suspected_omission` (migration 0015), screening on answer size, factual language and short answers to factual questions, and targeted re-extraction with two exchanges of context. A repeated `noAssertion` stays suspected.
+
+Call 621, the source of most false `noAssertion`s, was itself a retry of scattered leftovers with no context, so the earlier retry likely caused the problem it was meant to fix.
+
+The screen flagged 35 of 117 `no_assertion` results. Targeted extraction of the 15 long ones (budget `cards-suspect-1`, one call, $0.00447312) recovered 16 usable cards on 12 exchanges, with no rejection. E61, E97 and E222 stay suspected. 747 exchanges now: 637 carded, 82 `no_assertion`, 23 `suspected_omission`, 5 failed, 0 omitted. All card work: 45 calls, $0.15682946. Known screen misses: E1578 and E1388, short answers adopting a fact, are still `no_assertion`.
+
+## October 30: short-answer screen and final targeted retry (approved, inside the $0.05 limit)
+
+The screen no longer lets housekeeping wording hide a fact, and flags short substantive answers and answers whose question is in an earlier part. 62 exchanges were flagged; 59 were sent with context (E61, E97 and E222 had already had their retry). 6 calls, $0.00651888: 11 exchanges recovered, 12 usable cards, 11 rejected. 747 exchanges now: 648 carded, 43 `no_assertion`, 51 `suspected_omission`, 5 failed, 0 omitted. 995 usable cards. All card work: 51 calls, $0.16334834.
+
+Grounding did its job: most rejections were the model attaching phrases from other exchanges in the batch to E149 and E151. `thinChunks` fires on every targeted call, since a repeated noAssertion is not counted as addressed, so it means little there. Answers relying on an earlier question (E162, E223, E365, E369, E392) are still `no_assertion`: reading them needs context the screen doesn't have.
+
+## October 30: first topic map (approved, $0.10 limit)
+
+One Haiku call, budget `topics-map-1`, $0.00712828: 17,539 input, 747 cache-write and 10,562 output tokens, no truncation. Map version 1: 49 topics over 995 cards, 961 assigned (96.6%), 34 unassigned, 7 unknown IDs rejected, 16 duplicates dropped. No near-duplicate names; largest topic 6.1%.
+
+38 of the 49 topics cover one session, and only 15 cards have a secondary topic.
+
+## October 30: first live hybrid analysis (approved, $3.00 limit)
+
+Hybrid per-exchange cap raised to 5; the pair pool keeps 3. A `useStoredCards` option made the run use the stored cards and map, with no Haiku call. Analysis 12: 300 of 300 pairs, 180 Path A and 120 Path B, strategy C, `adjudicate-v3`. $1.9269132, peak 10, no failures. 0 direct or inferential findings; 274 likely compatible, 6 insufficient, 20 for review. Analysis 11 (pair retrieval) also found none. Without labels, this can't distinguish no contradictions from missed ones.
+
+## October 31: multi-model experiment harness (no external model calls)
+
+Built `experiments/multimodel-contradictions/`: shared prompts, one output schema, adapters, a gate that defaults to dry runs, citation verification, comparison and review export. Verified provider facts from their documentation. Token counts are local, because the count-tokens endpoint would upload transcript text. Production code is unchanged. Provider adapters are untested against live services.
+
+## October 31: first synthetic discovery benchmark (approved, arm C $0.75 limit)
+
+Arm C only: Sonnet 5.5 read each fixture's two sessions, one call each, with no retrieval. Probe plus 2 discovery calls, $0.125594. 6 of 7 known contradictions proposed as conflicts, and the seventh located but marked uncertain. Arm A stayed off because OpenCode's terms are unclear on automated use. Arm B had no API key. Arm D has no stored live discovery on these transcripts.
+
+## October 31: full Ellison direct reading (approved, $2.00 limit)
+
+One Sonnet 5.5 call on all 5,603 lines (103,393 input tokens by count_tokens). $0.2183045, 9 seconds, 1,052 output tokens, no truncation or error. 0 proposed contradictions; 2 findings, both compatible. Results in `experiments/multimodel-contradictions/review/ellison-verified.json` (git-ignored). Both findings cite only pages 99-148 of P3171 and 61-129 of P3173, so the run says little about the rest of the testimony. Its `complete` status is the model's own claim.
+
+## October 31: OCR for scanned depositions (approved)
+
+Added local OCR with Tesseract and Poppler (`ingest/ocr.ts`, migration 0016). The text-layer route is unchanged. Tested on all five public Gates excerpts (109 pages).
+
+What the agent got wrong, and what caught it: a fixed gutter position failed on pages the scanner had shifted; the footer's phone number was read as a page number; a hand check against page images found a misread "A." that gave the witness's answer to the attorney, and a gutter digit stored as testimony; a test caught the marker fix rewriting correct text. Confidence scores flagged none of the last two: reading the images did.
+
+## October 31: Gates experiment and first full upload-to-findings run (approved, $2.00 limit)
+
+`gates8a` (Vol. II, August 28, 1998) and `gates8d` (Vol. III, September 2, 1998) were confirmed as separate sessions of one witness from their covers. Both were uploaded through the live API and worker, OCR'd in 8 seconds, and analyzed in hybrid mode (analysis 13): 112 pairs, $0.7124, 75 seconds, no failures, 0 potential contradictions. Direct Sonnet on the same 400 lines: $0.0248, 5 seconds, 1 finding, compatible. Added `GET /depositions/:id/pdf` and `pdfPage` on evidence lines.
+
+Path A contributed no pairs: Haiku flagged 33 of 45 `gates8a` exchanges, and all 9 topics covered one session.
+
+## October 31: frontend brought into v2-backend, browser check (approved)
+
+The frontend's working changes were applied to `v2-backend` as uncommitted edits; nothing is committed, and no git merge happened. Real Chrome against the live API and the real Gates case: OCR labels, per-line confidence, low-confidence flags, the scan dialog at the right PDF page, and the inferred-page warning on screen and in the copied citation all worked, with no console errors. A patch of the backend's earlier state is in the session scratchpad.
+
+## October 31: one pipeline (approved)
+
+Removed the claims pipeline, batching, v1 and the scripts built on them, keeping hybrid and the direct experiment. The compiler caught one mistake: three spike files that looked obsolete are the independent readers behind the PDF accuracy test, so they were restored.

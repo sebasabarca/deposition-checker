@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeCoverage, readCards, type Chunk, type ChunkExchange } from "../../server/src/claims";
+import { addressedShare, isNegated, mergeCoverage, readCards, screenNoAssertion, type Chunk, type ChunkExchange } from "../../server/src/claims";
 
 const exchange = (id: number, question: string, answer: string, over: Partial<ChunkExchange> = {}): ChunkExchange => ({
   id, depositionId: 1, witnessId: 7, kind: "qa",
@@ -30,7 +30,8 @@ describe("readCards", () => {
   });
 
   it("tells a valid zero-card result from silence", () => {
-    const r = readCards(chunk(meeting, yes), reply([], ["E1"]));
+    const housekeeping = exchange(1, "Do you see that?", "Yes.");
+    const r = readCards(chunk(housekeeping, yes), reply([], ["E1"]));
     expect(r.coverage.map((c) => c.status)).toEqual(["no_assertion", "omitted"]);
   });
 
@@ -64,7 +65,97 @@ describe("readCards", () => {
     const empty = exchange(3, "x", "y", { lines: [] });
     const colloquy = exchange(4, "Did you go?", "We met in March.", { kind: "colloquy" });
     const r = readCards(chunk(empty, colloquy), reply([card({ exchangeId: "E3" }), card({ exchangeId: "E4" })]));
-    expect(r.cards.map((c) => c.rejectionReason)).toEqual(["span_unresolved", "not_a_qa_exchange"]);
+    expect(r.cards.map((c) => c.rejectionReason)).toEqual(["no_witness_answer", "not_a_qa_exchange"]);
+  });
+
+  it("rejects a card on an exchange with no witness answer, which is no_assertion, not a failure to retry", () => {
+    const noAnswer = exchange(5, "This will be your deposition.", "x", { lines: [{ id: 50, role: "question", text: "Q. This will be your deposition." }] });
+    const r = readCards(chunk(noAnswer), reply([card({ exchangeId: "E5", sourcePhrase: "This will be your deposition" })]));
+    expect(r.cards[0]).toMatchObject({ status: "rejected", rejectionReason: "no_witness_answer" });
+    expect(r.coverage[0]).toEqual({ exchangeId: 5, status: "no_assertion", cards: 0, error: null });
+  });
+
+  it("rejects a denial of a negative statement, and counts other negatives without rejecting them", () => {
+    const no = exchange(6, "Were there guidelines?", "No.");
+    for (const statement of ["The witness has given no guidelines.", "Guidelines weren't given.", "He cannot recall."]) {
+      expect(readCards(chunk(no), reply([card({ exchangeId: "E6", sourcePhrase: "Were there guidelines", statement, stance: "denies" })])).cards[0].rejectionReason).toBe("negated_denial");
+    }
+    const positive = readCards(chunk(no), reply([card({ exchangeId: "E6", sourcePhrase: "Were there guidelines", statement: "Guidelines were given.", stance: "denies" })]));
+    expect(positive.cards[0].status).toBe("usable");
+    const asserted = readCards(chunk(meeting), reply([card({ statement: "They did not meet in June." })]));
+    expect(asserted.cards[0].status).toBe("usable");
+    expect(isNegated("They did not meet in June.")).toBe(true);
+    expect(isNegated("Nottingham knows the notary.")).toBe(false);
+  });
+
+  it("measures how much of a chunk was addressed, counting no_assertion and rejected cards, never omissions", () => {
+    expect(addressedShare(readCards(chunk(meeting, yes), reply([card()])))).toBe(0.5);
+    const housekeeping = exchange(2, "Do you see that?", "Yes.");
+    expect(addressedShare(readCards(chunk(meeting, housekeeping), reply([card()], ["E2"])))).toBe(1);
+    expect(addressedShare(readCards(chunk(meeting, housekeeping), reply([card({ sourcePhrase: "not there" })], ["E2"])))).toBe(1);
+    expect(addressedShare(readCards(chunk(meeting, yes), reply([card()], ["E2"])))).toBe(0.5); // a doubted noAssertion isn't addressed
+    expect(addressedShare(readCards(chunk(meeting, yes), reply([])))).toBe(0);
+    expect(addressedShare(readCards(chunk(meeting), null))).toBeNull();
+  });
+
+  it("doubts a noAssertion on testimony, and says why, keeping it apart from a confirmed one", () => {
+    const long = exchange(8, "Who would be doing that?", "Probably a specialized telesales organization would be calling existing customers and asking about more seats.");
+    const r = readCards(chunk(long), reply([], ["E8"]));
+    expect(r.coverage[0]).toMatchObject({ status: "suspected_omission", cards: 0, error: null });
+    expect(r.coverage[0].signals).toContain("long_answer");
+  });
+
+  it.each([
+    ["a plain yes adopting a fact", "Has there been a change in your position at the company?", "Yes.", "adopts_or_rejects_question"],
+    ["a plain no rejecting a fact", "Did Ms. Catz approve the PeopleSoft discount?", "No.", "adopts_or_rejects_question"],
+    ["no memory of a fact", "Did you attend the April board meeting?", "I don't recall.", "recollection_of_proposition"],
+    ["a short answer with a figure", "How much was the fee?", "About $2,000 per seat.", "factual_language"],
+    ["a name in a short question", "And that would be Mr. Wall?", "Yes.", "adopts_or_rejects_question"],
+    ["a fact beside housekeeping words", "Below that is an e-mail you were sent from Mr. Phillips, do you see that?", "Yes.", "adopts_or_rejects_question"],
+    ["a figure in a short question", "Was it 40?", "No.", "adopts_or_rejects_question"],
+    ["an answer whose question is in an earlier part", "", "Yes.", "answer_without_question"],
+    ["a fragment answering a fact", "How long has the PeopleSoft support commitment been planned for?", "Ten years", "short_answer_to_factual_question"],
+    ["a short opinion", "He further says that we are not aiming to flout the direction on discounting the suite.", "He wants to win.", "short_answer_to_factual_question"],
+  ])("screens short testimony too: %s", (_n, q, a, signal) => {
+    expect(screenNoAssertion(q, a)).toContain(signal);
+  });
+
+  it.each([
+    ["a document check", "Do you see that?", "Yes."],
+    ["reading a document", "Would you read through those and tell me when you are finished, and I have a couple of questions?", "Okay."],
+    ["a filler question", "All right, sir.", "Okay."],
+    ["no answer at all", "This will be your deposition under that demand.", ""],
+    ["a request to repeat", "Did you approve the contract?", "Could you repeat that?"],
+    ["a clarifying question", "Did Oracle discount the PeopleSoft product line?", "For certain customers?"],
+    ["an answer cut off before it starts", "Did Oracle discount the PeopleSoft product line?", "We --"],
+    ["filler to a long instruction", "Let me ask you to flip through the document to Exhibit 19.", "Okay."],
+  ])("doesn't doubt housekeeping: %s", (_n, q, a) => {
+    expect(screenNoAssertion(q, a)).toEqual([]);
+  });
+
+  it("a carded exchange stays carded whatever another chunk's noAssertion says", () => {
+    const seen = new Set<string>();
+    const carded = new Set<number>();
+    const first = readCards(chunk(meeting), reply([card()]), seen, carded);
+    const second = readCards(chunk(meeting), reply([], ["E1"]), seen, carded);
+    expect(mergeCoverage([1], [first, second])[0]).toMatchObject({ status: "carded", cards: 1 });
+  });
+
+  it("keeps the earlier chunk's cards on an overlap, however a later chunk words them", () => {
+    const seen = new Set<string>();
+    const carded = new Set<number>();
+    const first = readCards(chunk(meeting), reply([card()]), seen, carded);
+    const second = readCards(chunk(meeting), reply([card({ statement: "A meeting took place in March." })]), seen, carded);
+    expect(first.cards[0].status).toBe("usable");
+    expect(second.cards[0]).toMatchObject({ status: "rejected", rejectionReason: "duplicate_card" });
+    expect(second.coverage[0].status).toBe("carded");
+  });
+
+  it("an earlier chunk's rejected card doesn't block a later good one", () => {
+    const seen = new Set<string>();
+    const carded = new Set<number>();
+    readCards(chunk(meeting), reply([card({ sourcePhrase: "words not there" })]), seen, carded);
+    expect(readCards(chunk(meeting), reply([card()]), seen, carded).cards[0].status).toBe("usable");
   });
 
   it.each([["witness", { witnessId: 8 }], ["session", { depositionId: 2 }]])("rejects a source from another %s", (_n, over) => {

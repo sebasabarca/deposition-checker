@@ -99,6 +99,34 @@
       "when": 1793397363005,
       "tag": "0013_statement_cards",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793405761378,
+      "tag": "0014_analysis_retrieval",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793411742998,
+      "tag": "0015_card_suspicion",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793487324995,
+      "tag": "0016_line_ocr_confidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793490193388,
+      "tag": "0017_hybrid_default",
+      "breakpoints": true
     }
   ]
 }

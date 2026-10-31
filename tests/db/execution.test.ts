@@ -1,15 +1,15 @@
-// Strategies, batches and interruption end to end against the test database, with the deterministic
+// Strategies and interruption end to end against the test database, with the deterministic
 // mock model: no request ever leaves this process, which the fetch guard below also checks.
 
 import Anthropic from "@anthropic-ai/sdk";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { BATCH_PROMPT_VERSION, candidateRef, executeAdjudication, STRATEGIES, type StrategyId } from "../../server/src/adjudicate";
+import { executeAdjudication, STRATEGIES, type StrategyId } from "../../server/src/adjudicate";
 import { budgetStatus } from "../../server/src/costs";
 import type { Database } from "../../server/src/db/client";
 import { adjudicationRequests, analyses, budgetReservations, budgets, candidates, depositions, findings, llmCalls, verdicts } from "../../server/src/db/schema";
-import { mockBatch, mockSingle, type MockBehaviour } from "../../server/src/eval/mockModel";
+import { mockSingle, type MockBehaviour } from "../../server/src/eval/mockModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSynthetic } from "../../server/src/eval/syntheticStore";
 import { analysisCost, candidateSetOf, runAnalysis, RUNNER_STALE_MS, type AnalysisProgress } from "../../server/src/jobs";
@@ -52,10 +52,9 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication strategies (Postgres, mock mod
   const budget = async (limitUsd = 20) => (await db.insert(budgets).values({ name: `b-${Math.random()}`, limitUsd }).returning())[0].id;
   const run = async (strategy: StrategyId, behaviour: MockBehaviour = {}, over: Partial<Parameters<typeof executeAdjudication>[1]> = {}) => {
     const single = mockSingle(behaviour);
-    const batch = mockBatch(behaviour);
     const budgetId = over.budgetId ?? (await budget());
-    const result = await executeAdjudication(db, { candidateSet: SET, candidateIds: ids, strategy, budgetId, single, batch, ...over });
-    return { result, single, batch, budgetId };
+    const result = await executeAdjudication(db, { candidateSet: SET, candidateIds: ids, strategy, budgetId, single, ...over });
+    return { result, single, budgetId };
   };
   const requests = () => db.select().from(adjudicationRequests);
   const verdictRows = () => db.select().from(verdicts);
@@ -69,94 +68,6 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication strategies (Postgres, mock mod
     const rows = await verdictRows();
     expect(new Set(rows.map((v) => v.candidateId)).size).toBe(ids.length);
     expect(rows.every((v) => v.requestId !== null)).toBe(true);
-  });
-
-  it.each(["D", "E"] as const)("strategy %s: one charge per batch, one verified finding per candidate", async (s) => {
-    const { result, batch, budgetId } = await run(s, { timeScale: 0.0005 });
-    const size = STRATEGIES[s].candidatesPerRequest;
-    expect(batch.calls).toBe(Math.ceil(ids.length / size));
-    expect(result.peak).toBeLessThanOrEqual(STRATEGIES[s].maxConcurrency);
-    expect(await db.$count(llmCalls)).toBe(batch.calls);
-    expect(await db.$count(verdicts)).toBe(ids.length);
-    expect(await db.$count(findings)).toBe(ids.length);
-    const rows = await db.select().from(findings);
-    expect(rows.every((f) => ["verified", "approximate"].includes(f.evidenceStatus))).toBe(true);
-    const [{ total }] = await db.select({ total: sql<number>`sum(cost_usd)::float` }).from(llmCalls);
-    expect((await budgetStatus(db, budgetId)).spentUsd).toBeCloseTo(total, 6);
-    expect((await verdictRows()).every((v) => v.promptVersion === BATCH_PROMPT_VERSION)).toBe(true);
-    expect((await requests()).every((r) => r.status === "completed" && r.candidateIds.length <= size)).toBe(true);
-  });
-
-  it("strategy P sends the batch format with one candidate per request", async () => {
-    const { batch } = await run("P");
-    expect(batch.calls).toBe(ids.length);
-    expect((await requests()).every((r) => r.candidateIds.length === 1 && r.promptVersion === BATCH_PROMPT_VERSION)).toBe(true);
-  });
-
-  const firstBatchEdited = (edit: NonNullable<MockBehaviour["edit"]>): MockBehaviour => ({ edit: (reply, call) => (call === 1 ? edit(reply, call) : reply) });
-
-  it("a missing verdict leaves its candidate pending, and the others stored", async () => {
-    let dropped = "";
-    await run("D", firstBatchEdited((r) => {
-      dropped = r.verdicts[3].candidateId as string;
-      return { verdicts: r.verdicts.filter((_, i) => i !== 3) };
-    }));
-    const id = Number(dropped.slice(1));
-    expect((await verdictRows()).some((v) => v.candidateId === id)).toBe(false);
-    expect(await db.$count(verdicts)).toBe(ids.length - 1);
-    const [first] = await db.select().from(adjudicationRequests).where(sql`${id} = any(candidate_ids)`);
-    expect(first.status).toBe("partial");
-    expect(first.missingCandidateIds).toEqual([id]);
-  });
-
-  it("a duplicated candidate keeps neither answer", async () => {
-    let doubled = "";
-    await run("D", firstBatchEdited((r) => {
-      doubled = r.verdicts[0].candidateId as string;
-      return { verdicts: [...r.verdicts, r.verdicts[0]] };
-    }));
-    const id = Number(doubled.slice(1));
-    expect((await verdictRows()).some((v) => v.candidateId === id)).toBe(false);
-    const [first] = await db.select().from(adjudicationRequests).where(sql`${id} = any(candidate_ids)`);
-    expect(first.duplicateCandidateIds).toEqual([id]);
-  });
-
-  it("records unknown IDs, and stores cross-candidate and invalid verdicts as invalid with their raw text", async () => {
-    let contaminated = 0;
-    let invalid = 0;
-    await run("D", firstBatchEdited((r) => {
-      const [a, b, c] = r.verdicts;
-      contaminated = Number((a.candidateId as string).slice(1));
-      invalid = Number((b.candidateId as string).slice(1));
-      a.evidenceBId = c.evidenceBId;
-      b.classification = "probably";
-      return { verdicts: [...r.verdicts, { ...c, candidateId: candidateRef(999999) }] };
-    }));
-    const rows = await verdictRows();
-    const bad = rows.find((v) => v.candidateId === contaminated)!;
-    expect(bad.status).toBe("schema_invalid");
-    expect(bad.error).toContain("cross-candidate");
-    expect(bad.raw).toContain("evidenceBId");
-    expect(rows.find((v) => v.candidateId === invalid)!.status).toBe("schema_invalid");
-    expect(await db.$count(findings)).toBe(ids.length - 2);
-    const [first] = await db.select().from(adjudicationRequests).where(sql`${contaminated} = any(candidate_ids)`);
-    expect(first.contaminatedCandidateIds).toEqual([contaminated]);
-    expect(first.unknownCandidateIds).toEqual(["C999999"]);
-    expect(first.status).toBe("partial");
-  });
-
-  it.each([
-    ["invalid JSON", { edit: (_r: unknown, call: number) => (call === 1 ? "not json at all" : (_r as { verdicts: unknown[] })), }, "unparseable"],
-    ["truncated output", { stopReason: (call: number) => (call === 1 ? "max_tokens" : "end_turn") }, "cut_off"],
-    ["a refusal", { stopReason: (call: number) => (call === 1 ? "refusal" : "end_turn") }, "refused"],
-  ] as const)("%s: every candidate of that batch stays pending, the charge is kept and nothing is retried", async (_name, behaviour, kind) => {
-    const { batch } = await run("D", behaviour as MockBehaviour);
-    const failed = (await requests()).filter((r) => r.status === "failed");
-    expect(failed).toHaveLength(1);
-    expect(failed[0].errorKind).toBe(kind);
-    expect(failed[0].llmCallId).not.toBeNull();
-    expect(batch.calls).toBe(Math.ceil(ids.length / 10));
-    expect(await db.$count(verdicts)).toBe(ids.length - failed[0].candidateIds.length);
   });
 
   it("a rate limit pauses dispatch for its retry-after, releases the reservation, and is not retried", async () => {
@@ -209,9 +120,9 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication strategies (Postgres, mock mod
 
   it("a candidate is never sent twice for the same prompt unless asked", async () => {
     const budgetId = await budget();
-    await run("D", {}, { budgetId });
-    const again = await run("D", {}, { budgetId });
-    expect(again.batch.calls).toBe(0);
+    await run("C", {}, { budgetId });
+    const again = await run("C", {}, { budgetId });
+    expect(again.single.calls).toBe(0);
     expect(await db.$count(verdicts)).toBe(ids.length);
   });
 
@@ -220,7 +131,7 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication strategies (Postgres, mock mod
       const [c] = await db.select().from(candidates).where(eq(candidates.candidateSet, WEBB_SUITE.set)).limit(1);
       const [d] = await db.select().from(depositions).where(eq(depositions.id, c.depositionA));
       const s = STRATEGIES[strategy];
-      const [a] = await db.insert(analyses).values({ caseId: d.caseId, witnessId: d.witnessId, depositionA: c.depositionA, depositionB: c.depositionB, mode: "live", promptVersion: strategy === "D" ? BATCH_PROMPT_VERSION : "adjudicate-v3", effort: "medium", maxCandidates: 300, budgetUsd: 5, status, strategy, candidatesPerRequest: s.candidatesPerRequest, maxConcurrency: s.maxConcurrency }).returning();
+      const [a] = await db.insert(analyses).values({ caseId: d.caseId, witnessId: d.witnessId, depositionA: c.depositionA, depositionB: c.depositionB, mode: "live", promptVersion: "adjudicate-v3", effort: "medium", maxCandidates: 300, budgetUsd: 5, status, strategy, candidatesPerRequest: s.candidatesPerRequest, maxConcurrency: s.maxConcurrency }).returning();
       const budgetId = await budget(5);
       await db.update(analyses).set({ budgetId }).where(eq(analyses.id, a.id));
       return { id: a.id, budgetId };
@@ -228,18 +139,17 @@ describe.skipIf(!TEST_DATABASE_URL)("adjudication strategies (Postgres, mock mod
     const load = async (id: number) => (await db.select().from(analyses).where(eq(analyses.id, id)))[0];
     const live = (behaviour: MockBehaviour = {}) => {
       const single = mockSingle(behaviour);
-      const batch = mockBatch(behaviour);
-      return { single, batch, deps: { liveAdjudicator: () => single, liveBatchAdjudicator: () => batch } };
+      return { single, deps: { liveAdjudicator: () => single, useStoredCards: true } };
     };
 
-    it("counts a batch's cost once, however many candidates shared it", async () => {
-      const { id } = await create("D");
-      const { deps, batch } = live();
+    it("counts each request's cost once", async () => {
+      const { id } = await create("C");
+      const { deps, single } = live();
       expect(await runAnalysis(db, id, deps)).toBe("completed");
       const a = await load(id);
       const cost = await analysisCost(db, a);
       const [{ total }] = await db.select({ total: sql<number>`sum(cost_usd)::float` }).from(llmCalls);
-      expect(cost.calls).toBe(batch.calls);
+      expect(cost.calls).toBe(single.calls);
       expect(cost.actualUsd).toBeCloseTo(total, 6);
     });
 

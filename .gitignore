@@ -10,3 +10,8 @@ data/eval/review/
 reports/benchmarks/
 # Impeccable's 17 MB engine binary: its launcher restores it, checked against engine-checksums.txt
 .agents/skills/impeccable/scripts/bin/
+# Multi-model experiment: transcripts, prompts, results and local approvals never go in git
+experiments/multimodel-contradictions/work/
+experiments/multimodel-contradictions/runs/
+experiments/multimodel-contradictions/review/
+experiments/multimodel-contradictions/config/approval.local.json

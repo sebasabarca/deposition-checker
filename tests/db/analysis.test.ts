@@ -154,19 +154,19 @@ describe.skipIf(!TEST_DATABASE_URL)("analysis jobs (Postgres, no model calls)", 
     expect({ verdicts: await db.$count(verdicts), findings: await db.$count(findings), candidates: await db.$count(candidates) }).toEqual(before);
   });
 
-  it("live without credentials: blocked before any call, with its candidates saved", async () => {
+  it("live without credentials: blocked before any call or retrieval", async () => {
     const id = await create("live");
     expect(await runAnalysis(db, id, { liveAdjudicator: () => null })).toBe("blocked_credentials");
     const a = await load(id);
     expect(a.error).toMatch(/ALLOW_PAID_CALLS/);
-    expect((a.progress as AnalysisProgress).candidates!.selected).toBeGreaterThan(0);
+    expect((a.progress as AnalysisProgress).candidates).toBeUndefined();
     expect(await db.$count(llmCalls)).toBe(0);
   });
 
   it("live: adjudicates every selected candidate under the budget and reports the recorded cost", async () => {
     const model = fakeModel();
     const id = await create("live", 3, 4);
-    expect(await runAnalysis(db, id, { liveAdjudicator: () => model })).toBe("completed");
+    expect(await runAnalysis(db, id, { liveAdjudicator: () => model, useStoredCards: true })).toBe("completed");
     const a = await load(id);
     expect((a.progress as AnalysisProgress).adjudicated).toBe(4);
     expect(model.calls).toBe(4);
@@ -181,13 +181,13 @@ describe.skipIf(!TEST_DATABASE_URL)("analysis jobs (Postgres, no model calls)", 
     // the next worst case no longer fits in $0.15.
     const model = fakeModel("answer", 7000);
     const id = await create("live", 0.15, 4);
-    expect(await runAnalysis(db, id, { liveAdjudicator: () => model })).toBe("blocked_budget");
+    expect(await runAnalysis(db, id, { liveAdjudicator: () => model, useStoredCards: true })).toBe("blocked_budget");
     expect(model.calls).toBe(1);
     expect((await setFindings(id)).length).toBe(1);
     const a = await load(id);
     await db.update(budgets).set({ limitUsd: 1 }).where(eq(budgets.id, a.budgetId!));
     await db.update(analyses).set({ status: "queued" }).where(eq(analyses.id, id));
-    expect(await runAnalysis(db, id, { liveAdjudicator: () => model })).toBe("completed");
+    expect(await runAnalysis(db, id, { liveAdjudicator: () => model, useStoredCards: true })).toBe("completed");
     expect(model.calls).toBe(4); // the first candidate isn't adjudicated again
     expect((await budgetStatus(db, a.budgetId!)).reservedUsd).toBe(0);
   });
@@ -195,18 +195,18 @@ describe.skipIf(!TEST_DATABASE_URL)("analysis jobs (Postgres, no model calls)", 
   it("live: an invalid model response is stored and counted, and never retried automatically", async () => {
     const model = fakeModel("invalid");
     const id = await create("live", 3, 2);
-    expect(await runAnalysis(db, id, { liveAdjudicator: () => model })).toBe("completed");
+    expect(await runAnalysis(db, id, { liveAdjudicator: () => model, useStoredCards: true })).toBe("completed");
     expect((await db.select().from(verdicts)).map((v) => v.status)).toEqual(["schema_invalid", "schema_invalid"]);
     expect(await db.$count(findings)).toBe(0);
     await db.update(analyses).set({ status: "adjudicating" }).where(eq(analyses.id, id));
-    await runAnalysis(db, id, { liveAdjudicator: () => model });
+    await runAnalysis(db, id, { liveAdjudicator: () => model, useStoredCards: true });
     expect(model.calls).toBe(2);
   });
 
   it("live: fails after repeated call failures, counting each possibly billed request in full", async () => {
     const model = fakeModel("throw");
     const id = await create("live", 3, 10);
-    expect(await runAnalysis(db, id, { liveAdjudicator: () => model })).toBe("failed");
+    expect(await runAnalysis(db, id, { liveAdjudicator: () => model, useStoredCards: true })).toBe("failed");
     expect(model.calls).toBe(3);
     const a = await load(id);
     expect(a.error).toMatch(/3 model calls failed in a row/);

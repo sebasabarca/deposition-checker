@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Badge, Button, Card, Empty, Loading, cx } from "../components/ui";
-import { FindingView } from "../components/FindingView";
+// The overview of one analysis: what ran, how much of it was assessed, and every finding. Opening a
+// finding goes to the workbench.
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CircleDollarSign, GitCompareArrows, Hourglass, Plus, ScanSearch, ShieldCheck } from "lucide-react";
+import { FindingRegister } from "../components/FindingRegister";
+import { Alert, Badge, Button, buttonClass, Card, cx, Empty, Loading, Metric, ModelMark, PageHeader } from "../components/ui";
 import { api } from "../lib/api";
-import { ANALYSIS_STATUS, CLASSIFICATION, formatDate, formatUsd, PRIORITY, scoreLabel } from "../lib/labels";
+import { ACTIVE_STATUSES, candidateCoverage, isActive } from "../lib/insights";
+import { ANALYSIS_STATUS, formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, FindingGroup, FindingGroups, FindingSummary } from "../types";
+import type { AnalysisView, FindingGroups } from "../types";
 
-const ACTIVE = ["queued", "parsing", "retrieving", "adjudicating"];
+const ACTIVE: string[] = ACTIVE_STATUSES;
 
-export function AnalysisPage({ id, findingId }: { id: number; findingId: number | null }) {
+export function AnalysisPage({ id }: { id: number }) {
   const [analysis, setAnalysis] = useState<AnalysisView | null>(null);
   const [groups, setGroups] = useState<FindingGroups | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +21,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
     api.analysis(id).then((r) => setAnalysis(r.analysis)).catch((e: Error) => setError(e.message));
   }, [id]);
   useEffect(load, [load]);
-  const active = !!analysis && ACTIVE.includes(analysis.status);
+  const active = !!analysis && isActive(analysis.status);
   usePoll(active, 2000, load);
   // Findings are fetched again whenever their count changes, so new ones appear while it runs.
   const total = analysis?.findings.total;
@@ -24,34 +29,50 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
     if (total === undefined) return;
     api.findings(id).then(setGroups).catch((e: Error) => setError(e.message));
   }, [id, total]);
-
-  // Open the first finding of the first non-empty section when none is chosen.
-  const first = groups?.groups.find((g) => g.findings.length > 0)?.findings[0];
-  const selected = findingId ?? first?.id ?? null;
-  // On narrow screens the finding is shown below the list: bring it into view when one is chosen.
-  const detailRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (findingId !== null && window.matchMedia("(max-width: 1279px)").matches) detailRef.current?.scrollIntoView({ block: "start" });
-  }, [findingId]);
+  const findings = useMemo(() => groups?.groups.flatMap((g) => g.findings).map((f) => ({ ...f, analysisId: id })) ?? [], [groups, id]);
 
   if (error) return <Alert title="This analysis couldn't be loaded">{error}</Alert>;
   if (!analysis) return <Loading />;
   const [a, b] = analysis.depositions;
+  const coverage = candidateCoverage(analysis.progress);
+  const s = ANALYSIS_STATUS[analysis.status];
 
   return (
-    <div className="space-y-5">
-      <div>
-        <a href={href.case(analysis.caseId)} className="text-sm text-slate-600 hover:text-slate-900">← Case</a>
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{a.witness}</h1>
-          <Badge tone={ANALYSIS_STATUS[analysis.status].tone}>{ANALYSIS_STATUS[analysis.status].label}</Badge>
-          {analysis.mode === "demo" && <Badge tone="accent" title="No model was called for this analysis">Demo: no model calls</Badge>}
+    <>
+      <PageHeader
+        above={
+          <div className="flex flex-wrap items-center gap-space-xs text-label-md text-on-surface-variant">
+            <a href={href.analyses()} className="hover:text-secondary">Analyses</a>
+            <span aria-hidden className="text-outline-variant">/</span>
+            <a href={href.case(analysis.caseId)} className="hover:text-secondary">Case</a>
+            <span aria-hidden className="text-outline-variant">•</span>
+            <span>Witness: {a.witness}</span>
+          </div>
+        }
+        title="Cross-session analysis"
+        description={`Session A: ${formatDate(a.takenOn)}${a.originalFilename ? ` (${a.originalFilename})` : ""} · Session B: ${formatDate(b.takenOn)}${b.originalFilename ? ` (${b.originalFilename})` : ""}`}
+        actions={
+          <>
+            <Badge tone={s.tone} dot>{s.label}</Badge>
+            {analysis.mode === "demo" && <Badge tone="accent" title="No model was called for this analysis">Demo: no model calls</Badge>}
+            <a href={href.case(analysis.caseId)} className={buttonClass("primary")}><Plus aria-hidden className="size-4" />New analysis</a>
+          </>
+        }
+      />
+
+      <Card className="flex items-start gap-space-md p-space-md">
+        <span className="flex size-9 flex-none items-center justify-center rounded-lg bg-surface-container-high text-secondary"><ShieldCheck aria-hidden className="size-5" /></span>
+        <div>
+          <p className="font-semibold">How to read these results</p>
+          <p className="text-body-sm text-on-surface-variant">Quotations are stored transcript lines. Code checks each citation and calculates each score. The category and explanation are <ModelMark>model interpretation</ModelMark> and need a person's review.</p>
         </div>
-        <p className="text-sm text-slate-600">
-          Session A: {formatDate(a.takenOn)}
-          {a.originalFilename ? ` (${a.originalFilename})` : ""} · Session B: {formatDate(b.takenOn)}
-          {b.originalFilename ? ` (${b.originalFilename})` : ""}
-        </p>
+      </Card>
+
+      <div className="grid gap-space-md sm:grid-cols-2 xl:grid-cols-4">
+        <Metric icon={GitCompareArrows} value={coverage.total.toLocaleString()} label="Candidate pairs" note="Found across both sessions" />
+        <Metric icon={ScanSearch} value={coverage.assessed.toLocaleString()} label="Assessed" note={`${analysis.progress.replayed ?? 0} stored · ${analysis.progress.fixture ?? 0} examples · ${analysis.progress.adjudicated ?? 0} live`} />
+        <Metric icon={Hourglass} value={(coverage.unassessed + coverage.deferred).toLocaleString()} label="Not assessed" note={`${coverage.unassessed.toLocaleString()} unassessed · ${coverage.deferred.toLocaleString()} deferred`} />
+        <Metric icon={CircleDollarSign} value={analysis.mode === "demo" ? "$0.00" : formatUsd(analysis.cost.actualUsd)} label="Model cost" note={analysis.mode === "demo" ? "Demo: no model calls" : `${analysis.cost.calls} calls of a ${formatUsd(analysis.cost.budgetUsd)} budget`} />
       </div>
 
       <Progress analysis={analysis} onResume={(budget) => api.resume(analysis.id, budget).then(load).catch((e: Error) => setError(e.message))} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />
@@ -63,15 +84,14 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
             : "No candidate pair produced a finding."}
         </Empty>
       )}
-
       {groups && analysis.findings.total > 0 && (
-        <div className="grid gap-5 xl:grid-cols-[22rem_1fr]">
-          <FindingList groups={groups} analysisId={analysis.id} selected={selected} />
-          <div ref={detailRef} className="min-w-0 scroll-mt-4">{selected !== null ? <FindingView key={selected} id={selected} /> : <Empty title="Choose a finding" />}</div>
-        </div>
+        <section className="space-y-space-md">
+          <h2 className="text-headline-lg">Findings</h2>
+          <FindingRegister findings={findings} emptyTitle="No findings to review" />
+        </section>
       )}
       {!groups && analysis.findings.total > 0 && <Loading label="Loading findings…" />}
-    </div>
+    </>
   );
 }
 
@@ -100,22 +120,23 @@ function Progress({ analysis, onResume, onCancel }: { analysis: AnalysisView; on
   ];
   return (
     <Card>
-      <ol className="grid gap-px overflow-hidden rounded-lg bg-slate-100 sm:grid-cols-4">
-        {steps.map((s, i) => {
+      <h2 className="sr-only">Progress</h2>
+      <ol className="grid gap-space-md p-space-md sm:grid-cols-2 xl:grid-cols-4">
+        {steps.map((s) => {
           const done = reached(s.key) && (analysis.status === "completed" || order.indexOf(s.key) < order.indexOf(analysis.status));
           const current = analysis.status === s.key;
           return (
-            <li key={s.key} className="bg-white px-4 py-3">
-              <p className={cx("text-xs font-semibold uppercase tracking-wide", done ? "text-emerald-700" : current ? "text-sky-700" : "text-slate-400")}>
-                Step {i + 1} · {done ? "Done" : current ? "In progress" : stopped && reached(s.key) ? "Stopped" : "Pending"}
+            <li key={s.key} className="rounded-lg bg-surface-container-low px-space-md py-3">
+              <p className={cx("text-label-sm font-semibold", done ? "text-success" : current ? "text-secondary" : "text-on-surface-variant")}>
+                {done ? "Done" : current ? "In progress" : stopped && reached(s.key) ? "Stopped" : "Pending"}
               </p>
-              <p className="mt-0.5 text-sm font-medium text-slate-900">{s.title}</p>
-              <p className="mt-0.5 text-xs text-slate-600">{s.detail}</p>
+              <p className="mt-0.5 font-semibold">{s.title}</p>
+              <p className="mt-0.5 text-label-sm text-on-surface-variant">{s.detail}</p>
             </li>
           );
         })}
       </ol>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-600">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-space-md pb-space-md text-label-sm text-on-surface-variant">
         <span>
           {analysis.mode === "live"
             ? `Model calls: ${analysis.cost.calls} · cost ${formatUsd(analysis.cost.actualUsd)} of a ${formatUsd(analysis.cost.budgetUsd)} budget`
@@ -131,7 +152,7 @@ function Progress({ analysis, onResume, onCancel }: { analysis: AnalysisView; on
         </span>
       </div>
       {analysis.error && (
-        <div className="space-y-3 border-t border-slate-100 p-4">
+        <div className="space-y-3 px-space-md pb-space-md">
           <Alert tone={analysis.status === "failed" ? "bad" : "warn"} title={ANALYSIS_STATUS[analysis.status].label}>
             {analysis.error}
           </Alert>
@@ -146,57 +167,5 @@ function Progress({ analysis, onResume, onCancel }: { analysis: AnalysisView; on
         </div>
       )}
     </Card>
-  );
-}
-
-const GROUP_HELP: Record<FindingGroup, string> = {
-  contradictions: "Verified passages the assessment treats as conflicting. Each still needs your judgement.",
-  compatible: "Passages that look related but can both be true. Shown so nothing is hidden.",
-  insufficient: "The two passages alone don't allow a judgement.",
-  review: "Couldn't be scored: an unverified quotation, a self-contradictory assessment, or missing context.",
-};
-
-function FindingList({ groups, analysisId, selected }: { groups: FindingGroups; analysisId: number; selected: number | null }) {
-  return (
-    <nav aria-label="Findings" className="space-y-4">
-      {groups.groups.map((g) => (
-        <Card key={g.group}>
-          <div className="border-b border-slate-100 px-4 py-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-900">{g.label}</h2>
-              <Badge tone={g.group === "contradictions" ? "contradiction" : "neutral"}>{g.findings.length}</Badge>
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500">{GROUP_HELP[g.group]}</p>
-          </div>
-          {g.findings.length === 0 ? (
-            <p className="px-4 py-3 text-xs text-slate-400">None.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {g.findings.map((f) => (
-                <FindingItem key={f.id} f={f} href={href.analysis(analysisId, f.id)} active={f.id === selected} />
-              ))}
-            </ul>
-          )}
-        </Card>
-      ))}
-    </nav>
-  );
-}
-
-function FindingItem({ f, href: link, active }: { f: FindingSummary; href: string; active: boolean }) {
-  return (
-    <li>
-      <a href={link} aria-current={active ? "true" : undefined} className={cx("block px-4 py-3 hover:bg-slate-50", active && "bg-indigo-50/60 ring-1 ring-inset ring-indigo-200")}>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-sm font-medium text-slate-900">{CLASSIFICATION[f.classification]}</span>
-          {f.priority !== "low" && <Badge tone={f.priority === "high" ? "contradiction" : f.priority === "needs_context" ? "warn" : "neutral"}>{PRIORITY[f.priority]}</Badge>}
-          {f.source !== "model" && <Badge tone="accent">{f.source === "fixture" ? "Example" : "Stored"}</Badge>}
-        </div>
-        <p className="mt-1 text-xs text-slate-600">
-          A {f.a.ref ?? "?"} ↔ B {f.b.ref ?? "?"} · {scoreLabel(f)}
-        </p>
-        <p className="mt-1 line-clamp-2 text-xs text-slate-500">{f.explanation}</p>
-      </a>
-    </li>
   );
 }

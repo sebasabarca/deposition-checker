@@ -138,6 +138,21 @@ describe.skipIf(!TEST_DATABASE_URL)("deposition endpoints (Postgres)", () => {
     });
   });
 
+  describe("GET /api/depositions/:id/pdf", () => {
+    it("serves the original file inline, for checking OCR against the scan", async () => {
+      const file = pdf("scan");
+      const { deposition } = (await (await upload(file)).json()) as { deposition: { id: number } };
+      const res = await fetch(`${api.url}/api/depositions/${deposition.id}/pdf`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/pdf");
+      expect(res.headers.get("content-disposition")).toBe("inline");
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(file);
+    });
+    it("answers 404 for an unknown deposition", async () => {
+      expect((await fetch(`${api.url}/api/depositions/999999/pdf`)).status).toBe(404);
+    });
+  });
+
   describe("POST /api/depositions/:id/retry", () => {
     it("re-queues a failed deposition once, and refuses any other status", async () => {
       const { deposition } = await (await upload(pdf("deposition"))).json();

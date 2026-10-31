@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Alert, Badge, Button, Card, CardHeader, Empty, Field, inputClass, Loading } from "../components/ui";
+import { Alert, Badge, Button, Card, CardHeader, cx, Empty, Field, inputClass, Loading, PageHeader, tdClass, thClass } from "../components/ui";
 import { api } from "../lib/api";
 import { ANALYSIS_STATUS } from "../lib/labels";
 import { href } from "../lib/router";
@@ -14,34 +14,40 @@ export function CasesPage() {
   useEffect(load, [load]);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
-      <Card>
-        <CardHeader title="Cases" description="Each case holds the witnesses, deposition sessions and analyses for one matter." />
-        <div className="p-5">
-          {error && <Alert>{error}</Alert>}
+    <>
+      <PageHeader title="Cases" description="Each case holds the witnesses, deposition sessions and analyses for one matter." />
+      <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Card className="overflow-hidden">
+          {error && <div className="p-space-md"><Alert>{error}</Alert></div>}
           {!cases && !error && <Loading />}
-          {cases && cases.length === 0 && <Empty title="No cases yet">Create a case to upload depositions.</Empty>}
+          {cases && cases.length === 0 && <div className="p-space-md"><Empty title="No cases yet">Create a case to upload depositions.</Empty></div>}
           {cases && cases.length > 0 && (
-            <ul className="divide-y divide-slate-100">
-              {cases.map((c) => (
-                <li key={c.id}>
-                  <a href={href.case(c.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-md px-2 py-3 hover:bg-slate-50">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-slate-900">{c.name}</p>
-                      <p className="text-sm text-slate-600">
-                        {c.witnesses} {c.witnesses === 1 ? "witness" : "witnesses"} · {c.depositions} {c.depositions === 1 ? "deposition" : "depositions"} · {c.lastAnalysis ? `${c.findings} ${c.findings === 1 ? "finding" : "findings"} in the latest analysis` : "not analysed yet"}
-                      </p>
-                    </div>
-                    {c.lastAnalysis ? <Badge tone={ANALYSIS_STATUS[c.lastAnalysis.status].tone === "active" ? "active" : ANALYSIS_STATUS[c.lastAnalysis.status].tone}>Last analysis: {ANALYSIS_STATUS[c.lastAnalysis.status].label}</Badge> : <Badge>No analysis yet</Badge>}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[40rem] border-collapse text-left">
+                <thead className="bg-surface-container-low text-on-surface-variant">
+                  <tr>{["Case", "Witnesses", "Depositions", "Findings", "Latest analysis"].map((h) => <th key={h} className={thClass}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {cases.map((c) => {
+                    const s = c.lastAnalysis && ANALYSIS_STATUS[c.lastAnalysis.status];
+                    return (
+                      <tr key={c.id} className="group transition-colors hover:bg-surface-container-low/70">
+                        <td className={tdClass}><a href={href.case(c.id)} className="font-semibold group-hover:text-secondary">{c.name}</a></td>
+                        <td className={cx(tdClass, "tabular-nums")}>{c.witnesses}</td>
+                        <td className={cx(tdClass, "tabular-nums")}>{c.depositions}</td>
+                        <td className={cx(tdClass, "tabular-nums")}>{c.lastAnalysis ? c.findings : "—"}</td>
+                        <td className={tdClass}>{s ? <Badge tone={s.tone} dot>{s.label}</Badge> : <Badge>No analysis yet</Badge>}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
-      </Card>
-      <NewCase onCreated={(id) => (window.location.hash = href.case(id))} />
-    </div>
+        </Card>
+        <NewCase onCreated={(id) => (window.location.hash = href.case(id))} />
+      </div>
+    </>
   );
 }
 
@@ -66,7 +72,7 @@ function NewCase({ onCreated }: { onCreated: (id: number) => void }) {
   return (
     <Card className="self-start">
       <CardHeader title="New case" />
-      <form onSubmit={submit} className="space-y-4 p-5">
+      <form onSubmit={submit} className="space-y-4 px-space-lg pb-space-lg">
         <Field label="Case name">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="U.S. v. Oracle" required maxLength={200} />
         </Field>

@@ -7,10 +7,9 @@
 // with evidence status wrong_reference or unsupported and no score, never dropped.
 
 import { and, eq, inArray } from "drizzle-orm";
-import { EXTRACTOR_VERSION } from "../claims";
 import { closeFailed, inputTokenBound, maxRequestCost, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
-import { candidates, claims, depositions, findings, verdicts } from "../db/schema";
+import { candidates, depositions, findings, verdicts } from "../db/schema";
 import { timed, timedSync } from "../timing";
 import { assess, type Assessed } from "./assess";
 import { classifyFailure, closeRequest, openRequest, type RequestContext } from "./requests";
@@ -44,19 +43,6 @@ export function readVerdict(stopReason: string | null, text: string | null, prom
   const result = PROMPTS[promptVersion].schema.safeParse(json);
   if (!result.success) return { status: "schema_invalid", parsed: null, error: result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ").slice(0, 2000) };
   return { status: "valid", parsed: result.data, error: null };
-}
-
-// Path A's usable claims on the packet's parts, for the extraction-disagreement check.
-async function taggedClaims(db: Database, packet: Packet) {
-  const partIds = [...packet.a.partIds, ...packet.b.partIds];
-  const rows = await db
-    .select({ exchangeId: claims.exchangeId, keyPhrase: claims.keyPhrase, epistemic: claims.epistemic })
-    .from(claims)
-    .where(and(inArray(claims.exchangeId, partIds), eq(claims.extractorVersion, EXTRACTOR_VERSION), inArray(claims.status, ["verified", "approximate"])));
-  return {
-    a: rows.filter((r) => r.exchangeId !== null && packet.a.partIds.includes(r.exchangeId)),
-    b: rows.filter((r) => r.exchangeId !== null && packet.b.partIds.includes(r.exchangeId)),
-  };
 }
 
 export type AdjudicationResult = {
@@ -143,7 +129,8 @@ export async function storeVerdict(
 ): Promise<Omit<AdjudicationResult, "candidateId" | "llmCallId" | "costUsd">> {
   const { candidateId, packet, read } = input;
   const [deposition] = await db.select({ caseId: depositions.caseId }).from(depositions).where(eq(depositions.id, packet.a.depositionId));
-  const claimsOnPacket = read.parsed ? await taggedClaims(db, packet) : null;
+  // shortcut: the disagreement check took the removed claims; feed it statement cards if it proves useful.
+  const claimsOnPacket = read.parsed ? { a: [], b: [] } : null;
   const assessed = read.parsed && claimsOnPacket ? timedSync("adjudicate.assess", () => assess(packet, read.parsed!, claimsOnPacket)) : null;
 
   return timed("adjudicate.persist_finding", () => db.transaction(async (tx) => {

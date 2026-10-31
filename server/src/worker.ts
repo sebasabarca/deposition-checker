@@ -3,6 +3,7 @@
 
 import "dotenv/config";
 import { anthropicAdjudicator, type PromptVersion } from "./adjudicate";
+import { anthropicCardModel, anthropicTopicModel } from "./claims";
 import type { Effort } from "./adjudicate/prompt";
 import { connect } from "./db/client";
 import { createAnalysisQueues, createIngestQueues, paidCallsAllowed, startAnalysisWorkers, startBoss, startIngestWorkers } from "./jobs";
@@ -17,6 +18,7 @@ async function main() {
   await startAnalysisWorkers(boss, db, {
     signal: shuttingDown.signal,
     liveAdjudicator: (a) => (paidCallsAllowed(process.env) ? anthropicAdjudicator(a.effort as Effort, a.promptVersion as PromptVersion) : null),
+    liveCardModels: () => (paidCallsAllowed(process.env) ? { cards: anthropicCardModel(), topics: anthropicTopicModel() } : null),
   });
   console.log(`Worker running (ingest and analysis; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"})`);
 

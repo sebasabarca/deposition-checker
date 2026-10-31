@@ -1,0 +1,2 @@
+ALTER TABLE "analyses" ADD COLUMN "retrieval" text DEFAULT 'pair' NOT NULL;--> statement-breakpoint
+ALTER TABLE "analyses" ADD CONSTRAINT "analyses_retrieval_check" CHECK ("analyses"."retrieval" in ('pair', 'hybrid'));

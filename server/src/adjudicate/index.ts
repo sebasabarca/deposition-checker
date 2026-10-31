@@ -3,13 +3,12 @@
 // call is reserved against a budget and recorded with recordCall.
 
 export { assess, disagrees, type Assessed, type Checks, type TaggedClaim } from "./assess";
-export { findCandidate, persistCandidates } from "./candidates";
-export { anthropicAdjudicator, anthropicBatchAdjudicator, type Adjudicator, type AdjudicatorReply, type BatchAdjudicator, type CallOptions } from "./model";
-export { BATCH_JSON_SCHEMA, BATCH_LIMITS, BATCH_PROMPT_VERSION, BATCH_SYSTEM_PROMPT, batchFits, BatchOutput, batchOutputTokens, candidateRef, estimateBatchInputTokens, formatBatch, isDegenerate, planBatches, readBatch, type AcceptedVerdict, type BatchLimits, type BatchPlan, type BatchReading, type PlannedBatch, type RejectedVerdict } from "./batch";
+export { findCandidate, persistPool } from "./candidates";
+export { anthropicAdjudicator, type Adjudicator, type AdjudicatorReply, type CallOptions } from "./model";
 export { executeAdjudication, STOP_CHECK_MS, type ExecutionCounts, type ExecutionInput, type ExecutionResult } from "./execute";
 export { runPool, type PoolControl, type PoolResult, type PoolStep } from "./pool";
 export { classifyFailure, DEFAULT_RETRY_AFTER_MS } from "./requests";
-export { DEFAULT_STRATEGY, MAX_CONCURRENCY, PRODUCTION_STRATEGY_IDS, STRATEGIES, STRATEGY_IDS, usesBatchFormat, type Strategy, type StrategyId } from "./strategies";
+export { DEFAULT_STRATEGY, MAX_CONCURRENCY, PRODUCTION_STRATEGY_IDS, STRATEGIES, STRATEGY_IDS, type Strategy, type StrategyId } from "./strategies";
 export { CONTEXT_LINES, evidenceOf, exchangeIdOf, formatPacket, loadPacket, packetRecord, untilGap, type Packet, type PacketExchange, type PacketLine } from "./packet";
 export { checkConsistency, CONSISTENCY_ISSUES, resolvesToContext, type ConsistencyIssue } from "./consistency";
 export { ADJUDICATION_MODEL, DEFAULT_EFFORT, DEFAULT_PROMPT_VERSION, EFFORTS, MAX_OUTPUT_TOKENS, PROMPT_VERSION, PROMPT_VERSIONS, PROMPTS, SYSTEM_PROMPT, type Effort, type PromptVersion } from "./prompt";

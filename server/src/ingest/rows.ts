@@ -30,6 +30,7 @@ export function toLineRows(depositionId: number, attributed: AttributedLine[]): 
       speakerName: line.speakerName,
       rawText: line.rawText,
       normText: normalize(line.rawText),
+      ocrConfidence: line.ocrConfidence ?? null,
     };
   });
 }

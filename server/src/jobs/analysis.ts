@@ -1,8 +1,9 @@
 // What the worker does with an analysis job: compare two depositions of one witness, end to end,
 // with the existing stages (nothing here re-implements them):
 //   parsing       wait until both depositions are read (the ingest worker reads them)
-//   retrieving    Path A (stored claims only: no new tagging) and Path B, kept to the two
-//                 depositions, merged and selected, saved as the candidate set `analysis-<id>`
+//   retrieving    in live mode, statement cards and the topic map first (cached, so
+//                 usually free; their failure never stops Path B), then Path A from cards, Path B,
+//                 and the union with its 60/40 allocation, saved as the candidate set `analysis-<id>`
 //   adjudicating  each selected candidate in rank order: live mode calls the model under the
 //                 analysis budget; demo mode replays stored verdicts and never calls a model
 //   completed / failed / blocked_budget / blocked_credentials
@@ -14,12 +15,12 @@
 
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import { executeAdjudication, persistCandidates, replayCandidate, usesBatchFormat, type Adjudicator, type BatchAdjudicator, type StrategyId } from "../adjudicate";
-import { EXTRACTOR_VERSION } from "../claims";
+import { executeAdjudication, persistPool, replayCandidate, type Adjudicator, type StrategyId } from "../adjudicate";
+import { buildTopicMap, CARD_EXTRACTOR_VERSION, extractCards, type ClaimModel } from "../claims";
 import { budgetStatus, reconcileStale } from "../costs";
 import type { Database } from "../db/client";
 import { analyses, candidates, depositions, findings, verdicts } from "../db/schema";
-import { findPathA, findPathB, mergeCandidates, selectCandidates } from "../retrieve";
+import { findPathB, findTopicPairs, hybridRetrievalVersion, unionCandidates, type Pool } from "../retrieve";
 import { timed, timedSync } from "../timing";
 
 export const MAX_CONSECUTIVE_FAILURES = 3;
@@ -30,7 +31,10 @@ const PATH_B_MODE = "rare_terms" as const;
 
 export type Analysis = typeof analyses.$inferSelect;
 export type AnalysisProgress = {
-  candidates?: { selected: number; deferred: number };
+  candidates?: { selected: number; deferred: number; excluded?: number };
+  pool?: Pool["counts"]; // hybrid only: provenance and allocation
+  retrievalVersion?: string; // hybrid only
+  cardsStage?: { sessions: number; cards: number; rejected: number; failedChunks: number; thinChunks: number; stopped: string | null; topics: string; topicError: string | null }; // hybrid live only
   adjudicated?: number; // live model verdicts stored
   replayed?: number; // demo: stored model verdicts replayed
   fixture?: number; // demo: prepared synthetic verdicts
@@ -48,7 +52,10 @@ export type AnalysisProgress = {
 // The model for a live analysis, or null when it can't be used: no API key, or paid calls not
 // allowed on this server (ALLOW_PAID_CALLS=true). Demo analyses never ask.
 // signal: the worker is shutting down.
-export type AnalysisDeps = { liveAdjudicator: (a: Analysis) => Adjudicator | null; liveBatchAdjudicator?: (a: Analysis) => BatchAdjudicator | null; signal?: AbortSignal };
+// liveCardModels: Haiku for cards and the topic map in a live hybrid analysis, or null when it can't be used.
+// useStoredCards: a live hybrid run retrieves from the cards and map already stored, calling neither Haiku model.
+export type AnalysisDeps = { liveAdjudicator: (a: Analysis) => Adjudicator | null; liveCardModels?: (a: Analysis) => CardModels | null; useStoredCards?: boolean; signal?: AbortSignal };
+export type CardModels = { cards: ClaimModel; topics: ClaimModel };
 
 // Live analyses call the model only when the server has a key and is explicitly allowed to pay for
 // calls. Without both, a live analysis stops as blocked_credentials before any call.
@@ -66,17 +73,49 @@ async function setProgress(db: Database, id: number, progress: AnalysisProgress)
   await db.update(analyses).set({ progress: sql`${analyses.progress} || ${JSON.stringify(progress)}::jsonb`, updatedAt: new Date() }).where(eq(analyses.id, id));
 }
 
-async function retrieve(db: Database, a: Analysis) {
-  const set = candidateSetOf(a.id);
-  const [existing] = await db.select({ id: candidates.id }).from(candidates).where(eq(candidates.candidateSet, set)).limit(1);
-  if (existing) return;
-  const pair = new Set([a.depositionA, a.depositionB]);
-  const within = (x: { a: { depositionId: number }; b: { depositionId: number } }) => pair.has(x.a.depositionId) && pair.has(x.b.depositionId);
-  const pathA = (await timed("retrieve.path_a", () => findPathA(db, { witnessId: a.witnessId, depositionId: a.depositionB, extractorVersion: EXTRACTOR_VERSION }), { analysisId: a.id })).filter(within);
+const hasCandidates = async (db: Database, id: number) => (await db.select({ id: candidates.id }).from(candidates).where(eq(candidates.candidateSet, candidateSetOf(id))).limit(1)).length > 0;
+
+// Cards for both sessions, then the witness's topic map, under the analysis's budget. Stored work is
+// reused, so a repeat costs nothing. Nothing here can fail the analysis: Path A loses what is missing,
+// counted in progress, and Path B carries on.
+async function prepareCards(db: Database, a: Analysis, models: CardModels) {
+  const stage = { sessions: 0, cards: 0, rejected: 0, failedChunks: 0, thinChunks: 0, stopped: null as string | null, topics: "not_built", topicError: null as string | null };
+  const shouldStop = async () => (await db.select({ cancel: analyses.cancelRequestedAt }).from(analyses).where(eq(analyses.id, a.id)))[0].cancel !== null;
+  // A chunk can take longer than RUNNER_STALE_MS, so the runner checks in on a timer here.
+  const beat = setInterval(() => void db.update(analyses).set({ runnerSeenAt: new Date() }).where(eq(analyses.id, a.id)).catch(() => undefined), 5000);
+  try {
+    for (const depositionId of [a.depositionA, a.depositionB]) {
+      const done = await extractCards(db, depositionId, models.cards, { budgetId: a.budgetId ?? undefined, jobId: a.id, shouldStop });
+      stage.sessions++;
+      stage.cards += done.cards.usable;
+      stage.rejected += done.cards.rejected;
+      stage.failedChunks += done.chunks.failed;
+      stage.thinChunks += done.thinChunks.length;
+      stage.stopped = done.stopped;
+      if (done.stopped) break;
+    }
+    if (!stage.stopped) {
+      const map = await buildTopicMap(db, a.witnessId, models.topics, { budgetId: a.budgetId ?? undefined, jobId: a.id });
+      stage.topics = map.status;
+      stage.topicError = map.error;
+    }
+  } catch (error) {
+    stage.stopped = "error";
+    stage.topicError = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+  } finally {
+    clearInterval(beat);
+  }
+  await setProgress(db, a.id, { cardsStage: stage });
+}
+
+async function retrieveHybrid(db: Database, a: Analysis) {
+  const within = (x: { a: { depositionId: number }; b: { depositionId: number } }) => [a.depositionA, a.depositionB].includes(x.a.depositionId) && [a.depositionA, a.depositionB].includes(x.b.depositionId);
+  const pathA = await timed("retrieve.path_a", () => findTopicPairs(db, { witnessId: a.witnessId, depositionIds: [a.depositionA, a.depositionB], extractorVersion: CARD_EXTRACTOR_VERSION }), { analysisId: a.id });
   const pathB = (await timed("retrieve.path_b", () => findPathB(db, { witnessId: a.witnessId, depositionId: a.depositionB, mode: PATH_B_MODE }), { analysisId: a.id })).pairs.filter(within);
-  const { selected, deferred } = timedSync("retrieve.merge_rank", () => selectCandidates(mergeCandidates({ claims: pathA, fulltext: pathB }), { budget: a.maxCandidates }), { analysisId: a.id });
-  if (selected.length + deferred.length > 0) await timed("retrieve.persist_candidates", () => persistCandidates(db, { set, witnessId: a.witnessId, selected, deferred, jobId: a.id }), { analysisId: a.id });
-  await setProgress(db, a.id, { candidates: { selected: selected.length, deferred: deferred.length } });
+  const pool = timedSync("retrieve.union", () => unionCandidates({ topics: pathA.pairs, fulltext: pathB }, { capacity: a.maxCandidates }), { analysisId: a.id });
+  const retrievalVersion = hybridRetrievalVersion({ extractorVersion: CARD_EXTRACTOR_VERSION, pathBMode: PATH_B_MODE });
+  if (pool.candidates.length > 0) await timed("retrieve.persist_candidates", () => persistPool(db, { set: candidateSetOf(a.id), witnessId: a.witnessId, pool, retrievalVersion, mapVersion: pathA.mapVersion, jobId: a.id }), { analysisId: a.id });
+  await setProgress(db, a.id, { candidates: { selected: pool.counts.selected, deferred: pool.counts.deferred, excluded: pool.counts.excluded }, pool: pool.counts, retrievalVersion });
 }
 
 // The selected candidates of this analysis that have no verdict yet, in rank order.
@@ -132,7 +171,7 @@ export async function runAnalysis(db: Database, analysisId: number, deps: Analys
   if (!(await claimRunner(db, a.id, runnerId))) return "duplicate_delivery";
   // A live analysis found already adjudicating was running when its worker died. Paid work only
   // starts from an explicit start or resume (status queued), so a restart can never resume spending.
-  if (a.mode === "live" && a.status === "adjudicating") {
+  if (a.mode === "live" && (a.status === "adjudicating" || a.status === "retrieving")) {
     await interruptAnalysis(db, a, "The worker stopped while this analysis was running. Completed findings are kept; a request in flight is counted in full in case it was billed. Resume to continue.");
     return "interrupted";
   }
@@ -166,14 +205,22 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
   }
 
   await update(db, a.id, { status: "retrieving", startedAt: a.startedAt ?? new Date(), error: null });
-  await retrieve(db, a);
+  {
+    const prepared = await hasCandidates(db, a.id);
+    const models = a.mode === "live" && !prepared && !deps.useStoredCards ? (deps.liveCardModels?.(a) ?? null) : null;
+    // Hybrid candidates can't be rebuilt once saved, so a live run with no paid models stops before retrieving.
+    if (a.mode === "live" && !prepared && !models && !deps.useStoredCards) {
+      await update(db, a.id, { status: "blocked_credentials", error: "Live analysis needs an Anthropic API key and ALLOW_PAID_CALLS=true on the server. No model was called.", finishedAt: new Date() });
+      return "blocked_credentials";
+    }
+    if (models) await prepareCards(db, a, models);
+    if (!prepared) await retrieveHybrid(db, a);
+  }
 
   // Live mode needs a model the server is allowed to pay for; checked before any call.
   const strategy = a.strategy as StrategyId;
-  const batched = usesBatchFormat(strategy);
-  const single = a.mode === "live" && !batched ? deps.liveAdjudicator(a) : null;
-  const batch = a.mode === "live" && batched ? (deps.liveBatchAdjudicator?.(a) ?? null) : null;
-  if (a.mode === "live" && !single && !batch) {
+  const single = a.mode === "live" ? deps.liveAdjudicator(a) : null;
+  if (a.mode === "live" && !single) {
     await update(db, a.id, {
       status: "blocked_credentials",
       error: "Live analysis needs an Anthropic API key and ALLOW_PAID_CALLS=true on the server. No model was called; the candidates are saved.",
@@ -212,8 +259,7 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
     strategy,
     maxConcurrency: a.maxConcurrency,
     budgetId: a.budgetId!,
-    single: single ?? undefined,
-    batch: batch ?? undefined,
+    single: single!,
     signal: deps.signal,
     allowRepeat: progress.retryInvalid,
     maxConsecutiveFailures: MAX_CONSECUTIVE_FAILURES,
@@ -250,6 +296,7 @@ export async function analysisCost(db: Database, a: Analysis) {
   const [calls] = await db.execute<{ calls: number; cost: string | null }>(sql`
     select count(*)::int as calls, sum(l.cost_usd) as cost from llm_calls l
     where l.id in (select v.llm_call_id from verdicts v join candidates c on c.id = v.candidate_id where c.candidate_set = ${candidateSetOf(a.id)})
+      or (l.job_id = ${a.id} and l.stage in ('statement_cards', 'topic_mapping'))
   `).then((r) => r.rows);
   const budget = a.budgetId === null ? null : await budgetStatus(db, a.budgetId);
   return { calls: calls.calls, actualUsd: calls.cost === null ? 0 : Number(calls.cost), budget };
