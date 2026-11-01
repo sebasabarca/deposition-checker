@@ -22,6 +22,24 @@
       "contextTokens": 1000000, "contextVerified": true, "maxOutputTokens": 128000, "versionVerified": true, "version": "claude-sonnet-5-5 (pinned snapshot)",
       "rates": { "input": 2, "cacheRead": 0.1, "cacheWrite": 2.5, "output": 10 }, "cacheSupport": "explicit cache_control"
     },
+    "E1": {
+      "label": "Event path, indexing and alignment: Claude Haiku 5.5",
+      "provider": "anthropic", "model": "claude-haiku-5-5", "kind": "external", "effort": "low",
+      "contextTokens": 200000, "contextVerified": false, "maxOutputTokens": null, "versionVerified": false,
+      "rates": { "input": 0.1, "cacheRead": 0.01, "cacheWrite": 0.125, "output": 0.5 }, "ratesNote": "Prompts under 100,000 tokens, as in server/src/costs/pricing.ts.", "cacheSupport": "explicit cache_control"
+    },
+    "E2": {
+      "label": "Event path, comparison: Claude Sonnet 5.5",
+      "provider": "anthropic", "model": "claude-sonnet-5-5", "kind": "external", "effort": "medium",
+      "contextTokens": 1000000, "contextVerified": true, "maxOutputTokens": 128000, "versionVerified": true, "version": "claude-sonnet-5-5 (pinned snapshot)",
+      "rates": { "input": 2, "cacheRead": 0.1, "cacheWrite": 2.5, "output": 10 }, "cacheSupport": "explicit cache_control"
+    },
+    "F": {
+      "label": "Claude Fable 5.1, Anthropic API, xhigh effort, asked to take its time",
+      "provider": "anthropic", "model": "claude-fable-5-1", "kind": "external", "effort": "xhigh", "thinking": true, "systemExtra": "think-carefully.md",
+      "contextTokens": 1000000, "contextVerified": true, "maxOutputTokens": 128000, "versionVerified": true, "version": "claude-fable-5-1",
+      "rates": { "input": 10, "cacheRead": 0.25, "cacheWrite": 12.5, "output": 50 }, "ratesNote": "Thinking is billed as output. No refusal fallback: a switch of model would invalidate the arm.", "cacheSupport": "explicit cache_control"
+    },
     "D": {
       "label": "Existing hybrid pipeline (Path A + B, Sonnet adjudication, verification, scoring)",
       "provider": "stored", "kind": "stored", "note": "Read from stored results. Unchanged production code; never re-run by this harness."

@@ -12,6 +12,7 @@ import { contentWords } from "../../../server/src/verify";
 import { clusterFindings, discoverySummary, isProposedConflict, pairAccuracy, pairAgreement, recovered, type ArmFinding, type HumanLabel, type PairRow, type Target } from "./compare";
 import { discoveryPrompt, pairPrompt, prompt, refOf, ROOT, sha, type Dataset, type Line, type PacketSide, type PairPacket, type Session } from "./data";
 import { costUsd, estimate, type ArmConfig } from "./estimate";
+import { alignPrompt, AlignOutput, chunksOf, comparePrompt, CompareOutput, coverage, jsonSchema, mapPrompt, MapOutput, mockAlign, mockEvents, parseWith, placeEvents, reachesComparison, readGroups, type PlacedEvent } from "./events";
 import { canAfford, gateFailure, ledgerOf, type Approval } from "./gate";
 import { parseOutput, RUN_OUTPUT_JSON_SCHEMA } from "./schemas";
 import { verifyFinding } from "./verify";
@@ -136,12 +137,12 @@ const spentBy = (armId: string) => ledgerOf(runsOf().map((r) => ({ arm: r.manife
 
 type Call = Awaited<ReturnType<typeof import("./providers.js")["adapterFor"]>>;
 // One job, one attempt. Everything the provider returned is kept, errors included.
-async function attempt(call: Call, job: { id: string; datasetId: string }, req: { system: string; user: string; maxTokens: number }, dir: string, manifest: Manifest, arm: ArmConfig, worstCallUsd: number) {
+async function attempt(call: Call, job: { id: string; datasetId: string }, req: { system: string; user: string; maxTokens: number; schema?: Record<string, unknown> }, dir: string, manifest: Manifest, arm: ArmConfig, worstCallUsd: number, parse: (text: string | null) => { output: unknown; error: string | null } = parseOutput) {
   const started = performance.now();
   manifest.calls++;
   try {
     const reply = await call(req);
-    const { output, error } = parseOutput(reply.text);
+    const { output, error } = parse(reply.text);
     write(join(dir, "raw", `${job.id}.json`), { job: job.id, datasetId: job.datasetId, reply, output, error, wallMs: Math.round(performance.now() - started) });
     for (const k of ["input", "output", "cacheRead", "cacheWrite"] as const) manifest.usage[k] += reply.usage[k];
     manifest.costUsd += costUsd(arm.rates!, reply.usage);
@@ -197,7 +198,7 @@ async function run() {
   const used = spentBy(armId);
   const kind = jobs.some((j) => j.kind === "real") ? "real" : "synthetic";
   const blocked = gateFailure({ arm: armId, experiment, kind, calls: used.calls + plan.calls, worstCaseUsd: used.costUsd + used.uncertainUsd + plan.worstCaseUsd, fits: plan.fits }, approval, process.env, flag("execute"));
-  const system = prompt("system.md");
+  const system = prompt("system.md") + (arm.systemExtra ? prompt(arm.systemExtra) : "");
   if (blocked) {
     const dir = join(WORK, "dry-run", `${experiment}-${dataset}-${armId}`);
     mkdirSync(dir, { recursive: true });
@@ -261,8 +262,8 @@ function collect() {
   const packets = new Map(read<PairPacket[]>(join(WORK, "pairs.json")).map((p) => [p.pairId, p]));
   for (const r of runsOf().filter((x) => x.manifest.experiment !== "probe")) {
     for (const file of readdirSync(join(r.dir, "raw")).filter((f) => !f.endsWith(".error.json"))) {
-      const raw = read<{ datasetId: string; output: { findings: ArmFinding["finding"][] } | null }>(join(r.dir, "raw", file));
-      if (!raw.output) continue;
+      const raw = read<{ datasetId: string; output: { findings?: ArmFinding["finding"][] } | null }>(join(r.dir, "raw", file));
+      if (!raw.output?.findings) continue;
       const packet = packets.get(raw.datasetId);
       const dataset: Dataset = packet
         ? { id: packet.pairId, kind: packet.kind, witness: packet.witness, sessions: [{ label: "A", description: packet.a.description, lines: [...packet.a.before, ...packet.a.lines, ...packet.a.after] }, { label: "B", description: packet.b.description, lines: [...packet.b.before, ...packet.b.lines, ...packet.b.after] }] }
@@ -322,7 +323,93 @@ function schemas() {
   console.log(`Words in the system prompt: ${contentWords(prompt("system.md")).length}. Schema written.`);
 }
 
-const commands: Record<string, () => unknown> = { prepare, dataset, estimates, preflight, probe, run, armd: armD, compare, subject: subjectExport, schemas };
+// The event path, one stage at a time, so each stage's real cost is known before the next is approved.
+const STAGES = {
+  map: { arm: "E1", maxTokens: 16000, expected: 1500, concurrency: 5, schema: MapOutput },
+  align: { arm: "E1", maxTokens: 16000, expected: 6000, concurrency: 1, schema: AlignOutput },
+  compare: { arm: "E2", maxTokens: 4000, expected: 1200, concurrency: 5, schema: CompareOutput },
+} as const;
+const EVENTS_SYSTEM = "You index and compare sworn deposition testimony for a lawyer. You never decide that a witness lied.";
+const eventsDir = (dataset: string) => join(WORK, "events", dataset);
+type MapJob = { session: "A" | "B"; chunk: number };
+
+function placedOf(d: Dataset, outputs: { session: "A" | "B"; chunk: number; output: MapOutput | null }[]) {
+  let events: PlacedEvent[] = [];
+  const report = d.sessions.map((s) => {
+    const chunks = chunksOf(s.lines);
+    const placed = placeEvents(s, chunks, chunks.map((_, c) => outputs.find((o) => o.session === s.label && o.chunk === c)?.output ?? null));
+    events = [...events, ...placed.events];
+    return { session: s.label, events: placed.events.length, rejected: placed.rejected, failedChunks: placed.failedChunks, coverage: coverage(s, placed.events) };
+  });
+  return { events, report };
+}
+
+async function eventsCommand() {
+  const [dataset, stage] = [option("dataset")!, option("stage") as keyof typeof STAGES];
+  const config = STAGES[stage];
+  if (!config) throw new Error("--stage is map, align or compare.");
+  const d = read<Dataset>(join(WORK, "datasets", `${dataset}.json`));
+  const folder = eventsDir(dataset);
+  mkdirSync(folder, { recursive: true });
+  const mapped = () => placedOf(d, read<{ session: "A" | "B"; chunk: number; output: MapOutput | null }[]>(join(folder, "map.json")));
+  const groupsOf = () => readGroups(read<AlignOutput>(join(folder, "align.json")), mapped().events);
+  const skip = Number(option("skip") ?? 0);
+  const all: { id: string; user: string; meta?: MapJob }[] =
+    stage === "map" ? d.sessions.flatMap((s) => chunksOf(s.lines).map((chunk, c) => ({ id: `map-${s.label}-${c}`, user: mapPrompt(d, s, chunk), meta: { session: s.label, chunk: c } })))
+    : stage === "align" ? [{ id: "align", user: alignPrompt(d, mapped().events) }]
+    : groupsOf().comparable.map((g) => ({ id: `compare-${g.id}`, user: comparePrompt(d, g) }));
+  const jobs = all.slice(skip, skip + Number(option("take") ?? all.length)); // slices let the gate apply a hard cap as real costs arrive
+  const arm = CONFIG.arms[config.arm];
+  const schema = jsonSchema(config.schema);
+  const system = stage === "compare" ? prompt("system.md") : EVENTS_SYSTEM;
+  const experiment = `events-${stage}`;
+  const plan = estimate(arm, jobs.map((j) => j.user.length + system.length + JSON.stringify(schema).length), { charsPerToken: CONFIG.planning.charsPerToken, expectedOutput: config.expected, maxOutput: config.maxTokens });
+  const approval = approvalOf();
+  const used = spentBy(config.arm);
+  const blocked = gateFailure({ arm: config.arm, experiment, kind: d.kind, calls: used.calls + plan.calls, worstCaseUsd: used.costUsd + used.uncertainUsd + plan.worstCaseUsd, fits: plan.fits }, approval, process.env, flag("execute"));
+  if (blocked) return console.log(JSON.stringify({ stage, calls: plan.calls, largestInputTokens: plan.largestInputTokens, inputTokens: plan.inputTokens, expectedUsd: plan.expectedUsd, worstCaseUsd: plan.worstCaseUsd, used, noCallMade: blocked }));
+  const { adapterFor } = await import("./providers.js");
+  const call = adapterFor(arm);
+  const { runId, dir, manifest } = startRun(config.arm, arm, experiment, dataset, system, config.maxTokens);
+  const cap = approval!.arms[config.arm].maxUsd - used.costUsd - used.uncertainUsd;
+  const parse = parseWith(config.schema as never);
+  const queue = [...jobs];
+  await Promise.all(Array.from({ length: config.concurrency }, async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      // Calls in flight count at their worst case, so concurrency can't cross the cap.
+      if (!canAfford(manifest.costUsd + manifest.uncertainUsd, plan.worstCallUsd * Math.min(config.concurrency, queue.length + 1), cap)) {
+        manifest.stopped = "budget";
+        return;
+      }
+      await attempt(call, { id: job.id, datasetId: d.id }, { system, user: job.user, maxTokens: config.maxTokens, schema }, dir, manifest, arm, plan.worstCallUsd, parse);
+    }
+  }));
+  manifest.finishedAt = new Date().toISOString();
+  write(join(dir, "manifest.json"), manifest);
+  const output = (id: string) => (existsSync(join(dir, "raw", `${id}.json`)) ? read<{ output: unknown }>(join(dir, "raw", `${id}.json`)).output : null);
+  if (stage === "map") write(join(folder, "map.json"), jobs.map((j) => ({ ...j.meta, output: output(j.id) })));
+  if (stage === "align") write(join(folder, "align.json"), output("align"));
+  console.log(`Run ${runId}: ${manifest.calls} calls, $${manifest.costUsd.toFixed(4)}, ${manifest.failures.length} failures, stopped ${manifest.stopped}.`);
+  if (stage === "map") console.log(JSON.stringify(mapped().report));
+  if (stage === "align") {
+    const g = groupsOf();
+    console.log(JSON.stringify({ comparable: g.comparable.length, oneSided: g.oneSided.length, leftOut: g.leftOut.length, unknownIds: g.unknownIds.length }));
+  }
+}
+
+// Free plumbing check on the synthetic sets. Says nothing about how well Haiku or Sonnet would do.
+function eventsMock() {
+  const targets = read<Record<string, Target[]>>(join(WORK, "synthetic-targets.json"));
+  for (const [id, list] of Object.entries(targets)) {
+    const d = read<Dataset>(join(WORK, "datasets", `${id}.json`));
+    const events = mockEvents(d);
+    const { comparable } = readGroups(mockAlign(events, contentWords), events);
+    const reached = list.filter((t) => comparable.some((g) => reachesComparison(g, d, t))).map((t) => t.id);
+    console.log(JSON.stringify({ id, targets: list.length, reached: reached.length, comparisons: comparable.length, largestPrompt: Math.max(...comparable.map((g) => comparePrompt(d, g).length)) }));
+  }
+}
+
+const commands: Record<string, () => unknown> = { prepare, dataset, estimates, preflight, probe, run, armd: armD, compare, subject: subjectExport, schemas, events: eventsCommand, "events-mock": eventsMock };
 const command = commands[process.argv[2]];
 if (!command) throw new Error(`Commands: ${Object.keys(commands).join(", ")}`);
 Promise.resolve(command()).catch((error) => {

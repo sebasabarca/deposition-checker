@@ -10,14 +10,15 @@ import type { ArmConfig } from "./estimate";
 import { RUN_OUTPUT_JSON_SCHEMA } from "./schemas";
 
 export type Reply = { raw?: unknown; rateLimitHeaders?: Record<string, string>; text: string | null; stopReason: string | null; modelReported: string | null; usage: { input: number; output: number; cacheRead: number; cacheWrite: number }; schemaEnforced: boolean };
-export type Request = { system: string; user: string; maxTokens: number };
+export type Request = { system: string; user: string; maxTokens: number; schema?: Record<string, unknown> };
 export type Adapter = (req: Request) => Promise<Reply>;
 
-const anthropic = (arm: ArmConfig): Adapter => async ({ system, user, maxTokens }) => {
+const anthropic = (arm: ArmConfig): Adapter => async ({ system, user, maxTokens, schema = RUN_OUTPUT_JSON_SCHEMA }) => {
   const stream = new Anthropic({ maxRetries: 0 }).messages.stream({
     model: arm.model!, max_tokens: maxTokens,
     system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-    output_config: { effort: (arm.effort ?? "medium") as "medium", format: { type: "json_schema", schema: RUN_OUTPUT_JSON_SCHEMA } },
+    output_config: { effort: (arm.effort ?? "medium") as "low" | "medium" | "xhigh", format: { type: "json_schema", schema } },
+    ...(arm.thinking ? { thinking: { type: "adaptive" as const, display: "summarized" as const } } : {}),
     messages: [{ role: "user", content: user }],
   });
   const { response } = await stream.withResponse();

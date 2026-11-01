@@ -14,7 +14,7 @@ export type PairPacket = { pairId: string; kind: "real" | "synthetic"; witness: 
 export const refOf = (page: number, line: number) => `${page}:${String(line).padStart(2, "0")}`;
 const show = (l: Line) => `${l.ref} ${l.text}`;
 export const renderLines = (lines: readonly Line[]) => lines.map(show).join("\n");
-const fill = (template: string, values: Record<string, string>) => template.replace(/\{\{(\w+)\}\}/g, (_, k: string) => {
+export const fill = (template: string, values: Record<string, string>) => template.replace(/\{\{(\w+)\}\}/g, (_, k: string) => {
   if (!(k in values)) throw new Error(`No value for {{${k}}}.`);
   return values[k];
 });

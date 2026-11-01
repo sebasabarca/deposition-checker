@@ -1,6 +1,6 @@
 // Token, fit and cost estimates from local character counts. Pure: no tokenizer call, no upload.
 export type Rates = { input: number; cacheRead: number; cacheWrite: number; output: number };
-export type ArmConfig = { label: string; provider: string; model?: string; kind: string; contextTokens?: number; contextVerified?: boolean; maxOutputTokens?: number | null; rates?: Rates; effort?: string };
+export type ArmConfig = { label: string; provider: string; model?: string; kind: string; contextTokens?: number; contextVerified?: boolean; maxOutputTokens?: number | null; rates?: Rates; effort?: string; thinking?: boolean; systemExtra?: string };
 export type Estimate = { calls: number; inputTokens: number; largestInputTokens: number; expectedUsd: number; worstCaseUsd: number; worstCallUsd: number; fits: boolean; fitNote: string };
 
 export const costUsd = (r: Rates, u: { input: number; output: number; cacheRead?: number; cacheWrite?: number }) => (u.input * r.input + u.output * r.output + (u.cacheRead ?? 0) * r.cacheRead + (u.cacheWrite ?? 0) * r.cacheWrite) / 1e6;

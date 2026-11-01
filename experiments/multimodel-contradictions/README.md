@@ -71,3 +71,14 @@ All arms receive the same 40 packets: both passages with 5 context lines each si
 - Arm A: install OpenCode and sign in. Confirm with a synthetic prompt whether the agent prompt replaces OpenCode's own, that no tool runs, and that `parseOpencodeEvents` matches real output. It is written from the documentation, not tested against the CLI.
 - Arm B: create a DeepSeek account and set `DEEPSEEK_API_KEY`. Its adapter is also untested against the live API.
 - Arm D on synthetic data needs its own approved run of the existing pipeline; the fixtures have no cards.
+
+## Event path (arms E1, E2)
+
+Indexes each session's events with Haiku, aligns them across sessions, then has Sonnet compare one event at a time, detail by detail. Run the stages in order; each one without `--execute` prints its estimate and makes no call.
+
+| Command | What it does |
+|---|---|
+| `… events --dataset <id> --stage map\|align\|compare [--execute]` | One stage. `map` and `align` write to `work/events/<id>/`; `compare` writes to `runs/` |
+| `… events-mock` | Free plumbing check on the synthetic sets with rule-based stand-ins. It says nothing about model quality |
+
+Stages use the same gate as the other arms, under the experiment names `events-map`, `events-align` and `events-compare`. Alignment favours inclusion, because the comparison discards wrong matches. Coverage, rejected spans, one-sided events and ids left out are reported, never dropped.
