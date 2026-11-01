@@ -40,7 +40,7 @@ export type Validation = {
   failedPages: number[];
   reasons: string[]; // why the deposition is not ready; empty when it is
   // Present when the text came from OCR: this text is a reading of a scan, not the file's own text.
-  ocr?: { engine: string; meanConfidence: number | null; lowConfidenceWords: number; annotations: { pdfPage: number; text: string }[]; noiseWords: number; coverPages: number[]; inferredPages: number[]; markersCorrected: number };
+  ocr?: { engine: string; meanConfidence: number | null; lowConfidenceWords: number; annotations: { pdfPage: number; text: string }[]; noiseWords: number; coverPages: number[]; inferredPages: number[]; markersCorrected: number; pipesCorrected: number };
   pages: PageValidation[];
 };
 

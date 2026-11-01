@@ -78,7 +78,7 @@ type DepositionView = {
   status: DepositionStatus; error: string | null; ingestRun: number; parserVersion: string
   pageCount: number | null; needsOcrPages: number[]; blankPages: number[]
   validation: { layout: string; pages: Record<string, number>; failedPages: number[]; reasons: unknown
-    ocr: { engine: string; meanConfidence: number | null; lowConfidenceWords: number; annotations: { pdfPage: number; text: string }[]; noiseWords: number; coverPages: number[]; inferredPages: number[]; markersCorrected: number } | null // NEW
+    ocr: { engine: string; meanConfidence: number | null; lowConfidenceWords: number; annotations: { pdfPage: number; text: string }[]; noiseWords: number; coverPages: number[]; inferredPages: number[]; markersCorrected: number; pipesCorrected: number } | null // NEW
   } | null
   stored: { lines: number; exchanges: number; parts: number }
   createdAt: string

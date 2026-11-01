@@ -55,6 +55,7 @@ async function readScanned(pdf: ExtractedPdf, data: Uint8Array, ocr: OcrReader):
     coverPages: pages.filter((p) => p.ocr.coverPage).map((p) => p.pdfPage),
     inferredPages,
     markersCorrected: pages.reduce((n, p) => n + p.ocr.markersCorrected, 0),
+    pipesCorrected: pages.reduce((n, p) => n + p.ocr.pipesCorrected, 0),
   };
   const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), SCANNED_25_V1) : null;
   return { parserVersion: PARSER_VERSION, pdf: { pageCount: pdf.pageCount, pages }, validation, exchanges };
@@ -83,10 +84,20 @@ export async function readDeposition(data: Uint8Array, layout: LayoutProfile = E
       },
     };
   }
-  const scanned = pdf.pages.length > 0 && pdf.pages.every((p) => !p.hasText) ? await readScanned(pdf, data, ocr) : null;
-  if (scanned && !("unavailable" in scanned)) return scanned;
+  if (pdf.pages.length > 0 && pdf.pages.every((p) => !p.hasText)) {
+    const scanned = await readScanned(pdf, data, ocr);
+    if (!("unavailable" in scanned)) return scanned;
+    const validation = timedSync("ingest.validate", () => validateDeposition(pdf.pages, layout));
+    validation.reasons.push(scanned.unavailable);
+    return { parserVersion: PARSER_VERSION, pdf, validation, exchanges: null };
+  }
   const validation = timedSync("ingest.validate", () => validateDeposition(pdf.pages, layout));
-  if (scanned) validation.reasons.push(scanned.unavailable);
+  // A text layer no page of which fits is often a scanner's own OCR: read the scan itself instead, and
+  // keep the result only if it does better. A file that fits in part stays as it was.
+  if (validation.counts.text === 0 && validation.counts.failed > 0) {
+    const scanned = await readScanned(pdf, data, ocr);
+    if (!("unavailable" in scanned) && scanned.validation.counts.text > 0) return scanned;
+  }
   const exchanges = validation.status === "ready" ? timedSync("ingest.build_exchanges", () => buildExchangeParts(pdf.pages.flatMap((p) => p.lines), layout)) : null;
   return { parserVersion: PARSER_VERSION, pdf, validation, exchanges };
 }

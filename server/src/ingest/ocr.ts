@@ -6,8 +6,8 @@
 // validation rather than moving a citation. Handwriting between lines belongs to no line, and is
 // counted, never merged into testimony. Every line keeps its confidence.
 //
-// shortcut: only the 25-line layout with a left gutter and the page number at the bottom right is
-// supported, as on the Gates scans. Other layouts fail validation; add a profile when one arrives.
+// shortcut: only the 25-line layout with a left gutter and the page number at the right, bottom (the
+// Gates scans) or top (the January 6 Committee transcripts), is supported. Other layouts fail validation.
 
 import { execFile } from "node:child_process";
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
@@ -49,13 +49,14 @@ const PAGE_WIDTH = 612;
 // so position decides: a short token here is a marker even when OCR misread it ("AL", "0.").
 const MARKER_COLUMN = { min: GUTTER_EDGE + 53, max: GUTTER_EDGE + 93 };
 const MISREAD_MARKER: [RegExp, string][] = [[/^[QO0][.,:;'’]?$/, "Q."], [/^[A4][.,:;'’LlIi1]?$/, "A."]];
-const MIN_GRID_DIGITS = 10;
+const MIN_GRID_DIGITS = 5;
 const ROW_FIT = 0.33; // share of the line spacing a word may sit from its row
 const NOISE_CONFIDENCE = 60; // a symbol-only word below this is a speck on the scan
 export const LOW_WORD_CONFIDENCE = 60;
 
+export type Grid = { first: number; spacing: number };
 export type OcrWord = { left: number; top: number; width: number; height: number; confidence: number; text: string };
-export type OcrStats = { meanConfidence: number | null; lowConfidenceWords: number; annotations: string[]; noiseWords: number; coverPage: boolean; markersCorrected: number };
+export type OcrStats = { meanConfidence: number | null; lowConfidenceWords: number; annotations: string[]; noiseWords: number; coverPage: boolean; markersCorrected: number; pipesCorrected: number; grid: Grid | null };
 export type OcrPage = PageExtraction & { ocr: OcrStats };
 
 export function parseTsv(tsv: string): OcrWord[] {
@@ -75,7 +76,7 @@ const centre = (w: OcrWord) => w.top + w.height / 2;
 
 // Fits y = first + spacing × (line - 1) to gutter digits. Misread digits vote against each other, so
 // the fit is the median over pairs, and a page without enough readable digits gets no grid.
-export function fitGrid(digits: readonly { line: number; y: number }[]): { first: number; spacing: number } | null {
+export function fitGrid(digits: readonly { line: number; y: number }[]): Grid | null {
   if (digits.length < MIN_GRID_DIGITS) return null;
   const slopes: number[] = [];
   digits.forEach((a, i) => digits.slice(i + 1).forEach((b) => b.line !== a.line && slopes.push((b.y - a.y) / (b.line - a.line))));
@@ -84,10 +85,14 @@ export function fitGrid(digits: readonly { line: number; y: number }[]): { first
   return { first: median(digits.map((d) => d.y - spacing * (d.line - 1))), spacing };
 }
 
+// A digit too faint to read falls back on its position, as does one OCR read partly ("2" for 12, "1"
+// for 19). Any other disagreement stays visible, and validation fails the page.
+export const lineNumberAt = (slot: number, read: number | undefined) => (read === undefined || String(slot).includes(String(read)) ? slot : read);
+
 // One page's words as transcript lines. Pure. `first` marks the file's first page: a first page with
 // no printed number is a cover sheet, reported as such, with no lines.
-export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: boolean): OcrPage {
-  const stats: OcrStats = { meanConfidence: null, lowConfidenceWords: 0, annotations: [], noiseWords: 0, coverPage: false, markersCorrected: 0 };
+export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: boolean, previous: Grid | null = null): OcrPage {
+  const stats: OcrStats = { meanConfidence: null, lowConfidenceWords: 0, annotations: [], noiseWords: 0, coverPage: false, markersCorrected: 0, pipesCorrected: 0, grid: null };
   const page: OcrPage = { pdfPage, hasText: words.some((w) => /[A-Za-z0-9]/.test(w.text)), printedPage: null, footer: [], lines: [], unnumbered: [], ocr: stats };
   if (!page.hasText) return page;
 
@@ -95,7 +100,10 @@ export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: b
   const edge = inLeftHalf.length ? median(inLeftHalf.map((w) => points(w.left + w.width))) : 0;
   const gutter = words.filter((w) => points(w.left + w.width) <= edge + GUTTER_MARGIN);
   const digits = gutter.filter((w) => inLeftHalf.includes(w)).map((w) => ({ line: Number(w.text), y: centre(w) }));
-  const grid = fitGrid(digits);
+  // A very short page has too few digits of its own: it takes the previous page's grid, and a digit
+  // that then disagrees fails validation.
+  const grid = fitGrid(digits) ?? (digits.length > 0 ? previous : null);
+  stats.grid = grid;
   const printed = (candidates: readonly OcrWord[]) => candidates.filter((w) => points(w.left) > PAGE_WIDTH / 2).map((w) => w.text.match(SCANNED_25_V1.printedPage)?.[1]).find((n) => n !== undefined && n.length >= 2);
   if (!grid) {
     // A cover sheet has no page number to cite. Anything else without a grid can't be placed.
@@ -104,6 +112,8 @@ export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: b
     return page;
   }
   const slotOf = (w: OcrWord) => (centre(w) - grid.first) / grid.spacing + 1;
+  // A page number can sit above line 1, where a single digit is a real page, not a misread speck.
+  const top = words.filter((w) => !gutter.includes(w) && slotOf(w) < 0.5 && /^\d{1,4}$/.test(w.text) && points(w.left) > PAGE_WIDTH / 2).at(-1)?.text;
   const body = words.filter((w) => !gutter.includes(w));
   const rows = new Map<number, OcrWord[]>();
   const below: OcrWord[] = [];
@@ -112,12 +122,13 @@ export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: b
     const slot = slotOf(w);
     const nearest = Math.round(slot);
     if (slot > SCANNED_25_V1.maxLinesPerPage + 0.5) below.push(w);
+    else if (w.text === top && slot < 0.5) continue;
     else if (Math.abs(slot - nearest) > ROW_FIT || nearest < 1) stray.push(w);
     else if (!/[A-Za-z0-9]/.test(w.text) && w.confidence < NOISE_CONFIDENCE) stats.noiseWords++;
     else rows.set(nearest, [...(rows.get(nearest) ?? []), w]);
   }
 
-  const number = printed(below);
+  const number = printed(below) ?? top;
   page.printedPage = number === undefined ? null : Number(number);
   stats.annotations.push(...stray.map((w) => w.text));
   if (first && page.printedPage === null) {
@@ -142,10 +153,15 @@ export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: b
     }
     confidences.push(...row.map((w) => w.confidence));
     stats.lowConfidenceWords += row.filter((w) => w.confidence < LOW_WORD_CONFIDENCE).length;
+    // The transcript's capital "I" reads as a bar, at full confidence. A lone bar is never testimony.
+    for (const [i, w] of row.entries()) if (w.text === "|") {
+      stats.pipesCorrected++;
+      row[i] = { ...w, text: "I" };
+    }
     const line: SourceLine = {
       pdfPage,
       printedPage: page.printedPage,
-      lineNo: read.get(slot) ?? slot, // a digit too faint to read falls back on its position
+      lineNo: lineNumberAt(slot, read.get(slot)),
       lineFromPosition: slot,
       indentX: start < CONTINUATION_INDENT ? null : start,
       rawText: row.map((w) => w.text).join(" "),
@@ -198,7 +214,9 @@ export const ocrDocument: OcrReader = async (data, pageCount) => {
       const batch = images.slice(i, i + OCR_CONCURRENCY).map((image) => run("tesseract", [join(dir, image), "stdout", "--psm", "6", "tsv"], { timeout: PAGE_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 }));
       words.push(...(await Promise.all(batch)).map((r) => parseTsv(r.stdout)));
     }
-    return { available: true, engine, pages: words.map((w, i) => readOcrPage(i + 1, w, i === 0)) };
+    const pages: OcrPage[] = [];
+    for (const [i, w] of words.entries()) pages.push(readOcrPage(i + 1, w, i === 0, pages.at(-1)?.ocr.grid ?? null));
+    return { available: true, engine, pages };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

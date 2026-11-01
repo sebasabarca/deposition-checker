@@ -857,7 +857,7 @@ Scanned depositions were out of scope; real users have them, so a file with no t
 - **Nothing is merged into testimony.** Handwriting between lines belongs to no line and is listed in `validation.ocr.annotations`. Specks are counted. A first page with no printed number is a cover sheet, listed and given no lines.
 - **Page numbers.** One unreadable or misread number is inferred only when both neighbours leave exactly one value, and is listed in `inferredPages`. Otherwise the page fails.
 - **Confidence.** Each OCR line stores `ocr_confidence` (migration 0016), and findings return it. A page averaging below 80 fails validation. **OCR text can differ from the scan, so unlike a text layer it isn't exact evidence: the UI must say a line was read by OCR.**
-- **Scope.** One layout, `scanned-25-v1`: 25 lines, a left gutter, the page number at the bottom right. Files mixing text and scanned pages aren't OCR'd. Without the tools installed, a deposition stays `needs_ocr` with that reason.
+- **Scope.** One layout, `scanned-25-v1`: 25 lines, a left gutter, the page number at the right, bottom or top. A text layer that fits no layout, such as a scanner's own OCR, is replaced by this OCR when that does better. Otherwise, files mixing text and scanned pages aren't OCR'd. A lone "|" is read as "I" and counted. Without the tools installed, a deposition stays `needs_ocr` with that reason.
 
 ## Implementation note: one pipeline (October 31, approved)
 

@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { inferPageNumbers, parseTsv, readDeposition, readOcrPage, type OcrPage, type OcrReader, type OcrWord } from "../../server/src/ingest";
 import { attributeSpeakers } from "../../server/src/ingest/exchanges";
-import { fitGrid, SCANNED_25_V1 } from "../../server/src/ingest/ocr";
+import { fitGrid, lineNumberAt, SCANNED_25_V1 } from "../../server/src/ingest/ocr";
 
 const SPACING = 96;
 const y = (line: number) => 500 + (line - 1) * SPACING;
@@ -34,6 +34,9 @@ describe("fitGrid", () => {
     digits[3].line = 9;
     expect(fitGrid(digits)).toEqual({ first: 500, spacing: SPACING });
   });
+  it("fits a short page's few digits", () => {
+    expect(fitGrid([1, 2, 3, 4, 5, 6].map((line) => ({ line, y: y(line) })))).toEqual({ first: 500, spacing: SPACING });
+  });
   it("needs enough digits", () => {
     expect(fitGrid([{ line: 1, y: 1 }, { line: 2, y: 2 }])).toBeNull();
   });
@@ -60,6 +63,12 @@ describe("readOcrPage", () => {
     words.push(word("9", 300, y(5)));
     expect(readOcrPage(2, words, false).lines[0]).toMatchObject({ lineNo: 9, lineFromPosition: 5 });
   });
+  it("accepts a partly read digit at its position, but nothing else", () => {
+    expect(lineNumberAt(12, 2)).toBe(12);
+    expect(lineNumberAt(19, 1)).toBe(19);
+    expect(lineNumberAt(12, undefined)).toBe(12);
+    expect(lineNumberAt(12, 7)).toBe(7);
+  });
   it("lists handwriting between lines instead of merging it into testimony", () => {
     const words = page({ 18: "Government Exhibit" });
     words.push(word("Deposition", 1000, y(18) - SPACING / 2));
@@ -81,6 +90,24 @@ describe("readOcrPage", () => {
     expect(readOcrPage(2, margin, false).lines[0].indentX).toBeNull();
     const marked = attributeSpeakers([{ ...rows[0], printedPage: 498 }], SCANNED_25_V1);
     expect(marked[0].role).toBe("witness");
+  });
+  it("reads a page number printed at the top right, and keeps it out of testimony", () => {
+    const words = [...page({ 1: "party of law" }, { printed: "" }), word("40", 2000, y(1) - SPACING)];
+    const p = readOcrPage(40, words, false);
+    expect(p.printedPage).toBe(40);
+    expect(p.ocr.annotations).toEqual([]);
+    expect(readOcrPage(1, [...page({ 1: "words" }, { printed: "" }), word("1", 2000, y(1) - SPACING)], true)).toMatchObject({ printedPage: 1, ocr: { coverPage: false } });
+  });
+  it("reads a lone bar as the capital I it is, and counts it", () => {
+    const p = readOcrPage(2, page({ 3: "and | remember" }), false);
+    expect(p.lines[0].rawText).toBe("and I remember");
+    expect(p.ocr.pipesCorrected).toBe(1);
+  });
+  it("a very short page takes the previous page's grid", () => {
+    const full = readOcrPage(2, page({ 1: "words" }), false);
+    const words = [word("1", 300, y(1)), word("Ms.", 640, y(1)), word("Thanks", 760, y(1)), word("9", 2000, y(1) - SPACING)];
+    expect(readOcrPage(3, words, false).lines).toEqual([]);
+    expect(readOcrPage(3, words, false, full.ocr.grid).lines[0]).toMatchObject({ lineNo: 1, rawText: "Ms. Thanks" });
   });
   it("corrects a misread marker by its column, so the witness's words stay the witness's", () => {
     const words = [...page({}), word("AL", 640, y(22)), word("If", 760, y(22)), word("top", 880, y(22))];
