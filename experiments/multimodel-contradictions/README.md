@@ -82,3 +82,7 @@ Indexes each session's events with Haiku, aligns them across sessions, then has 
 | `… events-mock` | Free plumbing check on the synthetic sets with rule-based stand-ins. It says nothing about model quality |
 
 Stages use the same gate as the other arms, under the experiment names `events-map`, `events-align` and `events-compare`. Alignment favours inclusion, because the comparison discards wrong matches. Coverage, rejected spans, one-sided events and ids left out are reported, never dropped.
+
+## Arm S: OpenAI GPT-6.1 Sol
+
+Needs `OPENAI_API_KEY` in `.env`. It sends the same prompt as arm F, at `xhigh` effort with `store: false`, through a one-attempt streaming call. Reasoning summaries are not requested, so unlike arm F its reasoning can't be read.

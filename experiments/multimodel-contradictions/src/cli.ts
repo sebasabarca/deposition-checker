@@ -1,6 +1,7 @@
 // The experiment's commands. See README.md. Dry runs and every local step make no network call.
 import "dotenv/config";
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
@@ -409,7 +410,72 @@ function eventsMock() {
   }
 }
 
-const commands: Record<string, () => unknown> = { prepare, dataset, estimates, preflight, probe, run, armd: armD, compare, subject: subjectExport, schemas, events: eventsCommand, "events-mock": eventsMock };
+// A batch of whole-transcript discovery calls, one per arm, at batch prices. Submitted once: anything
+// that fails or expires is recorded by batch-collect and never resubmitted.
+async function batchSubmit() {
+  const [armIds, dataset, cap] = [option("arms")!.split(","), option("dataset")!, Number(option("cap"))];
+  const sources = (option("sources") ?? "").split(",").filter(Boolean).map((path) => ({ file: path.split("/").pop(), sha256: createHash("sha256").update(readFileSync(path)).digest("hex") }));
+  const [job] = jobsFor("discovery", dataset);
+  const approval = approvalOf();
+  const plans = armIds.map((id) => {
+    const arm = CONFIG.arms[id];
+    if (!arm?.batchMaxTokens) throw new Error(`Arm ${id} is not a batch arm.`);
+    const system = prompt("system.md") + (arm.systemExtra ? prompt(arm.systemExtra) : "");
+    const plan = estimate(arm, [job.user.length + system.length + JSON.stringify(RUN_OUTPUT_JSON_SCHEMA).length], { charsPerToken: CONFIG.planning.charsPerToken, expectedOutput: CONFIG.output.discoveryExpectedTokens, maxOutput: arm.batchMaxTokens });
+    const used = spentBy(id);
+    const blocked = gateFailure({ arm: id, experiment: "discovery", kind: job.kind, calls: used.calls + 1, worstCaseUsd: used.costUsd + used.uncertainUsd + plan.worstCaseUsd, fits: plan.fits }, approval, process.env, flag("execute"));
+    return { id, arm, system, plan, blocked };
+  });
+  const worst = plans.reduce((n, p) => n + p.plan.worstCaseUsd, 0);
+  console.log(JSON.stringify({ arms: plans.map((p) => ({ arm: p.id, model: p.arm.model, maxTokens: p.arm.batchMaxTokens, inputTokensPlanned: p.plan.largestInputTokens, worstCaseUsd: p.plan.worstCaseUsd, blocked: p.blocked })), worstCaseUsd: worst, capUsd: cap }));
+  if (!(worst <= cap)) return console.log("No call made: the combined worst case exceeds the cap.");
+  if (plans.some((p) => p.blocked)) return console.log("No call made.");
+  const { anthropicParams, batches } = await import("./providers.js");
+  const batch = await batches().create({ requests: plans.map((p) => ({ custom_id: `${p.id}-${job.id}`, params: anthropicParams(p.arm, { system: p.system, user: job.user, maxTokens: p.arm.batchMaxTokens! }) })) });
+  mkdirSync(join(WORK, "batches"), { recursive: true });
+  write(join(WORK, "batches", `${batch.id}.json`), { batchId: batch.id, createdAt: batch.created_at, dataset, jobId: job.id, datasetId: job.datasetId, arms: armIds, sources, datasetSha: sha(readFileSync(join(WORK, "datasets", `${dataset}.json`), "utf8")), userPromptSha: sha(job.user), systemPromptShas: Object.fromEntries(plans.map((p) => [p.id, sha(p.system)])), worstCaseUsd: worst });
+  console.log(`Batch ${batch.id} submitted.`);
+}
+
+async function batchCollect() {
+  const id = option("id")!;
+  const record = read<{ createdAt: string; dataset: string; jobId: string; datasetId: string; arms: string[]; sources: unknown; datasetSha: string; userPromptSha: string; systemPromptShas: Record<string, string> }>(join(WORK, "batches", `${id}.json`));
+  const { batches, replyOf } = await import("./providers.js");
+  let batch = await batches().retrieve(id);
+  while (batch.processing_status !== "ended") {
+    await new Promise((done) => setTimeout(done, 60_000));
+    batch = await batches().retrieve(id);
+  }
+  const results = new Map<string, Awaited<ReturnType<ReturnType<typeof batches>["results"]>> extends AsyncIterable<infer R> ? R : never>();
+  for await (const r of await batches().results(id)) results.set(r.custom_id, r);
+  const wallMs = new Date(batch.ended_at!).getTime() - new Date(record.createdAt).getTime();
+  for (const armId of record.arms) {
+    const arm = CONFIG.arms[armId];
+    const result = results.get(`${armId}-${record.jobId}`);
+    const { runId, dir, manifest } = startRun(armId, arm, "discovery", record.dataset, prompt("system.md") + (arm.systemExtra ? prompt(arm.systemExtra) : ""), arm.batchMaxTokens!);
+    manifest.calls = 1;
+    manifest.wallMs = wallMs;
+    let summary: Record<string, unknown> = { resultType: result?.result.type ?? "missing" };
+    if (result?.result.type === "succeeded") {
+      const reply = replyOf(result.result.message);
+      const { output, error } = parseOutput(reply.text);
+      write(join(dir, "raw", `${record.jobId}.json`), { job: record.jobId, datasetId: record.datasetId, reply, output, error, wallMs, batchId: id });
+      for (const k of ["input", "output", "cacheRead", "cacheWrite"] as const) manifest.usage[k] += reply.usage[k];
+      manifest.costUsd = costUsd(arm.rates!, reply.usage);
+      if (reply.modelReported) manifest.modelsReported.push(reply.modelReported);
+      if (error) manifest.failures.push({ job: record.jobId, error });
+      summary = { ...summary, stopReason: reply.stopReason, findings: (output as { findings: unknown[] } | null)?.findings.length ?? null, error };
+    } else {
+      write(join(dir, "raw", `${record.jobId}.error.json`), { job: record.jobId, batchId: id, result: result ?? null });
+      manifest.failures.push({ job: record.jobId, error: `batch result: ${result?.result.type ?? "missing"}` });
+    }
+    manifest.finishedAt = new Date().toISOString();
+    write(join(dir, "manifest.json"), { ...manifest, batchId: id, batch: true, sources: record.sources, datasetSha: record.datasetSha, userPromptSha: record.userPromptSha, systemPromptSha: record.systemPromptShas[armId] });
+    console.log(JSON.stringify({ runId, arm: armId, costUsd: manifest.costUsd, usage: manifest.usage, wallMs, ...summary }));
+  }
+}
+
+const commands: Record<string, () => unknown> = { prepare, dataset, estimates, preflight, probe, run, armd: armD, compare, subject: subjectExport, schemas, events: eventsCommand, "events-mock": eventsMock, "batch-submit": batchSubmit, "batch-collect": batchCollect };
 const command = commands[process.argv[2]];
 if (!command) throw new Error(`Commands: ${Object.keys(commands).join(", ")}`);
 Promise.resolve(command()).catch((error) => {
