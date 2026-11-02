@@ -13,7 +13,7 @@ import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { analysisRoutes, caseRoutes, depositionRoutes } from "../../server/src/api";
 import type { Database } from "../../server/src/db/client";
-import { candidates, cases, depositions, lines, llmCalls } from "../../server/src/db/schema";
+import { analyses, candidates, cases, depositions, lines, llmCalls } from "../../server/src/db/schema";
 import { WEBB_SUITE } from "../../server/src/eval/synthetic";
 import { storeSynthetic } from "../../server/src/eval/syntheticStore";
 import { createAnalysisQueues, createIngestQueues, startAnalysisWorkers, startBoss, startIngestWorkers } from "../../server/src/jobs";
@@ -122,7 +122,7 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     expect(done.body.analysis.progress).toMatchObject({ fixture: 5, replayed: 0, findings: 5 });
 
     const { body } = await call("GET", `/analyses/${id}/findings`);
-    expect(body.groups.map((g: { group: string }) => g.group)).toEqual(["contradictions", "compatible", "insufficient", "review"]);
+    expect(body.groups.map((g: { group: string }) => g.group)).toEqual(["contradictions", "needs_context", "compatible", "unverified"]);
     const all = body.groups.flatMap((g: { findings: unknown[] }) => g.findings);
     expect(all).toHaveLength(5);
     expect(all.every((f: { source: string }) => f.source === "fixture")).toBe(true);
@@ -199,7 +199,9 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const start = await call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB, mode: "live", budgetUsd: 1 });
     expect(start.status).toBe(202);
     const a = start.body.analysis;
-    expect([a.mode, a.strategy, a.candidatesPerRequest, a.maxConcurrency, a.promptVersion]).toEqual(["live", "C", 1, 10, "adjudicate-v3"]);
+    expect([a.mode, a.strategy, a.candidatesPerRequest, a.maxConcurrency, a.promptVersion]).toEqual(["live", "C", 1, 10, "discover-v1"]);
+    expect(a.retrieval).toBe("direct_fable"); // the default method for a live analysis
+    expect((await call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB, mode: "demo", method: "direct_fable" })).status).toBe(400);
     const cancelled = await call("POST", `/analyses/${a.id}/cancel`, {});
     expect(cancelled.status).toBe(202);
     expect(cancelled.body.analysis.status).toBe("cancelled");
@@ -211,6 +213,32 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     await startAnalysisWorkers(boss, db, { liveAdjudicator: () => null }, { pollingIntervalSeconds: 0.5 });
   });
 
+  it("never answers with an active analysis of another method", async () => {
+    const stored = await storeSynthetic(db, WEBB_SUITE);
+    const [c] = await db.select().from(candidates).where(eq(candidates.id, [...stored.values()][0]));
+    const [d] = await db.select().from(depositions).where(eq(depositions.id, c.depositionA));
+    await boss.offWork("run-analysis");
+    const start = (body: object) => call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB, mode: "live", ...body });
+    const direct = await start({});
+    const hybrid = await start({ method: "hybrid" });
+    expect([direct.status, hybrid.status]).toEqual([202, 202]);
+    expect([direct.body.analysis.retrieval, hybrid.body.analysis.retrieval]).toEqual(["direct_fable", "hybrid"]);
+    const again = await start({});
+    expect([again.status, again.body.analysis.id]).toEqual([200, direct.body.analysis.id]);
+    await startAnalysisWorkers(boss, db, { liveAdjudicator: () => null }, { pollingIntervalSeconds: 0.5 });
+  });
+
+  it("refuses to resume a direct analysis that can't make progress", async () => {
+    const stored = await storeSynthetic(db, WEBB_SUITE);
+    const [c] = await db.select().from(candidates).where(eq(candidates.id, [...stored.values()][0]));
+    const [d] = await db.select().from(depositions).where(eq(depositions.id, c.depositionA));
+    await boss.offWork("run-analysis");
+    const { id } = (await call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB, mode: "live" })).body.analysis;
+    await db.update(analyses).set({ status: "failed", error: "x" }).where(eq(analyses.id, id));
+    expect((await call("POST", `/analyses/${id}/resume`, {})).status).toBe(409);
+    await startAnalysisWorkers(boss, db, { liveAdjudicator: () => null }, { pollingIntervalSeconds: 0.5 });
+  });
+
   it("keeps concurrency configurable and the sequential fallback sequential, with no paid default", async () => {
     const stored = await storeSynthetic(db, WEBB_SUITE);
     const [c] = await db.select().from(candidates).where(eq(candidates.id, [...stored.values()][0]));
@@ -219,10 +247,10 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const plain = (await start({})).body.analysis;
     expect(plain.mode).toBe("demo");
     await until(() => call("GET", `/analyses/${plain.id}`), (r) => r.body.analysis.status === "completed");
-    const custom = (await start({ mode: "live", maxConcurrency: 3 })).body.analysis;
+    const custom = (await start({ mode: "live", method: "hybrid", maxConcurrency: 3 })).body.analysis;
     expect([custom.strategy, custom.maxConcurrency]).toEqual(["C", 3]);
     await until(() => call("GET", `/analyses/${custom.id}`), (r) => r.body.analysis.status === "blocked_credentials");
-    const fallback = (await start({ mode: "live", strategy: "A", maxConcurrency: 8 })).body.analysis;
+    const fallback = (await start({ mode: "live", method: "hybrid", strategy: "A", maxConcurrency: 8 })).body.analysis;
     expect([fallback.strategy, fallback.maxConcurrency]).toEqual(["A", 1]);
     await until(() => call("GET", `/analyses/${fallback.id}`), (r) => r.body.analysis.status === "blocked_credentials");
   });

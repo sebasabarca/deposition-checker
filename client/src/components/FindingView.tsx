@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { BadgeCheck, CircleAlert, FileSearch, ShieldCheck, TriangleAlert } from "lucide-react";
 import { api } from "../lib/api";
 import { LOW_OCR_CONFIDENCE, ocrPassage } from "../lib/insights";
-import { ATTRIBUTION_LEVEL, COMPONENT, DISAGREEMENT, formatDate, LOCATION, ORIGIN, SAME_EVENT, VERIFICATION } from "../lib/labels";
+import { ATTRIBUTION_LEVEL, COMPONENT, DISAGREEMENT, EVIDENCE_STRENGTH_NOTE, formatDate, LOCATION, ORIGIN, SAME_EVENT, SPEAKER, VERIFICATION } from "../lib/labels";
 import type { EvidenceLine, EvidenceSide, FindingDetail } from "../types";
 import { Alert, Button, Card, cx, Dialog, ModelMark, OcrMark, TestimonyMark } from "./ui";
 
@@ -123,7 +123,7 @@ const Gap = () => <p className="py-1 text-center font-sans text-label-sm text-on
 const Heading = ({ children }: { children: ReactNode }) => <h3 className="text-label-md text-on-surface-variant">{children}</h3>;
 
 export function ModelAssessment({ f }: { f: FindingDetail }) {
-  const contradiction = f.classification === "direct" || f.classification === "inferential";
+  const contradiction = f.group === "contradictions" || (f.direct === null && (f.classification === "direct" || f.classification === "inferential"));
   const a = f.assessment;
   return (
     <Card className="flex flex-col gap-space-md p-space-lg">
@@ -132,19 +132,27 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
         <ModelMark />
       </div>
       <div className="rounded-lg bg-surface-container-low p-space-md leading-relaxed">{a.explanation}</div>
+      {f.direct ? (
+        <dl className="grid grid-cols-1 gap-y-2 text-body-sm">
+          {f.direct.conflictBasis && <Term label="What the possible conflict rests on">{f.direct.conflictBasis}</Term>}
+          {f.direct.reasoning && <Term label="What the judgement rests on">{f.direct.reasoning}</Term>}
+          {f.direct.missingContext && <Term label="What's missing">{f.direct.missingContext}</Term>}
+        </dl>
+      ) : (
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm">
         <Term label="Same event?">{SAME_EVENT[a.sameEvent] ?? a.sameEvent}</Term>
         <Term label="Same time frame and circumstances?">{SAME_EVENT[a.scopeAligned]?.replace("Same event", "Yes").replace("Different events", "No").replace("Unclear whether the same event", "Unclear") ?? a.scopeAligned}</Term>
         {contradiction && <Term label="Kind of conflict">{a.conflictBasis.replaceAll("_", " ")}</Term>}
         {a.falsePositiveReason && <Term label="Reason it may be compatible">{a.falsePositiveReason.replaceAll("_", " ")}</Term>}
       </dl>
+      )}
       {a.inferenceSteps.length > 0 && (
         <div>
           <Heading>Reasoning steps</Heading>
           <ol className="mt-1 list-decimal space-y-1 pl-5 text-body-sm">{a.inferenceSteps.map((s, i) => <li key={i}>{s.statement}</li>)}</ol>
         </div>
       )}
-      {a.unestablishedAssumptions.length > 0 && (
+      {!f.direct && a.unestablishedAssumptions.length > 0 && (
         <div>
           <Heading>Assumptions the testimony doesn't establish</Heading>
           <ul className="mt-1 list-disc space-y-1 pl-5 text-body-sm">{a.unestablishedAssumptions.map((s, i) => <li key={i}>{s}</li>)}</ul>
@@ -161,8 +169,8 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
           {(f.contextRequested || f.contextCheck) && (
             <div className="rounded-lg bg-surface-container p-space-md">
               <Heading>Context</Heading>
-              {f.contextRequested && <p className="mt-1 text-body-sm">The assessment says lines outside these passages could change it.</p>}
-              {f.contextCheck && <p className="mt-1 text-body-sm">Transcript check: {f.contextCheck}.</p>}
+              {f.contextRequested && !f.direct && <p className="mt-1 text-body-sm">The assessment says lines outside these passages could change it.</p>}
+              {f.contextCheck && <p className="mt-1 text-body-sm">Transcript check: {f.contextCheck.replace(/\.$/, "")}.</p>}
             </div>
           )}
         </div>
@@ -192,12 +200,21 @@ export function ChecksCard({ f }: { f: FindingDetail }) {
               </p>
               {ocrPassage(s) && <p className="text-on-warning-container">Checked against the OCR text, not the scan itself.</p>}
               <p>Attribution: {ATTRIBUTION_LEVEL[s.attribution.level] ?? s.attribution.level}.</p>
+              {f.direct && <p>Speaker: {SPEAKER[f.direct[k].speaker] ?? f.direct[k].speaker}.{f.direct[k].reportedSpeech ? " This reports what someone else said." : ""}</p>}
+              {f.direct && f.direct[k].ocr.lowLines.length > 0 && <p className="text-on-warning-container">Low OCR confidence on {f.direct[k].ocr.lowLines.join(", ")}.</p>}
               {s.attribution.disagreement && <p className="text-on-warning-container">{DISAGREEMENT[s.attribution.disagreement]}</p>}
               {s.verification.reason && <p className="text-on-error-container">{s.verification.reason}.</p>}
             </li>
           );
         })}
       </ul>
+      {f.direct && f.direct.duplicates.length > 0 && (
+        <div className="mt-space-md text-body-sm">
+          <p className="font-semibold">Merged proposals</p>
+          <p className="text-on-surface-variant">These rest on the same passages, so they are shown once. The most cautious reading is the one above.</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">{f.direct.duplicates.map((d) => <li key={d.findingId}><span className="font-mono text-label-md font-normal">{d.a} / {d.b}</span>: {d.explanation}</li>)}</ul>
+        </div>
+      )}
       {f.timeCheck && <p className="mt-space-md text-body-sm">Time check: {f.timeCheck.detail}</p>}
       {f.consistencyIssues.length > 0 && (
         <div className="mt-space-md">
@@ -209,6 +226,28 @@ export function ChecksCard({ f }: { f: FindingDetail }) {
 }
 
 export function ScoreCard({ f }: { f: FindingDetail }) {
+  if (f.direct && f.score !== null) {
+    return (
+      <Card className="p-space-lg">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-headline-md">Evidence strength</h2>
+          <span className="text-stat-metric tabular-nums">{f.score}<span className="text-body-sm font-normal text-on-surface-variant"> /100</span></span>
+        </div>
+        <p className="text-body-sm text-on-surface-variant">{EVIDENCE_STRENGTH_NOTE} It doesn't set the priority or the category. Version {f.rubricVersion}.</p>
+        <ul className="mt-space-md space-y-3 text-body-sm">
+          {f.factors.map((c) => (
+            <li key={c.label}>
+              <p className="flex items-baseline justify-between gap-3">
+                <span className="font-semibold">{c.label}</span>
+                <span className="flex-none text-label-sm text-on-surface-variant tabular-nums">{c.points}/{c.max} · {ORIGIN[c.origin]}</span>
+              </p>
+              <p className="text-on-surface-variant">{c.detail}</p>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    );
+  }
   if (f.score === null) {
     return (
       <Card className="p-space-lg">

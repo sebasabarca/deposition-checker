@@ -15,7 +15,7 @@
 
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import { executeAdjudication, persistPool, replayCandidate, type Adjudicator, type StrategyId } from "../adjudicate";
+import { advanceDiscovery, executeAdjudication, persistPool, replayCandidate, type Adjudicator, type DiscoveryProvider, type StrategyId } from "../adjudicate";
 import { buildTopicMap, CARD_EXTRACTOR_VERSION, extractCards, type ClaimModel } from "../claims";
 import { budgetStatus, reconcileStale } from "../costs";
 import type { Database } from "../db/client";
@@ -47,6 +47,7 @@ export type AnalysisProgress = {
   retryInvalid?: boolean; // set by an explicit retry: candidates with an invalid verdict are sent again
   findings?: number;
   parsingChecks?: number;
+  pollFailures?: number; // direct only: failed batch checks in a row
 };
 
 // The model for a live analysis, or null when it can't be used: no API key, or paid calls not
@@ -54,14 +55,16 @@ export type AnalysisProgress = {
 // signal: the worker is shutting down.
 // liveCardModels: Haiku for cards and the topic map in a live hybrid analysis, or null when it can't be used.
 // useStoredCards: a live hybrid run retrieves from the cards and map already stored, calling neither Haiku model.
-export type AnalysisDeps = { liveAdjudicator: (a: Analysis) => Adjudicator | null; liveCardModels?: (a: Analysis) => CardModels | null; useStoredCards?: boolean; signal?: AbortSignal };
+// discovery: the provider for a direct analysis, or null when it can't be used.
+export type AnalysisDeps = { liveAdjudicator: (a: Analysis) => Adjudicator | null; liveCardModels?: (a: Analysis) => CardModels | null; discovery?: (a: Analysis) => DiscoveryProvider | null; useStoredCards?: boolean; signal?: AbortSignal };
 export type CardModels = { cards: ClaimModel; topics: ClaimModel };
 
 // Live analyses call the model only when the server has a key and is explicitly allowed to pay for
 // calls. Without both, a live analysis stops as blocked_credentials before any call.
 export const paidCallsAllowed = (env: NodeJS.ProcessEnv) => Boolean(env.ANTHROPIC_API_KEY) && env.ALLOW_PAID_CALLS === "true";
-export type RunOutcome = "waiting" | "duplicate_delivery" | Analysis["status"];
+export type RunOutcome = "waiting" | "polling" | "duplicate_delivery" | Analysis["status"];
 
+export const DIRECT_FABLE = "direct_fable";
 export const candidateSetOf = (analysisId: number) => `analysis-${analysisId}`;
 export const TERMINAL: Analysis["status"][] = ["completed", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted"];
 
@@ -171,7 +174,8 @@ export async function runAnalysis(db: Database, analysisId: number, deps: Analys
   if (!(await claimRunner(db, a.id, runnerId))) return "duplicate_delivery";
   // A live analysis found already adjudicating was running when its worker died. Paid work only
   // starts from an explicit start or resume (status queued), so a restart can never resume spending.
-  if (a.mode === "live" && (a.status === "adjudicating" || a.status === "retrieving")) {
+  // A direct analysis is the exception: its paid work is a batch the provider holds, and it only polls.
+  if (a.mode === "live" && a.retrieval !== DIRECT_FABLE && (a.status === "adjudicating" || a.status === "retrieving")) {
     await interruptAnalysis(db, a, "The worker stopped while this analysis was running. Completed findings are kept; a request in flight is counted in full in case it was billed. Resume to continue.");
     return "interrupted";
   }
@@ -180,6 +184,23 @@ export async function runAnalysis(db: Database, analysisId: number, deps: Analys
   } finally {
     await db.update(analyses).set({ runnerId: null }).where(and(eq(analyses.id, a.id), eq(analyses.runnerId, runnerId)));
   }
+}
+
+// Direct discovery. Each delivery takes one step: submit, check the batch, or store its result. The
+// paid batch outlives any worker, so waiting holds no job open, and a restart simply polls again.
+async function runDirect(db: Database, a: Analysis, deps: AnalysisDeps): Promise<RunOutcome> {
+  const provider = deps.discovery?.(a) ?? null;
+  if (!provider) {
+    await update(db, a.id, { status: "blocked_credentials", error: "Live analysis needs an Anthropic API key and ALLOW_PAID_CALLS=true on the server. No model was called.", finishedAt: new Date() });
+    return "blocked_credentials";
+  }
+  await update(db, a.id, { status: "adjudicating", startedAt: a.startedAt ?? new Date(), error: null });
+  const step = await advanceDiscovery(db, a, provider);
+  if (step.outcome === "polling") return "polling";
+  await setProgress(db, a.id, { findings: await countFindings(db, a.id) });
+  const error = "error" in step ? step.error : null;
+  await update(db, a.id, { status: step.outcome, error, finishedAt: new Date() });
+  return step.outcome;
 }
 
 async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: AnalysisDeps): Promise<RunOutcome> {
@@ -203,6 +224,8 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
     await update(db, a.id, { status: "failed", error: `Both depositions must be read successfully before they can be compared: ${detail}.`, finishedAt: new Date() });
     return "failed";
   }
+
+  if (a.retrieval === DIRECT_FABLE) return runDirect(db, a, deps);
 
   await update(db, a.id, { status: "retrieving", startedAt: a.startedAt ?? new Date(), error: null });
   {
@@ -296,7 +319,7 @@ export async function analysisCost(db: Database, a: Analysis) {
   const [calls] = await db.execute<{ calls: number; cost: string | null }>(sql`
     select count(*)::int as calls, sum(l.cost_usd) as cost from llm_calls l
     where l.id in (select v.llm_call_id from verdicts v join candidates c on c.id = v.candidate_id where c.candidate_set = ${candidateSetOf(a.id)})
-      or (l.job_id = ${a.id} and l.stage in ('statement_cards', 'topic_mapping'))
+      or (l.job_id = ${a.id} and l.stage in ('statement_cards', 'topic_mapping', 'discovery'))
   `).then((r) => r.rows);
   const budget = a.budgetId === null ? null : await budgetStatus(db, a.budgetId);
   return { calls: calls.calls, actualUsd: calls.cost === null ? 0 : Number(calls.cost), budget };

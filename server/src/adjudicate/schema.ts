@@ -54,13 +54,22 @@ export const VerdictV3 = VerdictV2.extend({
   contextUsed: z.array(z.strictObject({ lines: z.string(), purpose: z.enum(CONTEXT_PURPOSES) })),
 });
 
+// adjudicate-v4 adds a detail-by-detail comparison. A difference in a single detail can sit inside
+// testimony that otherwise agrees, so the model lists details before it classifies.
+export const DETAIL_RELATIONS = ["same", "different", "only_one"] as const;
+export const VerdictV4 = VerdictV3.extend({
+  detailsCompared: z.array(z.strictObject({ detail: z.string(), sessionA: z.string(), sessionB: z.string(), relation: z.enum(DETAIL_RELATIONS) })),
+});
+
 export type Verdict = z.infer<typeof Verdict> & {
   alternativeSupport?: (typeof ALTERNATIVE_SUPPORT)[number] | null;
   conflictSource?: (typeof CONFLICT_SOURCES)[number];
   contextUsed?: { lines: string; purpose: (typeof CONTEXT_PURPOSES)[number] }[];
+  detailsCompared?: { detail: string; sessionA: string; sessionB: string; relation: (typeof DETAIL_RELATIONS)[number] }[];
 };
 export type VerdictV2 = z.infer<typeof VerdictV2>;
 export type VerdictV3 = z.infer<typeof VerdictV3>;
+export type VerdictV4 = z.infer<typeof VerdictV4>;
 export type Attribution = Verdict["attributionA"];
 export type Stance = Verdict["stanceA"];
 export type Classification = Verdict["classification"];
@@ -72,3 +81,5 @@ const { $schema: _unusedV2, ...jsonSchemaV2 } = z.toJSONSchema(VerdictV2);
 export const VERDICT_V2_JSON_SCHEMA = jsonSchemaV2;
 const { $schema: _unusedV3, ...jsonSchemaV3 } = z.toJSONSchema(VerdictV3);
 export const VERDICT_V3_JSON_SCHEMA = jsonSchemaV3;
+const { $schema: _unusedV4, ...jsonSchemaV4 } = z.toJSONSchema(VerdictV4);
+export const VERDICT_V4_JSON_SCHEMA = jsonSchemaV4;

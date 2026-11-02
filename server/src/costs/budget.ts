@@ -14,7 +14,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { and, eq, lt, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { budgetReservations, budgets } from "../db/schema";
-import { PRICES } from "./pricing";
+import { BATCH_MULTIPLIER, PRICES } from "./pricing";
 
 export class BudgetExceeded extends Error {
   constructor(
@@ -41,6 +41,9 @@ export function maxRequestCost(model: string, { inputTokens, maxOutputTokens }: 
   const usd = (inputTokens * Math.max(rates.input, rates.cacheWrite5m) + maxOutputTokens * rates.output) / 1_000_000;
   return Math.ceil(usd * 1e8) / 1e8;
 }
+
+// The most a Batch API request can cost: batch halves every token type.
+export const maxBatchRequestCost = (model: string, sizes: { inputTokens: number; maxOutputTokens: number }) => Math.ceil(maxRequestCost(model, sizes) * BATCH_MULTIPLIER * 1e8) / 1e8;
 
 export async function ensureBudget(db: Database, name: string, limitUsd: number): Promise<number> {
   await db.insert(budgets).values({ name, limitUsd }).onConflictDoNothing();
@@ -106,6 +109,9 @@ export function settle(db: Database, reservationId: number, call: { id: number; 
     note: call.costUsd === null ? "unpriced model: charged the full reservation" : null,
   });
 }
+
+// The provider says it didn't run the request (an expired or cancelled batch item): nothing was billed.
+export const releaseUnbilled = (db: Database, reservationId: number, note: string) => close(db, reservationId, "released", () => 0, { note: note.slice(0, 500) });
 
 // The request failed. A 4xx means the API rejected it before generating anything: not billed, so the
 // reservation is released. Anything else may have been billed: counted at its full reservation.

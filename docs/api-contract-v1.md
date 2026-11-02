@@ -94,7 +94,8 @@ Only `ready` depositions can be analyzed. Fields read from the file are null whi
 type StartAnalysis = {
   depositionA: number; depositionB: number
   mode?: 'demo' | 'live'           // default demo; demo never calls a model
-  budgetUsd?: number               // default 3, at most 20
+  method?: 'direct_fable' | 'hybrid' // default direct_fable for live, hybrid for demo
+  budgetUsd?: number               // default 6 direct, 3 hybrid, at most 20
   maxCandidates?: number           // default 300, at most 300
   promptVersion?: string; effort?: string
   strategy?: string                // default C: one pair per request, ten at a time
@@ -172,8 +173,10 @@ Coverage ledger: `assessed + awaitingAssessment + deferred.total + excluded.tota
 
 ## 6. Findings and filters
 
+A live analysis defaults to `method: 'direct_fable'` (`POST /cases/:id/analyses` also takes `method: 'hybrid'`; a demo is always hybrid, and `direct_fable` with `mode: 'demo'` returns 400). An active analysis is reused only for the same depositions, mode and method. `resumable` says whether resuming can make progress; resuming a direct analysis that can't returns 409, because no paid attempt repeats. `AnalysisView` gains `retrieval` and `discovery`, which is null on a hybrid analysis: `{ resultModel, resultModelName, usedFallback, fallbackModel, primaryModel, promptVersion, sourceHashes, attempts: [{ attempt, role, model, modelName, status, batchId, stopReason, refusalCategory, error, costUsd, inputTokens, outputTokens, thinkingTokens, latencyMs }] }`. `GET /analyses/:id/findings` adds `notStored`: proposals whose citations resolve to no stored line. Each finding adds `model`, `modelName` and `direct` (null on a hybrid finding), and `GET /findings/:id` adds `source.modelName`, `source.usedFallback` and `direct`. A direct finding's `score` is evidence strength (`rubricVersion: 'evidence-strength-v1'`, five checks in `factors`), null when the evidence needs review or the finding is compatible. It is not a probability, and sets neither the lane nor the priority. `priority` adds `unverified`.
+
 ```ts
-type FindingGroup = 'contradictions' | 'compatible' | 'insufficient' | 'review'
+type FindingGroup = 'contradictions' | 'needs_context' | 'compatible' | 'unverified'
 type FindingGroups = { groups: { group: FindingGroup; label: string; findings: FindingSummary[] }[] } // all four, always
 type FindingSummary = {
   id: number; group: FindingGroup
@@ -191,7 +194,7 @@ type FindingSummary = {
 }
 ```
 
-`wrong_reference` and `unsupported` findings are always in `review`. Show them in the dashed "Check manually" section with no band.
+`wrong_reference` and `unsupported` findings are always in `unverified`. Show them in the dashed "Check manually" section with no band.
 
 ## 7. Side-by-side testimony review
 

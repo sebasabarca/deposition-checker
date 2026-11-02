@@ -5,9 +5,9 @@
 
 import type { z } from "zod";
 import { V2_MODELS } from "../costs";
-import { Verdict, VERDICT_JSON_SCHEMA, VERDICT_V2_JSON_SCHEMA, VERDICT_V3_JSON_SCHEMA, VerdictV2, VerdictV3 } from "./schema";
+import { Verdict, VERDICT_JSON_SCHEMA, VERDICT_V2_JSON_SCHEMA, VERDICT_V3_JSON_SCHEMA, VERDICT_V4_JSON_SCHEMA, VerdictV2, VerdictV3, VerdictV4 } from "./schema";
 
-export const PROMPT_VERSIONS = ["adjudicate-v1", "adjudicate-v2", "adjudicate-v3"] as const;
+export const PROMPT_VERSIONS = ["adjudicate-v1", "adjudicate-v2", "adjudicate-v3", "adjudicate-v4"] as const;
 export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
 // v3, approved October 30 after the live strategy comparison (7 of 7 labelled contradictions found).
 export const DEFAULT_PROMPT_VERSION: PromptVersion = "adjudicate-v3";
@@ -112,10 +112,34 @@ const GROUNDING_FIELDS = `
 
 const SYSTEM_PROMPT_V3 = SYSTEM_PROMPT_V2.replace("\n\nFields:", `\n${GROUNDING}\n\nFields:`) + GROUNDING_FIELDS;
 
+// adjudicate-v4 (November 1). On a documented real inconsistency, v3 called both passages compatible:
+// asked whether two statements conflict, it passed over one detail that differed inside an otherwise
+// matching account. v4 is v3 plus a detail comparison made before classifying, and a rule that an
+// unresolved difference goes to a person. Written after that case, so it needs fresh cases to judge.
+const DETAILS = `
+Detail comparison, done before you classify:
+- Decide whether the two passages describe the same underlying event, even when each comes from a different conversation about it or retells it secondhand. If they do, sameEvent is yes.
+- In detailsCompared, list each concrete detail either passage states about that event: how a person, place or thing is named or described, a date or time, a place, a number, the order of events, who was present, who said what to whom, and how the witness came to know it.
+- Compare the words each passage actually uses. Mark a detail different when the passages name or describe it differently, even if the difference looks small or one term may simply be another name for the same thing.
+- A detail only one passage mentions is only_one, and is not a difference.
+- If the passages describe different events, leave detailsCompared empty.
+
+Using the comparison:
+- A difference that cannot be true of one event is a direct or inferential conflict under the rules above.
+- A difference that may only be a loose description, or that depends on something the lines don't settle, is insufficient_evidence with needsMoreContext true. Say what would settle it. Give the innocent reading as the alternative explanation.
+- Use false_positive for the same event only when every listed detail is same or only_one.
+- Secondhand accounts are still testimony about what the witness understood. Record them as reported_by_other, and never call them a lie or a contradiction of fact on that basis alone.`;
+
+const DETAILS_FIELDS = `
+- detailsCompared: the details from the comparison above, each with what session A says, what session B says, and relation: same, different or only_one. Keep each entry short.`;
+
+const SYSTEM_PROMPT_V4 = SYSTEM_PROMPT_V3.replace("\n\nFields:", `\n${DETAILS}\n\nFields:`) + DETAILS_FIELDS;
+
 export type PromptSpec = { system: string; jsonSchema: Record<string, unknown>; schema: z.ZodType<Verdict> };
 export const PROMPTS: Record<PromptVersion, PromptSpec> = {
   "adjudicate-v1": { system: SYSTEM_PROMPT_V1, jsonSchema: VERDICT_JSON_SCHEMA, schema: Verdict },
   "adjudicate-v2": { system: SYSTEM_PROMPT_V2, jsonSchema: VERDICT_V2_JSON_SCHEMA, schema: VerdictV2 },
   "adjudicate-v3": { system: SYSTEM_PROMPT_V3, jsonSchema: VERDICT_V3_JSON_SCHEMA, schema: VerdictV3 },
+  "adjudicate-v4": { system: SYSTEM_PROMPT_V4, jsonSchema: VERDICT_V4_JSON_SCHEMA, schema: VerdictV4 },
 };
 export const SYSTEM_PROMPT = SYSTEM_PROMPT_V1;

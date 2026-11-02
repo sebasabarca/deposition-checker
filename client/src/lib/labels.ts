@@ -15,6 +15,7 @@ export const PRIORITY: Record<FindingSummary["priority"], string> = {
   medium: "Medium priority",
   low: "Low priority",
   needs_context: "Needs context",
+  unverified: "Unverified",
 };
 
 export const ANALYSIS_STATUS: Record<AnalysisStatus, { label: string; tone: "neutral" | "active" | "good" | "warn" | "bad" }> = {
@@ -52,9 +53,16 @@ export const LOCATION: Record<string, string> = {
   question_denied: "in the question, which the witness answered “no”",
   question_other: "in the question; the answer isn't a plain yes or no",
   attorney_or_colloquy: "only in an attorney's words",
+  witness: "in the witness's own words",
+  adopted: "in the attorney's words, plainly adopted or denied by the witness",
+  attorney_only: "only in an attorney's words",
+  mixed: "in attorney and witness lines together",
+  unknown: "on a line with no identified speaker",
+  none: "on lines with no spoken testimony",
 };
 
 export const VERIFICATION: Record<string, string> = {
+  exact: "Quoted phrase found exactly in this passage",
   verified: "Quoted phrase found exactly in this passage",
   approximate: "Quoted phrase found, with small wording differences",
   wrong_reference: "Quoted phrase is not in the cited passage",
@@ -92,11 +100,62 @@ export function scoreLabel(f: { classification: FindingSummary["classification"]
   return f.classification === "false_positive" ? `Support for “compatible”: ${f.score}/100 · ${band}` : `Assessment support: ${f.score}/100 · ${band}`;
 }
 
+export const GROUP_LABEL: Record<FindingSummary["group"], string> = {
+  contradictions: "Potential contradictions",
+  needs_context: "Needs context",
+  compatible: "Compatible or dismissed",
+  unverified: "Unverified",
+};
+
 export const GROUP_HELP: Record<FindingSummary["group"], string> = {
-  contradictions: "Verified passages the assessment treats as conflicting. Each still needs your judgement.",
-  compatible: "Passages that look related but can both be true. Shown so nothing is hidden.",
-  insufficient: "The two passages alone don't allow a judgement.",
-  review: "Couldn't be scored: an unverified quotation, a self-contradictory assessment, or missing context.",
+  contradictions: "Source-verified statements that may conflict. Worth your review, not proof of a contradiction.",
+  needs_context: "They may conflict, but the evidence is incomplete or qualified. Not a contradiction as it stands.",
+  compatible: "Not established as conflicting. Shown so nothing is hidden.",
+  unverified: "A citation, quotation or speaker check failed. Don't rely on these without reading the source.",
+};
+
+const MODEL_CLASSIFICATION: Record<string, string> = {
+  direct_contradiction: "a direct contradiction",
+  inferential_contradiction: "an inferential contradiction",
+  compatible: "compatible",
+  insufficient_evidence: "not enough evidence to judge",
+  uncertain_needs_context: "dependent on context it didn't have",
+};
+
+// The headline follows code's lane, never the model's label alone: a finding the checks hold back
+// must not read as a contradiction.
+export function findingHeadline(f: Pick<FindingSummary, "group" | "classification">) {
+  if (f.group === "contradictions") return f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction";
+  if (f.group === "unverified") return "Unverified finding";
+  if (f.group === "needs_context") return "Needs context";
+  return CLASSIFICATION[f.classification];
+}
+
+export const modelCalledIt = (modelName: string, classification: string) => `${modelName} called this ${MODEL_CLASSIFICATION[classification] ?? classification.replaceAll("_", " ")}.`;
+
+export const evidenceStrength = (f: { score: number | null }) => (f.score === null ? "Evidence strength: not scored" : `Evidence strength: ${f.score}/100`);
+export const EVIDENCE_STRENGTH_NOTE = "Evidence strength measures how well the cited testimony supports review under a fixed checklist. It is not a probability that the witness contradicted themselves.";
+
+export const SPEAKER: Record<string, string> = {
+  witness: "the witness's own words",
+  adopted: "the attorney's words, plainly adopted or denied by the witness",
+  attorney_only: "only an attorney's words, not testimony",
+  mixed: "attorney and witness lines together, unclear whose words these are",
+  unknown: "no identified speaker",
+  none: "no spoken testimony at the cited lines",
+};
+
+export const DISCOVERY_ATTEMPT: Record<string, string> = {
+  submitting: "Sending",
+  submitted: "Reading both sessions",
+  succeeded: "Finished",
+  refused: "Refused by the model",
+  invalid_output: "Answer wasn't valid",
+  incomplete: "Stopped before finishing",
+  provider_failed: "Provider failure",
+  expired: "Expired before running",
+  cancelled: "Cancelled",
+  submission_unknown: "Unknown: may have started",
 };
 
 export const EVIDENCE_STATUS: Record<FindingSummary["evidenceStatus"], string> = {
@@ -106,4 +165,4 @@ export const EVIDENCE_STATUS: Record<FindingSummary["evidenceStatus"], string> =
   unsupported: "Citation not verified",
 };
 
-export const priorityTone = (p: FindingSummary["priority"]) => (p === "high" ? "contradiction" : p === "needs_context" ? "warn" : "neutral") as "contradiction" | "warn" | "neutral";
+export const priorityTone = (p: FindingSummary["priority"]) => (p === "high" ? "contradiction" : p === "needs_context" || p === "unverified" ? "warn" : "neutral") as "contradiction" | "warn" | "neutral";

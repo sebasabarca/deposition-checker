@@ -1,11 +1,12 @@
 import { Card, CardHeader, HumanMark, ModelMark, OcrMark, PageHeader, TestimonyMark, VerifiedMark } from "../components/ui";
 
 const CATEGORIES = [
-  ["Potential contradictions", "Direct or inferential conflicts whose citations passed verification. Each still needs your judgement."],
-  ["Likely compatible", "Passages that look related but can both be true. Their score is support for “compatible”."],
-  ["Insufficient evidence", "The two passages alone don't allow a judgement."],
-  ["Needs review", "An unverified citation, a self-contradictory assessment, or missing context. These have no score."],
+  ["Potential contradictions", "Source-verified statements that may conflict. Worth your review, not proof of a contradiction."],
+  ["Needs context", "They may conflict, but the evidence is incomplete or qualified. Not a contradiction as it stands."],
+  ["Compatible or dismissed", "Not established as conflicting. Shown so nothing is hidden."],
+  ["Unverified", "A citation, quotation or speaker check failed. Don't rely on these without reading the source."],
 ];
+const EVIDENCE_STRENGTH = "Direct findings show evidence strength from 0 to 100: five equal checks on the quotations, who said them, how clearly, and whether the model saw one subject and a conflict that holds without more context. It is not a probability that the witness contradicted themselves, and it sets neither the category nor the priority.";
 const COVERAGE = [
   ["Assessed", "The pair has a verdict: from a model call, a stored earlier run, or a prepared example."],
   ["Unassessed", "The pair was selected but has no verdict, because the run stopped, a call failed or a demo had nothing stored."],
@@ -30,6 +31,7 @@ export function HelpPage() {
         <Card>
           <CardHeader title="Finding categories" />
           <dl className="space-y-space-md px-space-lg pb-space-lg">
+            <div><dt className="font-semibold">Evidence strength</dt><dd className="text-body-sm text-on-surface-variant">{EVIDENCE_STRENGTH}</dd></div>
             {CATEGORIES.map(([t, d]) => <div key={t}><dt className="font-semibold">{t}</dt><dd className="text-body-sm text-on-surface-variant">{d}</dd></div>)}
           </dl>
         </Card>

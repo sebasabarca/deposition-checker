@@ -84,14 +84,44 @@ export type CaseDetail = {
   analyses: AnalysisRow[];
 };
 
-export type FindingGroup = "contradictions" | "compatible" | "insufficient" | "review";
+export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified";
 export type VerdictSource = "model" | "replayed" | "fixture";
+
+export type DiscoveryAttempt = {
+  attempt: number;
+  role: "primary" | "fallback";
+  model: string;
+  modelName: string;
+  status: string;
+  batchId: string | null;
+  stopReason: string | null;
+  refusalCategory: string | null;
+  error: string | null;
+  costUsd: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  thinkingTokens: number | null;
+  latencyMs: number | null;
+};
+export type DiscoveryView = {
+  resultModel: string | null;
+  resultModelName: string | null;
+  usedFallback: boolean;
+  fallbackModel: string;
+  primaryModel: string;
+  promptVersion: string;
+  sourceHashes: unknown;
+  attempts: DiscoveryAttempt[];
+};
 
 export type AnalysisView = {
   id: number;
   caseId: number;
   witnessId: number;
   mode: "demo" | "live";
+  retrieval: "direct_fable" | "hybrid" | "pair";
+  discovery: DiscoveryView | null;
+  resumable: boolean; // whether resuming can make progress
   status: AnalysisStatus;
   error: string | null;
   progress: AnalysisProgress;
@@ -115,7 +145,7 @@ export type FindingSummary = {
   id: number;
   group: FindingGroup;
   classification: "direct" | "inferential" | "false_positive" | "insufficient_evidence";
-  priority: "high" | "medium" | "low" | "needs_context";
+  priority: "high" | "medium" | "low" | "needs_context" | "unverified";
   score: number | null;
   band: "high" | "medium" | "low" | null;
   evidenceStatus: "verified" | "approximate" | "wrong_reference" | "unsupported";
@@ -123,13 +153,18 @@ export type FindingSummary = {
   contextRequested: boolean;
   reviewState: string;
   source: VerdictSource;
+  model: string;
+  modelName: string;
+  direct: { modelClassification: string; evidenceKey: string; duplicates: number; ocrRead: boolean; lowOcrLines: string[]; speakers: string[] } | null; // null on a hybrid finding
   rank: number;
   a: { depositionId: number; ref: string | null };
   b: { depositionId: number; ref: string | null };
   sameEvent: "yes" | "no" | "uncertain";
   explanation: string;
 };
-export type FindingGroups = { groups: { group: FindingGroup; label: string; findings: FindingSummary[] }[] };
+// Proposed findings whose citations couldn't be tied to stored lines, so they have no finding to open.
+export type NotStoredFinding = { findingId: string; model: string; modelName: string; classification: string; evidenceStatus: string; reasons: string[]; citationA: string; citationB: string; explanation: string };
+export type FindingGroups = { groups: { group: FindingGroup; label: string; findings: FindingSummary[] }[]; notStored?: NotStoredFinding[] };
 
 // ocrConfidence is 0-100 for a line read by OCR, null for a text layer. pdfPage is the file's page,
 // not the printed transcript page in ref. pageInferred: OCR couldn't read the printed page, so ref's
@@ -147,8 +182,9 @@ export type EvidenceSide = {
   verification: { status: string; reason: string | null; location: string | null; bareAnswer: boolean; matchScore: number };
   attribution: { level: string; claude: string; codeRule: string | null; disagreement: string | null; qualifier: string | null; noRecall: boolean; approximation: boolean };
 };
-export type Factor = { component: "A" | "C" | "S" | "K" | "U"; label: string; points: number; max: number; origin: "code" | "claude" | "code+claude" };
+export type Factor = { component: "A" | "C" | "S" | "K" | "U" | "E"; label: string; points: number; max: number; origin: "code" | "claude" | "code+claude"; detail?: string };
 export type Cap = { rule: string; limit: number; reason: string; binding: boolean };
+export type DirectSideCheck = { speaker: string; ocr: { read: boolean; minConfidence: number | null; lowLines: string[] }; reportedSpeech: boolean };
 export type FindingDetail = {
   id: number;
   analysisId: number | null;
@@ -170,7 +206,18 @@ export type FindingDetail = {
   consistencyIssues: string[];
   contextCheck: string | null;
   timeCheck: { status: string; detail: string } | null;
-  source: { kind: VerdictSource; label: string; model: string; promptVersion: string; verdictId: number; replayOf: number | null };
+  source: { kind: VerdictSource; label: string; model: string; modelName: string; usedFallback: boolean; promptVersion: string; verdictId: number; replayOf: number | null };
+  direct: {
+    modelClassification: string;
+    evidenceKey: string;
+    duplicates: { findingId: string; classification: string; a: string; b: string; explanation: string }[];
+    sharedSubject: string | null;
+    missingContext: string | null;
+    reasoning: string | null;
+    conflictBasis: string | null;
+    a: DirectSideCheck;
+    b: DirectSideCheck;
+  } | null;
   assessment: {
     sameEvent: string;
     scopeAligned: string;

@@ -82,3 +82,7 @@ The end-to-end test (upload both Ellison PDFs, parse them, analyse, read the res
 ## How I used AI
 
 I used Claude to help draft and review code. I made the design decisions, tested every rule against the sample transcripts and a larger test transcript, and changed AI suggestions when they failed on real data. For example, a suggested rule to mark any quote with several times as uncertain would have broken the "Around 10, maybe 10:30" case, so I replaced it with the 60-minute rule.
+
+## Evidence strength
+
+Direct findings use the `evidence-strength-v1` checklist, 20 points per check: quotations match (20, or 10 if approximate), the statements are the witness's (20), clear assertions (10 per side), same subject per the model (20), and a conflict that holds without missing context per the model (direct 20, inferential 10). It is not a probability that the witness contradicted themselves, and it sets neither the lane nor the priority: High needs a direct classification, one subject and at least one plain assertion, and other conflicts are Medium.

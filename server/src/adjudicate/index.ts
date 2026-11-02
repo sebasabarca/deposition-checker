@@ -15,3 +15,6 @@ export { ADJUDICATION_MODEL, DEFAULT_EFFORT, DEFAULT_PROMPT_VERSION, EFFORTS, MA
 export { replayCandidate, type ReplayOutcome } from "./replay";
 export { adjudicateCandidate, maxPacketCost, readVerdict, storeVerdict, type AdjudicationResult, type VerdictOrigin, type VerdictStatus } from "./run";
 export { ALTERNATIVE_SUPPORT, ATTRIBUTIONS, CLASSIFICATIONS, CONFLICT_SOURCES, CONTEXT_PURPOSES, Verdict, VERDICT_JSON_SCHEMA, VERDICT_V2_JSON_SCHEMA, VERDICT_V3_JSON_SCHEMA, VerdictV2, VerdictV3, type Attribution, type Classification, type Stance } from "./schema";
+export { advanceDiscovery, anthropicDiscovery, directCanResume, MAX_POLL_FAILURES, classifyDiscovery, discoveryRunsOf, DISCOVERY_EFFORT, DISCOVERY_FALLBACK_MODEL, DISCOVERY_MAX_OUTPUT_TOKENS, DISCOVERY_MODEL, fitsContext, inputTokensBound, loadSessions, type DiscoveryProvider, type DiscoveryRequest, type DiscoveryResult, type DiscoveryStep } from "./discover";
+export { DISCOVERY_PROMPT_VERSION, DISCOVERY_SYSTEM, discoveryUserPrompt } from "./discoverPrompt";
+export { readDiscoveryOutput, type DiscoveryFinding, type DiscoveryOutput } from "./discoverSchema";

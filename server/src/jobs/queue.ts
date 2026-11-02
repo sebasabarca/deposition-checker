@@ -76,6 +76,7 @@ export const ANALYSIS_QUEUE = "run-analysis";
 export const ANALYSIS_FAILED_QUEUE = "run-analysis-failed";
 export const ANALYSIS_QUEUE_OPTIONS: QueueOptions = { retryLimit: 2, retryDelay: 10, retryBackoff: true, heartbeatSeconds: 30, expireInSeconds: 60 * 60 };
 export const PARSING_RECHECK_SECONDS = 5;
+export const DISCOVERY_POLL_SECONDS = 30; // a batch takes minutes, and checking it is free
 
 const AnalysisJobData = z.object({ analysisId: z.number().int().positive() });
 export type AnalysisJob = z.infer<typeof AnalysisJobData>;

@@ -7,8 +7,8 @@ import { ChecksCard, ModelAssessment, Passage, ScoreCard } from "../components/F
 import { Alert, Badge, Button, Card, cx, HumanMark, inputClass, Loading, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { citesInferredPage, pinpointCitation } from "../lib/insights";
-import { CLASSIFICATION, EVIDENCE_STATUS, PRIORITY, priorityTone, scoreLabel } from "../lib/labels";
-import { clearReview, reviewOf, REVIEW_LABEL, saveReview, useReviews, type ReviewDecision } from "../lib/review";
+import { CLASSIFICATION, EVIDENCE_STATUS, evidenceStrength, findingHeadline, modelCalledIt, PRIORITY, priorityTone, scoreLabel } from "../lib/labels";
+import { clearReview, reviewOf, REVIEW_LABEL, savedReview, saveReview, useReviews, type ReviewDecision } from "../lib/review";
 import { href } from "../lib/router";
 import type { CaseDetail, FindingDetail } from "../types";
 
@@ -28,8 +28,9 @@ export function WorkbenchPage({ analysisId, id }: { analysisId: number; id: numb
 
   if (error) return <Alert title="This finding couldn't be loaded">{error}</Alert>;
   if (!f) return <Loading />;
-  const contradiction = f.classification === "direct" || f.classification === "inferential";
-  const verified = f.evidenceStatus === "verified" || f.evidenceStatus === "approximate";
+  const contradiction = f.group === "contradictions";
+  const verified = f.group !== "unverified" && (f.evidenceStatus === "verified" || f.evidenceStatus === "approximate");
+  const closerLook = f.reasons.filter((r) => !r.startsWith("The model said")); // the notice above already says so
   const at = order.findIndex((o) => o.id === id);
   const sha = (depositionId: number) => detail?.depositions.find((d) => d.id === depositionId)?.fileSha256;
 
@@ -57,18 +58,20 @@ export function WorkbenchPage({ analysisId, id }: { analysisId: number; id: numb
         <div className="min-w-0 space-y-space-xs">
           <div className="flex flex-wrap items-center gap-space-xs">
             <Badge tone={contradiction ? "contradiction" : "neutral"} dot>{f.groupLabel}</Badge>
-            <Badge tone={priorityTone(f.priority)}>{PRIORITY[f.priority]}</Badge>
-            {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
+            {f.group !== "needs_context" && <Badge tone={priorityTone(f.priority)}>{PRIORITY[f.priority]}</Badge>}
+            {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
             {f.contextRequested && <Badge tone="warn" title="The assessment says lines outside these passages could change it">More context requested</Badge>}
           </div>
-          <h1 id="finding-title" className="text-headline-lg sm:text-headline-xl">{CLASSIFICATION[f.classification]}</h1>
-          <p className="text-on-surface-variant">{f.a.deposition.witness} · {scoreLabel(f)}</p>
+          <h1 id="finding-title" className="text-headline-lg sm:text-headline-xl">{findingHeadline(f)}</h1>
+          <p className="text-on-surface-variant">{f.a.deposition.witness} · {f.direct ? (f.direct.sharedSubject ?? "Proposed for review") : scoreLabel(f)}</p>
+          {f.direct && <p className="text-body-sm text-on-surface-variant">{f.group !== "compatible" && `${evidenceStrength(f)} · `}Review priority: {PRIORITY[f.priority]} · Classification: {f.group === "contradictions" ? CLASSIFICATION[f.classification] : findingHeadline(f)}</p>}
         </div>
         <CopyCitation text={pinpointCitation(f.a, f.b)} inferred={citesInferredPage(f.a) || citesInferredPage(f.b)} />
       </div>
 
-      {f.source.kind !== "model" && <Alert tone="info">{f.source.label}.</Alert>}
-      {f.unscoredExplanation && <Alert tone="warn">{f.unscoredExplanation}</Alert>}
+      {(f.source.kind !== "model" || f.direct) && <Alert tone={f.source.usedFallback ? "warn" : "info"}>{f.source.label}{f.direct ? ` ${modelCalledIt(f.source.modelName, f.direct.modelClassification)}` : "."}</Alert>}
+      {f.direct && closerLook.length > 0 && <Alert tone="warn" title="Why this needs a closer look"><ul className="list-disc pl-5">{closerLook.map((r) => <li key={r}>{r}</li>)}</ul></Alert>}
+      {!f.direct && f.unscoredExplanation && <Alert tone="warn">{f.unscoredExplanation}</Alert>}
 
       <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-2">
         <Passage label="Session A" side={f.a} sha={sha(f.a.deposition.id)} />
@@ -111,10 +114,11 @@ function CopyCitation({ text, inferred }: { text: string; inferred: boolean }) {
 
 function ReviewCard({ f, citation, serverState }: { f: FindingDetail; citation: string; serverState: string }) {
   const reviews = useReviews();
-  const saved = reviews[f.id];
-  const state = reviewOf(f.id, serverState, reviews);
+  const key = f.direct?.evidenceKey;
+  const saved = savedReview(f.id, reviews, key);
+  const state = reviewOf(f.id, serverState, reviews, key);
   const [note, setNote] = useState(saved?.note ?? "");
-  const decide = (d: ReviewDecision) => saveReview(f.id, d, note);
+  const decide = (d: ReviewDecision) => saveReview(f.id, d, note, key);
   return (
     <Card className="flex h-full flex-col justify-between gap-space-md p-space-lg">
       <div className="flex flex-col gap-space-md">
@@ -138,7 +142,7 @@ function ReviewCard({ f, citation, serverState }: { f: FindingDetail; citation: 
           <Button variant="ghost" onClick={() => decide("needs_context")}><CircleHelp aria-hidden className="size-4" />Needs more context</Button>
           <Button variant="ghost" onClick={() => decide("dismissed")}><X aria-hidden className="size-4" />Dismiss</Button>
         </div>
-        {saved && <button type="button" onClick={() => clearReview(f.id)} className="text-label-md text-secondary hover:underline">Clear my decision</button>}
+        {saved && <button type="button" onClick={() => clearReview(f.id, key)} className="text-label-md text-secondary hover:underline">Clear my decision</button>}
         <p className="pt-1 text-center text-label-sm text-on-surface-variant">Saved in this browser only. It is not stored with the case yet.</p>
       </div>
     </Card>

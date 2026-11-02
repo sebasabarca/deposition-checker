@@ -8,4 +8,5 @@ export { normalize, quoteMatchScore, STOPWORDS, verifyQuote } from "./quotes";
 export { readAnswer, readRecollection, type AnswerReading, type RecollectionReading } from "./answers";
 export { contentWords, findHedge, locate, spoken } from "./text";
 export { APPROXIMATE, checkSide, checkSources, isBareAnswer, locatePhrase, matchScore, type Located, VERIFIED, type EvidenceExchange, type EvidenceLine, type EvidenceStatus, type Location, type SideSource, type SourceCheck } from "./source";
+export { checkDirectSide, evidenceKey, groupDuplicates, laneOf, LOW_OCR_LINE_CONFIDENCE, parseCitation, verifyDirectFinding, type DirectCheck, type DirectSide, type Lane, type StoredLine, type StoredSession } from "./direct";
 export { attributeSide, checkAttribution, codeLevelOf, codeReadingOf, LEVELS, type AttributionCheck, type Level, type SideAttribution } from "./attribution";

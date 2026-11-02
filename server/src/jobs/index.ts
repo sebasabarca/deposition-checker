@@ -8,10 +8,10 @@ import { and, eq, notInArray } from "drizzle-orm";
 import { analyses } from "../db/schema";
 import { runAnalysis, TERMINAL, type AnalysisDeps } from "./analysis";
 import { failureMessage, recordIngestFailure, runIngestJob } from "./ingest";
-import { ANALYSIS_FAILED_QUEUE, ANALYSIS_QUEUE, enqueueAnalysis, INGEST_FAILED_QUEUE, INGEST_QUEUE, parseAnalysisJob, parseIngestJob, PARSING_RECHECK_SECONDS } from "./queue";
+import { ANALYSIS_FAILED_QUEUE, ANALYSIS_QUEUE, enqueueAnalysis, INGEST_FAILED_QUEUE, INGEST_QUEUE, parseAnalysisJob, parseIngestJob, DISCOVERY_POLL_SECONDS, PARSING_RECHECK_SECONDS } from "./queue";
 
 export { failureMessage, recordIngestFailure, runIngestJob, type IngestJobResult } from "./ingest";
-export { analysisCost, candidateSetOf, interruptAnalysis, MAX_CONSECUTIVE_FAILURES, paidCallsAllowed, RUNNER_STALE_MS, runAnalysis, TERMINAL, type Analysis, type AnalysisDeps, type AnalysisProgress, type RunOutcome } from "./analysis";
+export { analysisCost, candidateSetOf, DIRECT_FABLE, interruptAnalysis, MAX_CONSECUTIVE_FAILURES, paidCallsAllowed, RUNNER_STALE_MS, runAnalysis, TERMINAL, type Analysis, type AnalysisDeps, type AnalysisProgress, type RunOutcome } from "./analysis";
 export {
   ANALYSIS_FAILED_QUEUE,
   ANALYSIS_QUEUE,
@@ -60,6 +60,7 @@ export async function startAnalysisWorkers(boss: PgBoss, db: Database, deps: Ana
       const { analysisId } = parseAnalysisJob(job.data);
       const outcome = await runAnalysis(db, analysisId, deps);
       if (outcome === "waiting") await enqueueAnalysis(boss, { analysisId }, { startAfterSeconds: PARSING_RECHECK_SECONDS });
+      if (outcome === "polling") await enqueueAnalysis(boss, { analysisId }, { startAfterSeconds: DISCOVERY_POLL_SECONDS });
       console.log(`analysis ${analysisId}: ${outcome}`);
     }
   });

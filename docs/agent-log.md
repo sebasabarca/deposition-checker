@@ -1067,3 +1067,21 @@ The frontend's working changes were applied to `v2-backend` as uncommitted edits
 ## October 31: one pipeline (approved)
 
 Removed the claims pipeline, batching, v1 and the scripts built on them, keeping hybrid and the direct experiment. The compiler caught one mistake: three spike files that looked obsolete are the independent readers behind the PDF accuracy test, so they were restored.
+
+## November 1: direct discovery as the default (approved sprint brief)
+
+Speaker attribution fixed first: hearing-style labels, redacted speakers and near-miss labels, with OCR text kept separately. Direct Fable discovery added as the default for live analyses, with `discovery_runs`, a one-time refusal fallback, deterministic verification, lanes and deduplication. Hybrid stays non-default. Migrations 0018-0020 are additive. Frontend shows lanes, model provenance and proposals that couldn't be checked. All provider tests use mocks.
+
+No paid call was made for the integration. Browser check used a replay of the saved November 1 Fable answer on the corrected Hutchinson parse (analysis 16, case "Hutchinson parser r2", dev database only), which records that answer's $1.65 again on a local row although nothing was billed. The paid synthetic benchmark has not run. Nothing committed or pushed.
+
+## November 1: evidence strength (approved)
+
+Added the five-point `evidence-strength-v1` checklist for direct findings, with no model call and no prompt change. Rescored saved analyses 16 and 18 from stored data; hybrid rubric v1 scores unchanged. The benchmark's output cap went up to 64,000 after a 24,000 cap cut off Whitfield. The paid synthetic run cost $1.18: Webb found 3 of 3, Whitfield failed at the cap and is not a measurement. Nothing committed or pushed.
+
+## November 1: priority no longer comes from the score (approved)
+
+High came from the evidence-strength score alone, which put the Webb home-versus-parking-lot false positive at High. Priority now comes from the lane, the model's classification and code's checks, and the score only orders findings. The five checks and their weights are unchanged. Saved analyses 16 and 18 rescored from stored data. That finding stays a Potential contradiction at Medium: Fable classed it inferential, so it is a semantic false positive from discovery that code can't remove. Nothing committed or pushed.
+
+## November 1: review fixes for direct discovery (approved)
+
+Three review findings fixed. A failed batch check keeps polling for about five minutes, then closes the run and counts its reservation in full. Active-analysis reuse now matches the method. A direct analysis resumes only when it can make progress, and otherwise returns 409. Nothing committed or pushed.

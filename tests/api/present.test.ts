@@ -14,15 +14,22 @@ describe("finding sections", () => {
   it("never presents a false positive as a contradiction", () => {
     expect(findingGroup(f({ type: "false_positive", priority: "low" }))).toBe("compatible");
   });
-  it("sends unverified citations, inconsistent verdicts and context gaps to review", () => {
-    expect(findingGroup(f({ evidenceStatus: "unsupported", score: null, priority: "low" }))).toBe("review");
-    expect(findingGroup(f({ evidenceStatus: "wrong_reference", score: null, priority: "low" }))).toBe("review");
-    expect(findingGroup(f({ score: null, unscoredReason: "inconsistent_verdict", priority: "needs_context" }))).toBe("review");
-    expect(findingGroup(f({ score: null, unscoredReason: "no_witness_assertion", priority: "needs_context" }))).toBe("review");
-    expect(findingGroup(f({ score: 25, priority: "needs_context" }))).toBe("review");
+  it("keeps failed citations out of every other lane, and sends what code can't stand behind to needs context", () => {
+    expect(findingGroup(f({ evidenceStatus: "unsupported", score: null, priority: "low" }))).toBe("unverified");
+    expect(findingGroup(f({ evidenceStatus: "wrong_reference", score: null, priority: "low" }))).toBe("unverified");
+    expect(findingGroup(f({ score: null, unscoredReason: "inconsistent_verdict", priority: "needs_context" }))).toBe("needs_context");
+    expect(findingGroup(f({ score: null, unscoredReason: "no_witness_assertion", priority: "needs_context" }))).toBe("needs_context");
+    expect(findingGroup(f({ score: 25, priority: "needs_context" }))).toBe("needs_context");
   });
-  it("keeps insufficient evidence separate", () => {
-    expect(findingGroup(f({ type: "insufficient_evidence", score: null, unscoredReason: "insufficient_evidence", priority: "needs_context" }))).toBe("insufficient");
+  it("sorts direct findings, which have no score, by code's checks", () => {
+    const direct = (over = {}) => f({ score: null, unscoredReason: "direct_discovery", priority: "medium", ...over });
+    expect(findingGroup(direct())).toBe("contradictions");
+    expect(findingGroup(direct({ type: "false_positive", priority: "low" }))).toBe("compatible");
+    expect(findingGroup(direct({ unscoredReason: "needs_context", priority: "needs_context" }))).toBe("needs_context");
+    expect(findingGroup(direct({ unscoredReason: "attribution_failed", priority: "needs_context" }))).toBe("unverified");
+  });
+  it("counts insufficient evidence as needing context", () => {
+    expect(findingGroup(f({ type: "insufficient_evidence", score: null, unscoredReason: "insufficient_evidence", priority: "needs_context" }))).toBe("needs_context");
   });
   it("orders by priority, then score", () => {
     const rows = [

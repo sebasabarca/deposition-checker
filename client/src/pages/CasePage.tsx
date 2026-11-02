@@ -260,7 +260,7 @@ function StartAnalysis({ detail }: { detail: CaseDetail }) {
   const [a, setA] = useState<number | null>(null);
   const [b, setB] = useState<number | null>(null);
   const [mode, setMode] = useState<"demo" | "live">("demo");
-  const [budget, setBudget] = useState("3");
+  const [budget, setBudget] = useState("6"); // the server's default for a direct analysis
   const [strategy, setStrategy] = useState("C");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

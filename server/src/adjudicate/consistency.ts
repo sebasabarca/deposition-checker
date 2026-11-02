@@ -33,6 +33,7 @@ export const CONSISTENCY_ISSUES = {
   conflict_not_grounded: "a direct or inferential verdict whose conflict, by its own account, isn't from the two cited exchanges",
   conflict_source_without_conflict: "a verdict with no conflict says its conflict comes from the cited exchanges",
   context_reference_not_in_packet: "a context line the model says it used wasn't shown as context",
+  unresolved_detail_difference: "a false positive about the same event that lists a detail as different",
 } as const;
 export type ConsistencyIssue = keyof typeof CONSISTENCY_ISSUES;
 
@@ -84,5 +85,7 @@ export function checkConsistency(v: Verdict, packet?: Shown): ConsistencyIssue[]
     if (!conflict && v.conflictSource === "cited_exchanges") issues.push("conflict_source_without_conflict");
   }
   if (packet && v.contextUsed?.some((c) => !resolvesToContext(c.lines, packet))) issues.push("context_reference_not_in_packet");
+  // adjudicate-v4: a listed difference can't be dismissed as compatible without a person seeing it.
+  if (falsePositive && v.sameEvent !== "no" && v.detailsCompared?.some((d) => d.relation === "different")) issues.push("unresolved_detail_difference");
   return issues;
 }

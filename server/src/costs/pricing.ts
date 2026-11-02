@@ -28,6 +28,12 @@ export const PRICES: Record<string, PriceTier[]> = {
   "claude-sonnet-5-5": [
     { maxPromptTokens: null, rates: { input: 2, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1, output: 10 } },
   ],
+  "claude-fable-5-1": [
+    { maxPromptTokens: null, rates: { input: 10, cacheWrite5m: 12.5, cacheWrite1h: 20, cacheRead: 0.25, output: 50 } },
+  ],
+  "claude-opus-5-5": [
+    { maxPromptTokens: null, rates: { input: 4, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.2, output: 20 } },
+  ],
   "claude-haiku-5-5": [
     { maxPromptTokens: 100_000, rates: { input: 0.1, cacheWrite5m: 0.125, cacheWrite1h: 0.2, cacheRead: 0.01, output: 0.5 } },
     { maxPromptTokens: null, rates: { input: 0.5, cacheWrite5m: 0.625, cacheWrite1h: 1, cacheRead: 0.05, output: 2.5 } },

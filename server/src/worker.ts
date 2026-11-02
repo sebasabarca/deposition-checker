@@ -2,7 +2,7 @@
 // Start it with `npm run worker` (or `npm run dev`, which starts it with the server and client).
 
 import "dotenv/config";
-import { anthropicAdjudicator, type PromptVersion } from "./adjudicate";
+import { anthropicAdjudicator, anthropicDiscovery, type PromptVersion } from "./adjudicate";
 import { anthropicCardModel, anthropicTopicModel } from "./claims";
 import type { Effort } from "./adjudicate/prompt";
 import { connect } from "./db/client";
@@ -19,6 +19,7 @@ async function main() {
     signal: shuttingDown.signal,
     liveAdjudicator: (a) => (paidCallsAllowed(process.env) ? anthropicAdjudicator(a.effort as Effort, a.promptVersion as PromptVersion) : null),
     liveCardModels: () => (paidCallsAllowed(process.env) ? { cards: anthropicCardModel(), topics: anthropicTopicModel() } : null),
+    discovery: () => (paidCallsAllowed(process.env) ? anthropicDiscovery() : null),
   });
   console.log(`Worker running (ingest and analysis; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"})`);
 

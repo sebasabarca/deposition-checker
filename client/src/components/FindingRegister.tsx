@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ExternalLink, Filter } from "lucide-react";
 import { api } from "../lib/api";
-import { CLASSIFICATION, EVIDENCE_STATUS, GROUP_HELP, priorityTone, PRIORITY } from "../lib/labels";
+import { CLASSIFICATION, EVIDENCE_STATUS, evidenceStrength, findingHeadline, GROUP_HELP, GROUP_LABEL, priorityTone, PRIORITY } from "../lib/labels";
 import { href } from "../lib/router";
 import { reviewOf, REVIEW_LABEL, useReviews } from "../lib/review";
 import type { EvidenceSide, FindingDetail, FindingGroup, FindingSummary } from "../types";
@@ -14,10 +14,10 @@ export type RegisterFinding = FindingSummary & { analysisId: number; caseName?: 
 
 const PAGE_SIZE = 10;
 const GROUPS: { group: FindingGroup; label: string; tone: string }[] = [
-  { group: "contradictions", label: "Potential contradictions", tone: "text-error" },
-  { group: "compatible", label: "Likely compatible", tone: "text-on-surface" },
-  { group: "insufficient", label: "Insufficient evidence", tone: "text-on-surface" },
-  { group: "review", label: "Needs review", tone: "text-secondary" },
+  { group: "contradictions", label: GROUP_LABEL.contradictions, tone: "text-error" },
+  { group: "needs_context", label: GROUP_LABEL.needs_context, tone: "text-secondary" },
+  { group: "compatible", label: GROUP_LABEL.compatible, tone: "text-on-surface" },
+  { group: "unverified", label: GROUP_LABEL.unverified, tone: "text-on-surface" },
 ];
 
 export function FindingRegister({ findings, emptyTitle }: { findings: RegisterFinding[]; emptyTitle: string }) {
@@ -27,7 +27,7 @@ export function FindingRegister({ findings, emptyTitle }: { findings: RegisterFi
   const count = (g: FindingGroup) => findings.filter((f) => f.group === g).length;
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return findings.filter((f) => (group === "all" || f.group === group) && (!term || [f.a.ref, f.b.ref, f.explanation, f.caseName, CLASSIFICATION[f.classification]].some((s) => s?.toLowerCase().includes(term))));
+    return findings.filter((f) => (group === "all" || f.group === group) && (!term || [f.a.ref, f.b.ref, f.explanation, f.caseName, findingHeadline(f), CLASSIFICATION[f.classification]].some((s) => s?.toLowerCase().includes(term))));
   }, [findings, group, q]);
   const pages = Math.max(Math.ceil(shown.length / PAGE_SIZE), 1);
   const current = Math.min(page, pages - 1);
@@ -99,14 +99,16 @@ export function FindingRegister({ findings, emptyTitle }: { findings: RegisterFi
 
 function Row({ f }: { f: RegisterFinding }) {
   const reviews = useReviews();
-  const review = reviewOf(f.id, f.reviewState, reviews);
-  const verified = f.evidenceStatus === "verified" || f.evidenceStatus === "approximate";
+  const review = reviewOf(f.id, f.reviewState, reviews, f.direct?.evidenceKey);
+  const verified = f.group !== "unverified" && (f.evidenceStatus === "verified" || f.evidenceStatus === "approximate");
   return (
     <tr className="border-t border-surface-container-low align-top transition-colors hover:bg-surface/60 max-lg:block max-lg:p-space-md">
       <td className={cx(tdClass, "max-lg:block max-lg:p-0")}>
         <div className="flex flex-col gap-1">
-          <span className="font-semibold">{CLASSIFICATION[f.classification]}</span>
-          <Badge tone={priorityTone(f.priority)}>{PRIORITY[f.priority]}</Badge>
+          <span className="font-semibold">{findingHeadline(f)}</span>
+          {f.group !== "needs_context" && <Badge tone={priorityTone(f.priority)}>{PRIORITY[f.priority]}</Badge>}
+          {f.direct && f.group !== "compatible" && <span className="text-label-sm font-semibold tabular-nums">{evidenceStrength(f)}</span>}
+          {f.direct && <span className="text-label-sm text-on-surface-variant">Proposed by {f.modelName}</span>}
           {f.source !== "model" && <Badge tone="accent">{f.source === "fixture" ? "Prepared example" : "Stored assessment"}</Badge>}
           {f.caseName && <span className="text-label-sm text-on-surface-variant">{f.caseName}</span>}
         </div>
@@ -118,7 +120,9 @@ function Row({ f }: { f: RegisterFinding }) {
       <td className={cx(tdClass, "max-lg:block max-lg:p-0")}><Contrast id={f.id} /></td>
       <td className={cx(tdClass, "max-lg:block max-lg:px-0 max-lg:py-2")}>
         <div className="flex flex-col gap-1">
-          {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
+          {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
+          {f.direct?.ocrRead && <Badge tone="warn" title="Matched against OCR text, which may differ from the scan">{f.direct.lowOcrLines.length > 0 ? `Low OCR confidence: ${f.direct.lowOcrLines.join(", ")}` : "OCR text: check the scan"}</Badge>}
+          {(f.direct?.duplicates ?? 0) > 0 && <span className="text-label-sm text-on-surface-variant">{f.direct!.duplicates + 1} proposals merged</span>}
           <HumanMark>{REVIEW_LABEL[review]}</HumanMark>
         </div>
       </td>
@@ -142,7 +146,7 @@ function Contrast({ id }: { id: number }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Quote label="Session A" side={f.a} />
-      <Quote label="Session B" side={f.b} tint={f.classification === "direct" || f.classification === "inferential"} />
+      <Quote label="Session B" side={f.b} tint={f.group === "contradictions"} />
     </div>
   );
 }

@@ -2,7 +2,8 @@
 // say what it supports and never read as a probability or a percentage.
 
 import { describe, expect, it } from "vitest";
-import { ANALYSIS_STATUS, CLASSIFICATION, scoreLabel } from "../../client/src/lib/labels";
+import { ANALYSIS_STATUS, CLASSIFICATION, findingHeadline, scoreLabel } from "../../client/src/lib/labels";
+import { reviewOf } from "../../client/src/lib/review";
 import { href, parseRoute } from "../../client/src/lib/router";
 
 describe("client routes", () => {
@@ -36,5 +37,22 @@ describe("score wording", () => {
     for (const s of ["queued", "parsing", "retrieving", "adjudicating", "completed", "failed", "blocked_budget", "blocked_credentials"] as const) {
       expect(ANALYSIS_STATUS[s].label.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("direct findings in the interface", () => {
+  it("never headlines a held-back finding as a contradiction", () => {
+    expect(findingHeadline({ group: "contradictions", classification: "direct" })).toBe("Potential direct contradiction");
+    expect(findingHeadline({ group: "contradictions", classification: "inferential" })).toBe("Potential inferential contradiction");
+    expect(findingHeadline({ group: "needs_context", classification: "direct" })).toBe("Needs context");
+    expect(findingHeadline({ group: "unverified", classification: "direct" })).toBe("Unverified finding");
+    expect(findingHeadline({ group: "compatible", classification: "false_positive" })).toBe("Likely compatible");
+  });
+
+  it("carries a decision to the same evidence in a later analysis", () => {
+    const decided = { "e:key": { decision: "dismissed" as const, note: "", decidedAt: "2026-11-01" } };
+    expect(reviewOf(99, "unreviewed", decided, "key")).toBe("dismissed");
+    expect(reviewOf(99, "unreviewed", decided, "other")).toBe("unreviewed");
+    expect(reviewOf(99, "unreviewed", decided)).toBe("unreviewed");
   });
 });

@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
 export const REVIEW_DECISIONS = ["confirmed", "dismissed", "needs_context"] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 export type ReviewRecord = { decision: ReviewDecision; note: string; decidedAt: string };
-export type ReviewStore = Record<number, ReviewRecord>;
+export type ReviewStore = Record<string, ReviewRecord>; // by finding ID, and by evidence key (`e:<key>`) for a direct finding
 
 export const REVIEW_LABEL: Record<ReviewDecision | "unreviewed", string> = {
   unreviewed: "Not reviewed",
@@ -48,14 +48,22 @@ function commit(next: ReviewStore) {
   listeners.forEach((l) => l());
 }
 
-export function saveReview(id: number, decision: ReviewDecision, note: string) {
-  commit({ ...store, [id]: { decision, note, decidedAt: new Date().toISOString() } });
+// A direct finding's evidence key is the same in a later analysis of the same passages, so a decision
+// made once still shows there.
+const evidence = (key?: string | null) => (key ? `e:${key}` : null);
+
+export function saveReview(id: number, decision: ReviewDecision, note: string, evidenceKey?: string | null) {
+  const record = { decision, note, decidedAt: new Date().toISOString() };
+  const shared = evidence(evidenceKey);
+  commit({ ...store, [id]: record, ...(shared ? { [shared]: record } : {}) });
 }
 
-export function clearReview(id: number) {
-  const { [id]: _removed, ...rest } = store;
+export function clearReview(id: number, evidenceKey?: string | null) {
+  const { [id]: _removed, [evidence(evidenceKey) ?? ""]: _shared, ...rest } = store;
   commit(rest);
 }
+
+export const savedReview = (id: number, reviews: ReviewStore, evidenceKey?: string | null): ReviewRecord | undefined => reviews[id] ?? reviews[evidence(evidenceKey) ?? ""];
 
 export function useReviews(): ReviewStore {
   return useSyncExternalStore(
@@ -68,6 +76,6 @@ export function useReviews(): ReviewStore {
 }
 
 // What a finding's review status is: the local decision, else what the server stored.
-export function reviewOf(id: number, serverState: string, reviews: ReviewStore): ReviewDecision | "unreviewed" {
-  return reviews[id]?.decision ?? (REVIEW_DECISIONS.includes(serverState as ReviewDecision) ? (serverState as ReviewDecision) : "unreviewed");
+export function reviewOf(id: number, serverState: string, reviews: ReviewStore, evidenceKey?: string | null): ReviewDecision | "unreviewed" {
+  return savedReview(id, reviews, evidenceKey)?.decision ?? (REVIEW_DECISIONS.includes(serverState as ReviewDecision) ? (serverState as ReviewDecision) : "unreviewed");
 }

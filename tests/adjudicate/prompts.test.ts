@@ -7,6 +7,25 @@ import { checkConsistency, PROMPTS, readVerdict, resolvesToContext, VerdictV3, t
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 
+describe("adjudicate-v4", () => {
+  const verdict = { classification: "false_positive", conflictBasis: "none", falsePositiveReason: "both_can_be_true", sameEvent: "yes", inferenceSteps: [] } as unknown as Verdict;
+  const different = [{ detail: "x", sessionA: "a", sessionB: "b", relation: "different" as const }];
+
+  it("is v3 plus the detail comparison and its field, and names no case detail", () => {
+    const v4 = PROMPTS["adjudicate-v4"].system;
+    const withoutDetails = v4.replace(/\n\nDetail comparison, done before you classify:[\s\S]*?(?=\n\nFields:)/, "").replace(/\n- detailsCompared:[\s\S]*$/, "");
+    expect(withoutDetails).toBe(PROMPTS["adjudicate-v3"].system);
+    expect(v4).not.toMatch(/beast|limo|suv|vehicle|hutchinson/i);
+  });
+
+  it("won't let a false positive on one event dismiss a listed difference", () => {
+    expect(checkConsistency({ ...verdict, detailsCompared: different })).toContain("unresolved_detail_difference");
+    expect(checkConsistency({ ...verdict, detailsCompared: [{ ...different[0], relation: "only_one" }] })).not.toContain("unresolved_detail_difference");
+    expect(checkConsistency({ ...verdict, sameEvent: "no", falsePositiveReason: "different_event", detailsCompared: different })).not.toContain("unresolved_detail_difference");
+    expect(checkConsistency(verdict)).not.toContain("unresolved_detail_difference");
+  });
+});
+
 describe("prompt versions", () => {
   it("never changes a prompt that has stored verdicts", () => {
     expect(sha(PROMPTS["adjudicate-v1"].system)).toBe("b4ff150c9a99f5bd95cb8ceccd2ddc6ec1c209bfd0cda3d3d9556722c6bb4bf9");

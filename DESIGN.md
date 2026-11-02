@@ -867,3 +867,47 @@ Hybrid is now the only pipeline, and v1 is gone, on the developer's instruction.
 - Adjudication's disagreement check read claims, so it now receives none, as new uploads always did. On Ellison, where claims were stored, a re-run can score differently from earlier runs.
 - A live analysis without paid access stops before retrieval rather than after.
 - The direct full-transcript call stays in `experiments/multimodel-contradictions/`, outside the product.
+
+## Implementation note: direct discovery as the default (November 1, approved)
+
+**This note supersedes the earlier sections wherever they describe the default analysis path.** A live analysis now reads both sessions whole with Claude Fable 5.1. Hybrid retrieval stays as a non-default option (`method: "hybrid"`), and demo mode still replays stored hybrid verdicts. Stored hybrid and pair analyses stay readable. Hybrid is kept, but no longer tuned.
+
+**Why.** On the one independently documented inconsistency we have (Hutchinson, June 6:06 "Presidential limo" against September 33:09 "Presidential SUV"), hybrid never assessed the pairs, and Sonnet rejected them when shown as pairs. Fable reported the pair in both runs that finished, classed as needs context. One case can't establish general recall.
+
+**Pipeline.** Ingestion and speaker attribution, then one Batch API request holding both complete sessions, then deterministic verification, conservative deduplication, lanes, and the existing workbench. Fable proposes candidate inconsistencies. It does not establish that a witness contradicted themselves.
+
+**Full context.** Every stored line is sent, whatever its OCR confidence. Input is bounded from characters, which can't undercount tokens, and if the bound plus the output budget exceeds the context limit the analysis fails with a clear error. Nothing is truncated, chunked or partially analysed.
+
+**Refusal fallback and job state.** `discovery_runs` holds one row per paid attempt: at most one primary and one fallback. Each row and its budget reservation are written before the provider is called, the batch ID right after, and the result is stored in one transaction. Waiting holds no job open: the worker polls every 30 seconds through the existing requeue. A restarted worker polls the batch it already has. If a worker died between writing the row and recording the batch ID, nobody can know whether the batch exists, so the run becomes `submission_unknown` and nothing more is sent. A failed batch check keeps polling through about five minutes of provider trouble. After that the run closes as `provider_failed` and its reservation counts in full, because the batch may have been billed.
+
+A direct analysis resumes only after a budget or credentials stop, or a cancel before anything was sent. Every other stop is final, because no attempt repeats, and the answer is a new analysis.
+
+Only an explicit refusal leads to the fallback (Opus 5.5), once, and only if the budget covers its worst case. A valid empty answer, a needs-context finding, invalid output, a cut-off answer, a provider failure or too little context capacity never does. Refused attempts are recorded with their cost, because they can be billed. Results carry the model that produced them, and a fallback is shown as one.
+
+**Verification (`verify/direct.ts`, pure).** Every proposed finding is checked for source identity, quotation accuracy, speaker and OCR provenance. Model interpretation is kept apart from source facts: code doesn't say two statements conflict. The frozen hybrid rubric doesn't apply here, because its inputs are the Sonnet verdict's fields. Direct findings have evidence strength instead (below). An attorney's words count only if the witness plainly adopted or denied them. An exact match against OCR text shows the quotation is in our reading, not that the page was read correctly. Failed findings are kept: in the Unverified lane, or in the run's audit if their citations resolve to nothing, and those are listed on the analysis.
+
+**Lanes (code's decision).** Potential contradiction: both sides verified witness testimony, no doubt flagged. Needs context: the model said so, comparability is uncertain, a quotation is approximate, speaker unknown, no recollection, or a cited line below 85% OCR confidence. Compatible or dismissed. Unverified: failed references, unsupported quotations or attorney-only words. Direct versus inferential stays as metadata. The headline follows the lane, so a held-back finding never reads as a contradiction.
+
+**Deduplication.** Deterministic and conservative: two findings merge only when both passages overlap by at least half of the shorter one, on the same pair of sessions. A–B and B–A are the same pair. The most cautious copy is shown, and the originals stay on the finding. An evidence key lets a review decision carry over to the same passages in a later analysis. Review decisions remain browser-only, as before.
+
+**Speaker attribution.** Hearing-style labels (`Ms. Cheney.`) are read as turns, using the witness's surname, which ingestion now receives. Near-miss surnames, garbled labels, stray marks where a speaker was redacted, and labels with no known witness stay `unknown`, and unknown speech is never treated as testimony. A bar joined to a word reads as "I" in matching only. `lines.ocr_text` keeps what OCR read when a correction changed the stored line. `PARSER_REVISION` is 2. Stored depositions keep their old parse until re-ingested, and re-ingesting replaces their rows, which deletes analyses on them, so it is a deliberate step.
+
+**Cost and latency (measured once each on Hutchinson, 5,175 lines).** Fable batch: $1.65 and 6 min 52 s. Fable standard: $3.09 and 7 min 14 s. One batch was refused after 3 min 6 s and cost $1.00. Most batches finish within an hour; the limit is 24 hours. The default budget for a direct analysis is $6.
+
+**Data retention and confidentiality.** Fable requires 30-day retention, and zero data retention needs Anthropic's express authorization. Public and synthetic testimony passing through a hosted model establishes no permission to send confidential client records. Provider retention and contractual requirements must be reviewed before client use.
+
+**Evidence strength (`evidence-strength-v1`, `score/evidenceStrength.ts`, pure).** A five-point checklist, 20 points each, from existing fields: no extra model call, no prompt change, and any stored finding can be rescored with `scripts/rescore-direct.ts`.
+
+| Check | Decided by | Points |
+|---|---|---|
+| Quotations match the transcript | Code | 20 both exact, 10 if any is approximate |
+| The statements are the witness's | Code | 20 (anything less isn't scored) |
+| Clear assertions: no hedge, no lack of recollection, not secondhand | Code | 10 per side |
+| Same subject (`comparable: yes`) | Model | 20 or 0 |
+| Conflict holds without missing context | Model | Direct 20, inferential 10, otherwise 0 |
+
+A finding with an invalid citation or an unknown, mixed or attorney-only speaker has no score. A compatible finding has none either, because solid evidence there isn't support for a conflict. It measures how well the cited testimony supports review, not the chance that the witness contradicted themselves. It can't separate a flat negation from conflicting values, and it can't detect a false positive: the Webb home-versus-parking-lot finding scores 80. A richer rubric would need structured fields from the model, which means a new prompt version. Hybrid scores keep rubric v1.
+
+**Priority (`priorityOf`).** The score decides neither lane nor priority, and only orders findings within a priority. Precedence: failed verification (Unverified), missing context or unresolved attribution (Needs context), compatible (Low), then conflicts. High needs a direct classification, `comparable: yes`, and at least one side a plain assertion: one hedge doesn't undo a conflict, but two leave it softer. Other direct conflicts and all inferential conflicts are Medium. An alternative explanation alone never lowers a finding, because the prompt requires one on every finding. Code can't tell a true inference from a false one, so Medium holds both, and a semantic false positive from discovery stays a Potential contradiction for a person to dismiss.
+
+**Evaluation.** `scripts/direct-benchmark.ts` scores a finished analysis against the Webb and Whitfield labels by source lines on both sides, and counts needs-context separately from confirmed detections. These fixtures shaped development, so this is a development-tuned synthetic evaluation, not a held-out benchmark, and it says nothing about real depositions. Earlier Sonnet results are historical data from different conditions, not a controlled comparison.

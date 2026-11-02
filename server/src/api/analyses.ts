@@ -8,23 +8,26 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { z } from "zod";
-import { DEFAULT_EFFORT, DEFAULT_PROMPT_VERSION, DEFAULT_STRATEGY, EFFORTS, MAX_CONCURRENCY, PRODUCTION_STRATEGY_IDS, PROMPT_VERSIONS, STRATEGIES, type Verdict } from "../adjudicate";
+import { DEFAULT_EFFORT, DEFAULT_PROMPT_VERSION, DEFAULT_STRATEGY, directCanResume, discoveryRunsOf, DISCOVERY_EFFORT, DISCOVERY_FALLBACK_MODEL, DISCOVERY_MODEL, DISCOVERY_PROMPT_VERSION, EFFORTS, MAX_CONCURRENCY, PRODUCTION_STRATEGY_IDS, PROMPT_VERSIONS, STRATEGIES, type Verdict } from "../adjudicate";
 import { withTransaction, type Database } from "../db/client";
-import { analyses, budgets, candidates, depositions, exchangeLines, findings, lines, verdicts, witnesses } from "../db/schema";
-import { analysisCost, candidateSetOf, enqueueAnalysis } from "../jobs";
+import { analyses, budgets, candidates, depositions, discoveryRuns, exchangeLines, findings, lines, verdicts, witnesses } from "../db/schema";
+import { analysisCost, candidateSetOf, DIRECT_FABLE, enqueueAnalysis } from "../jobs";
 import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claims";
-import { candidateCoverage, compareFindings, findingGroup, GROUP_LABELS, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
+import { candidateCoverage, compareFindings, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
 export const MAX_BUDGET_USD = 20;
 export const DEFAULT_BUDGET_USD = 3; // DESIGN.md's default per two-session analysis
+// Covers the worst case of a long pair at batch prices, and of a fallback after a refusal.
+export const DEFAULT_DIRECT_BUDGET_USD = 6;
 export const MAX_CANDIDATES = 300;
 
 const StartAnalysis = z.object({
   depositionA: z.number().int().positive(),
   depositionB: z.number().int().positive(),
   mode: z.enum(["demo", "live"]).default("demo"),
-  budgetUsd: z.number().min(0).max(MAX_BUDGET_USD).default(DEFAULT_BUDGET_USD),
+  method: z.enum(["direct_fable", "hybrid"]).optional(), // live defaults to direct_fable; a demo replays stored hybrid verdicts
+  budgetUsd: z.number().min(0).max(MAX_BUDGET_USD).optional(),
   maxCandidates: z.number().int().min(1).max(MAX_CANDIDATES).default(MAX_CANDIDATES),
   promptVersion: z.enum(PROMPT_VERSIONS).default(DEFAULT_PROMPT_VERSION),
   effort: z.enum(EFFORTS).default(DEFAULT_EFFORT),
@@ -65,15 +68,18 @@ export async function analysisView(db: Database, id: number) {
     .from(findings)
     .innerJoin(candidates, eq(candidates.id, findings.candidateId))
     .where(eq(candidates.candidateSet, candidateSetOf(id)));
-  const groups: Record<FindingGroup, number> = { contradictions: 0, compatible: 0, insufficient: 0, review: 0 };
+  const groups: Record<FindingGroup, number> = { contradictions: 0, needs_context: 0, compatible: 0, unverified: 0 };
   for (const r of rows) groups[findingGroup(r)]++;
   const cost = await analysisCost(db, a);
+  const runs = a.retrieval === DIRECT_FABLE ? await discoveryRunsOf(db, a.id) : [];
   return {
     id: a.id,
     caseId: a.caseId,
     witnessId: a.witnessId,
     mode: a.mode,
     retrieval: a.retrieval,
+    discovery: a.retrieval === DIRECT_FABLE ? discoveryView(runs) : null,
+    resumable: a.retrieval === DIRECT_FABLE ? directCanResume(a.status, runs.length) : RESUMABLE.includes(a.status),
     status: a.status,
     error: a.error,
     progress: a.progress,
@@ -95,6 +101,25 @@ export async function analysisView(db: Database, id: number) {
   };
 }
 
+// What each paid attempt did, and which model's results these are, in fields a lawyer can read.
+function discoveryView(runs: Awaited<ReturnType<typeof discoveryRunsOf>>) {
+  const fallback = runs.find((r) => r.role === "fallback");
+  const answered = [...runs].reverse().find((r) => r.status === "succeeded");
+  return {
+    resultModel: answered ? (answered.answered_by ?? answered.model) : null,
+    resultModelName: answered ? modelName(answered.answered_by ?? answered.model) : null,
+    usedFallback: fallback !== undefined,
+    fallbackModel: DISCOVERY_FALLBACK_MODEL,
+    primaryModel: DISCOVERY_MODEL,
+    promptVersion: runs[0]?.prompt_version ?? DISCOVERY_PROMPT_VERSION,
+    sourceHashes: runs[0]?.source_hashes ?? null,
+    attempts: runs.map((r) => ({ attempt: r.attempt, role: r.role, model: r.model, modelName: modelName(r.model), status: r.status, batchId: r.batch_id, stopReason: r.stop_reason, refusalCategory: r.refusal_category, error: r.error, costUsd: r.cost_usd === null ? null : Number(r.cost_usd), inputTokens: r.input_tokens, outputTokens: r.output_tokens, thinkingTokens: r.thinking_tokens, latencyMs: r.latency_ms })),
+  };
+}
+
+type DirectChecks = { lane: FindingGroup; evidenceKey: string; a: DirectSideCheck; b: DirectSideCheck; modelClassification: string; duplicates: unknown[] };
+type DirectSideCheck = { depositionId: number; citation: string; speaker: string; ocr: { read: boolean; minConfidence: number | null; lowLines: string[] }; reportedSpeech: boolean };
+
 // The findings of an analysis, grouped for review, each with its references and where it came from.
 export async function analysisFindings(db: Database, id: number) {
   const rows = await db
@@ -107,9 +132,13 @@ export async function analysisFindings(db: Database, id: number) {
   const items = rows
     .map(({ f, v, c }) => {
       const parsed = v.parsed as Verdict;
+      const direct = (f.checks as { direct?: DirectChecks }).direct ?? null;
       return {
         id: f.id,
         group: findingGroup(f),
+        model: v.model,
+        modelName: modelName(v.model),
+        direct: direct ? { modelClassification: direct.modelClassification, evidenceKey: direct.evidenceKey, duplicates: direct.duplicates.length, ocrRead: direct.a.ocr.read || direct.b.ocr.read, lowOcrLines: [...direct.a.ocr.lowLines, ...direct.b.ocr.lowLines], speakers: [direct.a.speaker, direct.b.speaker] } : null,
         classification: f.type,
         priority: f.priority,
         score: f.score,
@@ -120,15 +149,21 @@ export async function analysisFindings(db: Database, id: number) {
         reviewState: f.reviewState,
         source: v.origin as VerdictSource,
         rank: c.mergedRank,
-        a: { depositionId: c.depositionA, ref: firstLines.get(c.exchangeA) ?? null },
-        b: { depositionId: c.depositionB, ref: firstLines.get(c.exchangeB) ?? null },
+        // A direct finding cites exact lines, which may start well inside the exchange.
+        a: direct ? { depositionId: direct.a.depositionId, ref: direct.a.citation } : { depositionId: c.depositionA, ref: firstLines.get(c.exchangeA) ?? null },
+        b: direct ? { depositionId: direct.b.depositionId, ref: direct.b.citation } : { depositionId: c.depositionB, ref: firstLines.get(c.exchangeB) ?? null },
         sameEvent: parsed.sameEvent,
         explanation: parsed.explanation,
       };
     })
     .sort((x, y) => compareFindings(x, y));
-  const groups = (Object.keys(GROUP_LABELS) as FindingGroup[]).map((g) => ({ group: g, label: GROUP_LABELS[g], findings: items.filter((i) => i.group === g) }));
-  return { groups };
+  const groups = GROUP_ORDER.map((g) => ({ group: g, label: GROUP_LABELS[g], findings: items.filter((i) => i.group === g) }));
+  // Proposed findings that couldn't be tied to stored lines have no finding row. They stay visible here.
+  const runs = await discoveryRunsOf(db, id);
+  const notStored = runs.flatMap((r) => ((r.audit ?? []) as { shown: string; findingId: string; classification: string; explanation: string; reasons: string[]; evidenceStatus: string; a: { citation: string }; b: { citation: string } }[])
+    .filter((x) => x.shown === "not_stored")
+    .map((x) => ({ findingId: x.findingId, model: r.answered_by ?? r.model, modelName: modelName(r.answered_by ?? r.model), classification: x.classification, evidenceStatus: x.evidenceStatus, reasons: x.reasons, citationA: x.a.citation, citationB: x.b.citation, explanation: x.explanation })));
+  return { groups, notStored };
 }
 
 async function firstLineRefs(db: Database, partIds: number[]) {
@@ -166,6 +201,8 @@ export async function findingDetail(db: Database, id: number) {
     reasons: string[];
     consistencyIssues?: string[];
   };
+  const direct = (f.checks as { direct?: DirectChecks }).direct ?? null;
+  const usedFallback = direct !== null && v.model === DISCOVERY_FALLBACK_MODEL;
   const allIds = packet.sides.flatMap((s) => [...s.lineIds, ...s.contextLineIds]);
   const stored = new Map(
     (allIds.length ? await db.select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, speaker: lines.speakerRole, ocrConfidence: lines.ocrConfidence, pdfPage: lines.pdfPage }).from(lines).where(inArray(lines.id, allIds)) : []).map((l) => [l.id, l]),
@@ -239,7 +276,8 @@ export async function findingDetail(db: Database, id: number) {
     consistencyIssues: checks.consistencyIssues ?? v.consistencyIssues,
     contextCheck: checks.context?.detail ?? null,
     timeCheck: checks.timeCheck,
-    source: { kind: v.origin as VerdictSource, label: SOURCE_LABELS[v.origin as VerdictSource], model: v.model, promptVersion: v.promptVersion, verdictId: v.id, replayOf: v.replayOf },
+    source: { kind: v.origin as VerdictSource, label: direct ? directSourceLabel(v.model, usedFallback) : SOURCE_LABELS[v.origin as VerdictSource], model: v.model, modelName: modelName(v.model), usedFallback, promptVersion: v.promptVersion, verdictId: v.id, replayOf: v.replayOf },
+    direct: direct ? { modelClassification: direct.modelClassification, evidenceKey: direct.evidenceKey, duplicates: direct.duplicates, sharedSubject: (parsed as { sharedSubject?: string }).sharedSubject ?? null, missingContext: (parsed as { missingContext?: string }).missingContext ?? null, reasoning: (parsed as { confidenceRationale?: string }).confidenceRationale ?? null, conflictBasis: (parsed as { conflictBasisText?: string }).conflictBasisText ?? null, a: { speaker: direct.a.speaker, ocr: direct.a.ocr, reportedSpeech: direct.a.reportedSpeech }, b: { speaker: direct.b.speaker, ocr: direct.b.ocr, reportedSpeech: direct.b.reportedSpeech } } : null,
     assessment: {
       sameEvent: parsed.sameEvent,
       scopeAligned: parsed.scopeAligned,
@@ -268,6 +306,9 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const body = StartAnalysis.safeParse(req.body ?? {});
     if (!body.success) return res.status(400).json({ error: `Invalid analysis request: ${body.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}` });
     const b = body.data;
+    const method = b.method ?? (b.mode === "live" ? DIRECT_FABLE : "hybrid");
+    if (method === DIRECT_FABLE && b.mode === "demo") return res.status(400).json({ error: "Direct discovery has no demo mode: a demo replays stored hybrid assessments." });
+    const budgetUsd = b.budgetUsd ?? (method === DIRECT_FABLE ? DEFAULT_DIRECT_BUDGET_USD : DEFAULT_BUDGET_USD);
     if (b.depositionA === b.depositionB) return res.status(400).json({ error: "Choose two different deposition sessions." });
     const strategy = STRATEGIES[b.strategy];
     const maxConcurrency = strategy.id === "A" ? 1 : (b.maxConcurrency ?? strategy.maxConcurrency);
@@ -282,13 +323,13 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
       const [active] = await tx
         .select({ id: analyses.id })
         .from(analyses)
-        .where(and(eq(analyses.depositionA, first.id), eq(analyses.depositionB, second.id), eq(analyses.mode, b.mode), inArray(analyses.status, [...ACTIVE])));
+        .where(and(eq(analyses.depositionA, first.id), eq(analyses.depositionB, second.id), eq(analyses.mode, b.mode), eq(analyses.retrieval, method), inArray(analyses.status, [...ACTIVE])));
       if (active) return { id: active.id, created: false };
       const [a] = await tx
         .insert(analyses)
-        .values({ caseId: caseId.data, witnessId: first.witnessId, depositionA: first.id, depositionB: second.id, mode: b.mode, promptVersion: b.promptVersion, effort: b.effort, maxCandidates: b.maxCandidates, budgetUsd: b.budgetUsd, strategy: strategy.id, candidatesPerRequest: strategy.candidatesPerRequest, maxConcurrency })
+        .values({ caseId: caseId.data, witnessId: first.witnessId, depositionA: first.id, depositionB: second.id, mode: b.mode, retrieval: method, promptVersion: method === DIRECT_FABLE ? DISCOVERY_PROMPT_VERSION : b.promptVersion, effort: method === DIRECT_FABLE ? DISCOVERY_EFFORT : b.effort, maxCandidates: b.maxCandidates, budgetUsd, strategy: strategy.id, candidatesPerRequest: strategy.candidatesPerRequest, maxConcurrency })
         .returning({ id: analyses.id });
-      const [budget] = await tx.insert(budgets).values({ name: `analysis-${a.id}`, limitUsd: b.budgetUsd }).returning({ id: budgets.id });
+      const [budget] = await tx.insert(budgets).values({ name: `analysis-${a.id}`, limitUsd: budgetUsd }).returning({ id: budgets.id });
       await tx.update(analyses).set({ budgetId: budget.id }).where(eq(analyses.id, a.id));
       await enqueueAnalysis(boss, { analysisId: a.id }, { client });
       return { id: a.id, created: true };
@@ -320,7 +361,10 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const outcome = await withTransaction(pool, async (tx, client) => {
       const [a] = await tx.select().from(analyses).where(eq(analyses.id, id.data)).for("update");
       if (!a) return "not_found" as const;
-      if (!RESUMABLE.includes(a.status)) return a.status;
+      if (a.retrieval === DIRECT_FABLE) {
+        const attempts = await tx.$count(discoveryRuns, eq(discoveryRuns.analysisId, a.id));
+        if (!directCanResume(a.status, attempts)) return "direct_final" as const;
+      } else if (!RESUMABLE.includes(a.status)) return a.status;
       if (body.data.budgetUsd !== undefined) {
         if (body.data.budgetUsd < a.budgetUsd) return "lower_budget" as const;
         await tx.update(budgets).set({ limitUsd: body.data.budgetUsd }).where(eq(budgets.id, a.budgetId!));
@@ -331,6 +375,7 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
       return "queued" as const;
     });
     if (outcome === "not_found") return res.status(404).json({ error: "Analysis not found." });
+    if (outcome === "direct_final") return res.status(409).json({ error: "This direct analysis can't continue, because no paid attempt is repeated. Start a new analysis." });
     if (outcome === "lower_budget") return res.status(400).json({ error: "A budget can only be raised, not lowered." });
     if (outcome !== "queued") return res.status(409).json({ error: `Only a blocked or failed analysis can be resumed; this one is ${outcome}.` });
     return res.status(202).json({ analysis: await analysisView(db, id.data) });
@@ -344,7 +389,9 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const [a] = await db.select().from(analyses).where(eq(analyses.id, id.data));
     if (!a) return res.status(404).json({ error: "Analysis not found." });
     if (!ACTIVE.includes(a.status as (typeof ACTIVE)[number])) return res.status(409).json({ error: `Only a running analysis can be cancelled; this one is ${a.status}.` });
-    const changes = a.runnerId === null ? { status: "cancelled" as const, error: "Cancelled before it started assessing. Completed findings are kept.", finishedAt: new Date() } : {};
+    // A direct analysis may hold a paid batch: the job cancels it and records what came back.
+    const holdsBatch = a.retrieval === DIRECT_FABLE && (await db.select({ id: discoveryRuns.id }).from(discoveryRuns).where(eq(discoveryRuns.analysisId, a.id)).limit(1)).length > 0;
+    const changes = a.runnerId === null && !holdsBatch ? { status: "cancelled" as const, error: "Cancelled before it started assessing. Completed findings are kept.", finishedAt: new Date() } : {};
     await db.update(analyses).set({ cancelRequestedAt: new Date(), updatedAt: new Date(), ...changes }).where(eq(analyses.id, a.id));
     return res.status(202).json({ analysis: await analysisView(db, a.id) });
   });

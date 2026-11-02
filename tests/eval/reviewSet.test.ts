@@ -15,7 +15,7 @@ describe("the review set", () => {
   });
   it("holds no testimony", () => {
     expect(readFileSync(file, "utf8")).not.toMatch(/"(text|lines|explanation|statement\w*|keyPhrase\w*)"/);
-    if (existsSync("data/eval/review/review-set-v1.csv")) expect(readFileSync(".gitignore", "utf8")).toContain("data/eval/review/");
+    if (existsSync("data/eval/review/review-set-v1.csv")) expect(readFileSync(".gitignore", "utf8")).toContain("data/eval/review");
   });
   it("is never read by retrieval code", () => {
     for (const f of readdirSync("server/src/retrieve")) expect(readFileSync(`server/src/retrieve/${f}`, "utf8")).not.toMatch(/review-?set/i);

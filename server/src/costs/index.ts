@@ -13,8 +13,10 @@ export {
   ensureBudget,
   failureIsUnbilled,
   inputTokenBound,
+  maxBatchRequestCost,
   maxRequestCost,
   reconcileStale,
+  releaseUnbilled,
   reserve,
   settle,
 } from "./budget";

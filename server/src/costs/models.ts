@@ -7,6 +7,7 @@ export const V2_MODELS = {
   adjudication: "claude-sonnet-5-5",
   statement_cards: "claude-haiku-5-5",
   topic_mapping: "claude-haiku-5-5",
+  discovery: "claude-fable-5-1",
 } as const;
 
 export type Stage = keyof typeof V2_MODELS;
