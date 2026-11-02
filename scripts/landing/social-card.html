@@ -1,0 +1,68 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Serif"; src: url("../../client/node_modules/@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2") format("woff2"); font-weight: 200 900; }
+@font-face { font-family: "Serif"; font-style: italic; src: url("../../client/node_modules/@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-italic.woff2") format("woff2"); font-weight: 200 900; }
+@font-face { font-family: "Mono"; src: url("../../client/node_modules/@fontsource/courier-prime/files/courier-prime-latin-400-normal.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Mono"; src: url("../../client/node_modules/@fontsource/courier-prime/files/courier-prime-latin-700-normal.woff2") format("woff2"); font-weight: 700; }
+@font-face { font-family: "Sans"; src: url("../../client/node_modules/@fontsource-variable/public-sans/files/public-sans-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1200px; height: 630px; overflow: hidden; }
+body { background: #13213a; color: #fff; font-family: "Sans"; position: relative; -webkit-font-smoothing: antialiased; }
+/* A faint lift toward the upper right, so the navy isn't flat black-blue; one step, no glow. */
+.ground { position: absolute; inset: 0; background: radial-gradient(900px 600px at 82% 18%, #1d2d4a 0%, #13213a 70%); }
+.brand { position: absolute; left: 72px; top: 60px; display: flex; align-items: center; gap: 12px; }
+.brand span { font-family: "Serif"; font-weight: 600; font-size: 28px; letter-spacing: -0.01em; }
+h1 { position: absolute; left: 72px; top: 182px; width: 470px; font-family: "Serif"; font-weight: 600; font-size: 66px; line-height: 0.98; letter-spacing: -0.025em; }
+h1 em { font-style: italic; font-weight: 500; color: #f4d77a; }
+.sub { position: absolute; left: 72px; bottom: 64px; width: 430px; font-size: 19px; line-height: 1.45; color: #b9c4d6; }
+.card { position: absolute; width: 586px; background: #fff; color: #151b26; border-radius: 12px; box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.55), 0 2px 6px rgb(0 0 0 / 0.2); overflow: hidden; }
+.card header { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 20px 12px; border-bottom: 1px solid #edeff2; font-size: 13px; color: #6a7280; }
+.card header b { font-family: "Mono"; font-weight: 700; color: #151b26; font-size: 15px; }
+.lines { padding: 10px 0 12px; font-family: "Mono"; font-size: 13.6px; line-height: 25px; white-space: nowrap; }
+.row { display: grid; grid-template-columns: 58px 1fr; }
+.row .n { text-align: right; padding-right: 12px; font-size: 12px; color: #6a7280; }
+.row .t { border-left: 3px double #e9b8b8; padding: 0 18px 0 14px; }
+.row.hl .n { color: #5a4500; font-weight: 700; }
+.row.hl .t { background: #fbe7a1; }
+.a { right: 84px; top: 118px; transform: rotate(-2deg); }
+.b { right: 50px; top: 338px; transform: rotate(1.3deg); }
+svg.link { position: absolute; inset: 0; pointer-events: none; }
+</style></head>
+<body>
+<div class="ground"></div>
+<div class="brand">
+  <svg viewBox="0 0 100 100" width="34" height="34" aria-hidden="true"><path d="M2 20h24.5a6 6 0 0 1 5.2 3L62 79l-6.4 19a3 3 0 0 1-5.4.5Z" fill="#fff"/><path d="M74 2h24L63 72 50 46 69.7 4.4A4 4 0 0 1 74 2Z" fill="#8ea3c0"/></svg>
+  <span>Veridict</span>
+</div>
+<h1>Catch the <em>contradiction</em> before trial.</h1>
+<p class="sub">Every session of a witness's deposition, read side by side and cited to page and line.</p>
+
+<section class="card a">
+  <header><span>Webb Dep. · Mar. 14, 2023</span><b>11:15–11:16</b></header>
+  <div class="lines">
+    <div class="row"><span class="n">11:14</span><span class="t">Q. Where were you on the evening of November 3rd?</span></div>
+    <div class="row hl"><span class="n">11:15</span><span class="t">A. I was at home all evening. I ordered pizza around 7pm</span></div>
+    <div class="row hl"><span class="n">11:16</span><span class="t">and watched TV.</span></div>
+  </div>
+</section>
+<section class="card b">
+  <header><span>Webb Dep. · Sept. 9, 2023</span><b>41:14–41:15</b></header>
+  <div class="lines">
+    <div class="row"><span class="n">41:13</span><span class="t">Q. Walk me through the evening of November 3rd again.</span></div>
+    <div class="row hl"><span class="n">41:14</span><span class="t">A. I was home. I think I went out briefly to get some</span></div>
+    <div class="row hl"><span class="n">41:15</span><span class="t">groceries, maybe around 7:30, but came right back.</span></div>
+  </div>
+</section>
+<svg class="link" viewBox="0 0 1200 630"><path id="link" fill="none" stroke="#f4d77a" stroke-width="2" stroke-linecap="round"/><circle id="d1" r="5" fill="#f4d77a"/><circle id="d2" r="5" fill="#f4d77a"/></svg>
+<script>
+// The thread runs from the end of one highlighted answer to the other, measured after layout.
+const box = (sel) => document.querySelector(sel).getBoundingClientRect();
+const a = box('.a .row.hl:nth-child(2)'), b = box('.b .row.hl:nth-child(3)');
+const x1 = a.right + 2, y1 = a.top + a.height / 2, x2 = b.right + 2, y2 = b.top + b.height / 2;
+const bend = Math.max(x1, x2) + 34;
+document.getElementById('link').setAttribute('d', 'M' + x1 + ' ' + y1 + ' C ' + bend + ' ' + y1 + ', ' + bend + ' ' + y2 + ', ' + x2 + ' ' + y2);
+for (const [id, x, y] of [['d1', x1, y1], ['d2', x2, y2]]) { const c = document.getElementById(id); c.setAttribute('cx', x); c.setAttribute('cy', y); }
+document.body.dataset.ready = '1';
+</script>
+</body></html>

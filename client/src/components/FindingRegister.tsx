@@ -9,12 +9,12 @@ import { GROUP_HELP, GROUP_LABEL } from "../lib/labels";
 import { href } from "../lib/router";
 import { decisionOf, REVIEW_LABEL } from "../lib/review";
 import type { FindingGroup, FindingSummary, ReviewDecision } from "../types";
-import { cx, Search, selectClass, Tabs } from "./ui";
+import { cx, Search, selectClass, Strength, Tabs } from "./ui";
 
 export const GROUPS: FindingGroup[] = ["contradictions", "needs_context", "compatible", "unverified"];
 const FILTERS: (ReviewDecision | "unreviewed" | "all")[] = ["all", "unreviewed", "confirmed", "needs_context", "dismissed"];
 export const EMPTY: Record<FindingGroup, string> = {
-  contradictions: "None found. That is Claude's reading of these sessions, not proof that they agree.",
+  contradictions: "None found. That is Veridict's analysis of these sessions, not proof that they agree.",
   needs_context: "Nothing needs more context.",
   compatible: "Nothing was judged compatible.",
   unverified: "Every citation matched the transcript.",
@@ -133,6 +133,7 @@ function Row({ f, n, analysisId, active }: { f: FindingSummary; n: number; analy
           <ArrowLeftRight aria-hidden className="size-3 text-faint" />
           <span>{shortRef(f.b.ref)}</span>
           {f.group === "contradictions" && f.priority === "high" && <span className="font-sans text-[11px] font-semibold text-conflict">High priority</span>}
+          {f.group !== "compatible" && <span className="ml-auto"><Strength score={f.score} /></span>}
         </span>
       </a>
     </li>

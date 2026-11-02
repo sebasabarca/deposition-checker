@@ -161,7 +161,7 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const started = await call("POST", `/cases/${docs[0].caseId}/analyses`, { depositionA: docs[0].id, depositionB: docs[1].id, mode: "live" });
     const id = started.body.analysis.id;
     const blocked = await until(() => call("GET", `/analyses/${id}`), (r) => r.body.analysis.status === "blocked_credentials");
-    expect(blocked.body.analysis).toMatchObject({ status: "blocked_credentials", error: expect.stringMatching(/No model was called/) });
+    expect(blocked.body.analysis).toMatchObject({ status: "blocked_credentials", error: expect.stringMatching(/Nothing was sent/) });
     expect((await call("POST", `/analyses/${id}/resume`, { budgetUsd: 1 })).status).toBe(400); // lower than $3
     expect((await call("POST", `/analyses/${id}/resume`, {})).status).toBe(202);
     await until(() => call("GET", `/analyses/${id}`), (r) => r.body.analysis.status === "blocked_credentials");

@@ -1,15 +1,18 @@
-// Sign-in, sessions and access control. Each user belongs to one organization (a firm) and sees
+// Accounts, sessions and access control. Each account has a private workspace (an org) and sees
 // only its cases; everything a case holds (depositions, analyses, findings) is reached through it.
+// Registration is public, but uploading and checking need a verified email, and paid checks need
+// analysis access, which an administrator grants (scripts/admin.ts) until credits exist.
 // Passwords are scrypt hashes; the session cookie is a random token stored only as its SHA-256, so a
 // copy of the database can't be used to sign in. The cookie is HttpOnly and SameSite=Lax, and any
 // request that changes data must come from this site's own origin.
 
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual, type ScryptOptions } from "node:crypto";
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from "express";
-import { and, count, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "./db/client";
-import { analyses, cases, depositions, findings, orgs, sessions, users } from "./db/schema";
+import { analyses, authTokens, cases, depositions, findings, orgs, sessions, users } from "./db/schema";
+import { alreadyRegistered, emailChanged, passwordChanged, resendMailer, resetPassword, verifyEmail, type Email as EmailMessage, type Mailer } from "./email";
 
 const scrypt = (password: string, salt: Buffer, keylen: number, options: ScryptOptions) =>
   new Promise<Buffer>((resolve, reject) => scryptCb(password, salt, keylen, options, (err, key) => (err ? reject(err) : resolve(key))));
@@ -18,6 +21,10 @@ const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 };
 export const SESSION_COOKIE = "veridict_session";
 const SESSION_DAYS = 30;
 export const MIN_PASSWORD = 10;
+// At least 10 characters and one character that isn't a letter or digit. Checked only when a password
+// is set (registration, reset, change); older passwords keep working until they're changed.
+export const passwordProblem = (p: string) =>
+  p.length < MIN_PASSWORD ? `Use at least ${MIN_PASSWORD} characters.` : !/[^A-Za-z0-9]/.test(p) ? "Include at least one special character, such as ! ? # or a space." : null;
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
@@ -35,7 +42,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export type SessionUser = { id: number; orgId: number; email: string; name: string };
+export type SessionUser = { id: number; orgId: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean };
 
 async function startSession(db: Database, res: Response, req: Request, userId: number) {
   const token = randomBytes(32).toString("base64url");
@@ -60,11 +67,13 @@ export async function sessionUser(db: Database, req: Request): Promise<SessionUs
   const token = readCookie(req, SESSION_COOKIE);
   if (!token) return null;
   const [row] = await db
-    .select({ id: users.id, orgId: users.orgId, email: users.email, name: users.name })
+    .select({ id: users.id, orgId: users.orgId, email: users.email, name: users.name, verifiedAt: users.emailVerifiedAt, analysisAccess: users.analysisAccess })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, new Date())));
-  return row ?? null;
+  if (!row) return null;
+  const { verifiedAt, ...user } = row;
+  return { ...user, emailVerified: verifiedAt !== null };
 }
 
 // Every API request after this one has res.locals.user, or got a 401.
@@ -111,10 +120,36 @@ export function scopeToOrg(db: Database): RequestHandler {
   };
 }
 
+// What an unverified account can't do yet, checked on the server whatever the interface shows:
+// upload a deposition or start or resume a check. A live (paid) check also needs analysis access.
+const NEEDS_VERIFIED: [string, RegExp][] = [
+  ["POST", /^\/cases\/\d+\/depositions$/],
+  ["POST", /^\/cases\/\d+\/analyses$/],
+  ["POST", /^\/analyses\/\d+\/resume$/],
+  ["POST", /^\/depositions\/\d+\/retry$/],
+];
+const PAID: [string, RegExp][] = [
+  ["POST", /^\/cases\/\d+\/analyses$/],
+  ["POST", /^\/analyses\/\d+\/resume$/],
+];
+const matches = (req: Request, rules: [string, RegExp][]) => rules.some(([m, re]) => req.method === m && re.test(req.path));
+
+export function accountGates(): RequestHandler {
+  return (req, res, next) => {
+    const user = res.locals.user as SessionUser;
+    if (!user.emailVerified && matches(req, NEEDS_VERIFIED)) return res.status(403).json({ error: "Verify your email address first. Check your inbox for the link, or send a new one from the banner.", code: "email_unverified" });
+    // A demo analysis replays stored results and costs nothing; anything else is a paid check.
+    const paid = matches(req, PAID) && !(req.path.endsWith("/analyses") && (req.body as { mode?: string } | undefined)?.mode === "demo");
+    if (paid && !user.analysisAccess) return res.status(403).json({ error: "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.", code: "no_analysis_access" });
+    return next();
+  };
+}
+
 // Sign-in attempts per address and per email, so a password can't be guessed by brute force.
 // shortcut: in memory, so it resets on restart and isn't shared between servers; move it to
 // Postgres or Redis when running more than one web process.
 const attempts = new Map<string, { n: number; until: number }>();
+export const resetRateLimits = () => attempts.clear(); // for tests
 const LIMIT = 10;
 const WINDOW_MS = 15 * 60_000;
 function limited(key: string) {
@@ -130,52 +165,133 @@ function limited(key: string) {
 }
 
 const Email = z.string().trim().toLowerCase().email().max(254);
-const SignUp = z.object({ name: z.string().trim().min(1).max(200), email: Email, password: z.string().min(MIN_PASSWORD).max(200), firm: z.string().trim().min(1).max(200) });
+const Password = z.string().max(200).refine((p) => passwordProblem(p) === null);
+const SignUp = z.object({ name: z.string().trim().min(1).max(200), email: Email, password: Password });
 const SignIn = z.object({ email: Email, password: z.string().min(1).max(200) });
+const Token = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
-export function authRoutes(db: Database): Router {
+const TOKEN_HOURS = { verify_email: 24, reset_password: 1 } as const;
+const tooMany = (res: Response) => res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+
+// A one-time token for an emailed link: random, stored only as its hash. Issuing one retires the
+// user's earlier unused tokens of the same purpose, so only the latest link works.
+async function issueToken(db: Database, userId: number, purpose: keyof typeof TOKEN_HOURS) {
+  const token = randomBytes(32).toString("base64url");
+  await db.transaction(async (tx) => {
+    await tx.update(authTokens).set({ usedAt: new Date() }).where(and(eq(authTokens.userId, userId), eq(authTokens.purpose, purpose), isNull(authTokens.usedAt)));
+    await tx.insert(authTokens).values({ tokenHash: tokenHash(token), userId, purpose, expiresAt: new Date(Date.now() + TOKEN_HOURS[purpose] * 3_600_000) });
+  });
+  return token;
+}
+
+// Marks a token used and returns its user, or null when it's unknown, used, expired or for another
+// purpose. The update is the check, so two clicks on one link can't both succeed.
+async function spendToken(db: Database, token: string, purpose: keyof typeof TOKEN_HOURS) {
+  const [row] = await db
+    .update(authTokens)
+    .set({ usedAt: new Date() })
+    .where(and(eq(authTokens.tokenHash, tokenHash(token)), eq(authTokens.purpose, purpose), isNull(authTokens.usedAt), gt(authTokens.expiresAt, new Date())))
+    .returning({ userId: authTokens.userId });
+  return row?.userId ?? null;
+}
+
+// Sending never decides the answer: failures are logged without the message (which holds the link)
+// and the response stays the same, so the reply can't reveal whether an account exists.
+async function send(mailer: Mailer, to: string, email: Omit<EmailMessage, "to">) {
+  try {
+    await mailer({ ...email, to });
+  } catch (error) {
+    console.error(`Email to a user failed: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+const CHECK_EMAIL = "Check your email. If the address can be used, a link is on its way.";
+
+export function authRoutes(db: Database, { mailer = resendMailer }: { mailer?: Mailer } = {}): Router {
   const router = Router();
   router.use(sameOrigin);
 
-  // Open when ALLOW_SIGNUP is "true", and always for the very first account, which takes over the
-  // organization that holds the cases created before sign-in existed.
-  router.get("/auth/config", async (_req, res) => {
-    const [{ n }] = await db.select({ n: count() }).from(users);
-    res.json({ signupOpen: process.env.ALLOW_SIGNUP === "true" || n === 0, firstUser: n === 0 });
-  });
-
+  // Public registration. The answer is the same whether or not the address is taken: a new address
+  // gets a verification link (which also signs in), a taken one gets a note to sign in instead.
   router.post("/auth/signup", async (req, res) => {
     const body = SignUp.safeParse(req.body);
-    if (!body.success) return res.status(400).json({ error: `Enter your name, firm, a valid email and a password of at least ${MIN_PASSWORD} characters.` });
-    if (limited(`signup:${req.ip}`)) return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+    if (!body.success) return res.status(400).json({ error: passwordProblem(String(req.body?.password ?? "")) ?? "Enter your name and a valid email." });
+    if (limited(`signup:${req.ip}`) || limited(`signup:${body.data.email}`)) return tooMany(res);
     const passwordHash = await hashPassword(body.data.password);
-    const outcome = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('veridict:signup', 0))`);
-      const [{ n }] = await tx.select({ n: count() }).from(users);
-      if (n > 0 && process.env.ALLOW_SIGNUP !== "true") return { error: 403 as const, userId: 0 };
+    const created = await db.transaction(async (tx) => {
       const [taken] = await tx.select({ id: users.id }).from(users).where(eq(users.email, body.data.email));
-      if (taken) return { error: 409 as const, userId: 0 };
-      const orgId = (await tx.insert(orgs).values({ name: body.data.firm }).returning({ id: orgs.id }))[0].id;
-      // Before sign-in existed there was no tenancy, so the first account takes every existing case.
-      if (n === 0) await tx.update(cases).set({ orgId });
-      const [user] = await tx.insert(users).values({ orgId, email: body.data.email, name: body.data.name, passwordHash }).returning({ id: users.id });
-      return { userId: user.id, error: null };
-    });
-    if (outcome.error !== null) return res.status(outcome.error).json({ error: outcome.error === 403 ? "New accounts are created by invitation. Ask your administrator." : "An account with this email already exists. Sign in instead." });
-    await startSession(db, res, req, outcome.userId);
-    return res.status(201).json({ user: await sessionUserById(db, outcome.userId) });
+      if (taken) return null;
+      const orgId = (await tx.insert(orgs).values({ name: body.data.name }).returning({ id: orgs.id }))[0].id;
+      const inserted = await tx.insert(users).values({ orgId, email: body.data.email, name: body.data.name, passwordHash }).onConflictDoNothing().returning({ id: users.id });
+      if (inserted.length === 0) throw new Error("taken"); // registered between the check and the insert
+      return inserted[0].id;
+    }).catch((e: Error) => (e.message === "taken" ? null : Promise.reject(e)));
+    if (created === null) await send(mailer, body.data.email, alreadyRegistered());
+    else await send(mailer, body.data.email, verifyEmail(body.data.name, await issueToken(db, created, "verify_email")));
+    return res.status(202).json({ ok: true, message: CHECK_EMAIL });
+  });
+
+  // The emailed link: verifies the address and signs that browser in.
+  router.post("/auth/verify", async (req, res) => {
+    const token = Token.safeParse(req.body?.token);
+    if (limited(`verify:${req.ip}`)) return tooMany(res);
+    const userId = token.success ? await spendToken(db, token.data, "verify_email") : null;
+    if (userId === null) return res.status(400).json({ error: "This link has expired or was already used. Sign in and send a new one." });
+    await db.update(users).set({ emailVerifiedAt: new Date() }).where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)));
+    await startSession(db, res, req, userId);
+    return res.json({ user: await sessionUserById(db, userId) });
+  });
+
+  // A new verification link for the signed-in account.
+  router.post("/auth/verify/resend", async (req, res) => {
+    const user = await sessionUser(db, req);
+    if (!user) return res.status(401).json({ error: "Sign in to continue." });
+    if (user.emailVerified) return res.json({ ok: true, message: "Your email is already verified." });
+    if (limited(`resend:${user.id}`)) return tooMany(res);
+    await send(mailer, user.email, verifyEmail(user.name, await issueToken(db, user.id, "verify_email")));
+    return res.status(202).json({ ok: true, message: `A new link is on its way to ${user.email}.` });
   });
 
   router.post("/auth/signin", async (req, res) => {
     const body = SignIn.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: "Enter your email and password." });
-    if (limited(`signin:${req.ip}`) || limited(`signin:${body.data.email}`)) return res.status(429).json({ error: "Too many attempts. Try again in 15 minutes." });
+    if (limited(`signin:${req.ip}`) || limited(`signin:${body.data.email}`)) return tooMany(res);
     const [user] = await db.select().from(users).where(eq(users.email, body.data.email));
     // The same work and answer whether or not the email exists, so accounts can't be discovered.
     const ok = user ? await verifyPassword(body.data.password, user.passwordHash) : (await hashPassword(body.data.password), false);
     if (!user || !ok) return res.status(401).json({ error: "That email and password don't match an account." });
     await startSession(db, res, req, user.id);
     return res.json({ user: await sessionUserById(db, user.id) });
+  });
+
+  // Always the same answer, so it can't be used to find out who has an account.
+  router.post("/auth/forgot", async (req, res) => {
+    const email = Email.safeParse(req.body?.email);
+    if (!email.success) return res.status(400).json({ error: "Enter a valid email address." });
+    if (limited(`forgot:${req.ip}`) || limited(`forgot:${email.data}`)) return tooMany(res);
+    const [user] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, email.data));
+    if (user) await send(mailer, email.data, resetPassword(user.name, await issueToken(db, user.id, "reset_password")));
+    return res.status(202).json({ ok: true, message: "If an account uses that address, a reset link is on its way. It expires in 1 hour." });
+  });
+
+  // A new password from an emailed link. Every existing session ends, and the browser that reset it
+  // is signed in. A reset link proves the address too, so it also verifies it.
+  router.post("/auth/reset", async (req, res) => {
+    const body = z.object({ token: Token, password: Password }).safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: passwordProblem(String(req.body?.password ?? "")) ?? "This link isn't valid." });
+    if (limited(`reset:${req.ip}`)) return tooMany(res);
+    const passwordHash = await hashPassword(body.data.password);
+    const userId = await spendToken(db, body.data.token, "reset_password");
+    if (userId === null) return res.status(400).json({ error: "This link has expired or was already used. Ask for a new one." });
+    const [user] = await db.transaction(async (tx) => {
+      await tx.delete(sessions).where(eq(sessions.userId, userId));
+      await tx.update(authTokens).set({ usedAt: new Date() }).where(and(eq(authTokens.userId, userId), isNull(authTokens.usedAt)));
+      return tx.update(users).set({ passwordHash }).where(eq(users.id, userId)).returning({ email: users.email, name: users.name, verifiedAt: users.emailVerifiedAt });
+    });
+    if (!user.verifiedAt) await db.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
+    await startSession(db, res, req, userId);
+    await send(mailer, user.email, passwordChanged(user.name));
+    return res.json({ user: await sessionUserById(db, userId) });
   });
 
   router.post("/auth/signout", async (req, res) => {
@@ -191,10 +307,78 @@ export function authRoutes(db: Database): Router {
     return res.json({ user: await sessionUserById(db, user.id) });
   });
 
+  // The profile: name, password and email of the signed-in account.
+  const signedIn = async (req: Request, res: Response) => {
+    const user = await sessionUser(db, req);
+    if (!user) res.status(401).json({ error: "Sign in to continue." });
+    return user;
+  };
+
+  router.patch("/auth/profile", async (req, res) => {
+    const user = await signedIn(req, res);
+    if (!user) return;
+    const name = z.string().trim().min(1).max(200).safeParse(req.body?.name);
+    if (!name.success) return res.status(400).json({ error: "Enter your name." });
+    await db.update(users).set({ name: name.data }).where(eq(users.id, user.id));
+    return res.json({ user: await sessionUserById(db, user.id) });
+  });
+
+  // A new password needs the current one. Every other session ends; this browser stays signed in.
+  router.post("/auth/password", async (req, res) => {
+    const user = await signedIn(req, res);
+    if (!user) return;
+    if (limited(`password:${user.id}`)) return tooMany(res);
+    const current = String(req.body?.current ?? "");
+    const next = String(req.body?.password ?? "");
+    const problem = passwordProblem(next);
+    if (problem || next.length > 200) return res.status(400).json({ error: problem ?? "That password is too long." });
+    const [row] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, user.id));
+    if (!(await verifyPassword(current, row.hash))) return res.status(400).json({ error: "Your current password isn't right." });
+    const keep = tokenHash(readCookie(req, SESSION_COOKIE) ?? "");
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ passwordHash: await hashPassword(next) }).where(eq(users.id, user.id));
+      await tx.delete(sessions).where(and(eq(sessions.userId, user.id), ne(sessions.tokenHash, keep)));
+      await tx.update(authTokens).set({ usedAt: new Date() }).where(and(eq(authTokens.userId, user.id), eq(authTokens.purpose, "reset_password"), isNull(authTokens.usedAt)));
+    });
+    await send(mailer, user.email, passwordChanged(user.name));
+    return res.json({ ok: true, message: "Password changed. Other devices were signed out." });
+  });
+
+  // A new email needs the current password and is unverified until its link is opened. The old
+  // address is told. If the new one is taken, nothing changes and its owner gets a note instead,
+  // and the answer is the same, so it can't reveal who has an account.
+  router.post("/auth/email", async (req, res) => {
+    const user = await signedIn(req, res);
+    if (!user) return;
+    if (limited(`email:${user.id}`)) return tooMany(res);
+    const email = Email.safeParse(req.body?.email);
+    if (!email.success) return res.status(400).json({ error: "Enter a valid email address." });
+    const [row] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, user.id));
+    if (!(await verifyPassword(String(req.body?.password ?? ""), row.hash))) return res.status(400).json({ error: "Your current password isn't right." });
+    if (email.data === user.email) return res.json({ ok: true, message: "That's already your email." });
+    const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, email.data));
+    if (taken) await send(mailer, email.data, alreadyRegistered());
+    else {
+      await db.update(users).set({ email: email.data, emailVerifiedAt: null }).where(eq(users.id, user.id));
+      await send(mailer, email.data, verifyEmail(user.name, await issueToken(db, user.id, "verify_email")));
+      await send(mailer, user.email, emailChanged(user.name, email.data));
+    }
+    return res.status(202).json({ ok: true, message: `If ${email.data} can be used, a verification link is on its way to it.` });
+  });
+
+  // The first-run tour was finished or skipped; it isn't offered again (Help can replay it).
+  router.post("/auth/onboarded", async (req, res) => {
+    const user = await signedIn(req, res);
+    if (!user) return;
+    await db.update(users).set({ onboardedAt: new Date() }).where(and(eq(users.id, user.id), isNull(users.onboardedAt)));
+    return res.json({ ok: true });
+  });
+
   return router;
 }
 
 async function sessionUserById(db: Database, id: number) {
-  const [row] = await db.select({ id: users.id, email: users.email, name: users.name, org: orgs.name }).from(users).innerJoin(orgs, eq(orgs.id, users.orgId)).where(eq(users.id, id));
-  return row;
+  const [row] = await db.select({ id: users.id, email: users.email, name: users.name, verifiedAt: users.emailVerifiedAt, analysisAccess: users.analysisAccess, onboardedAt: users.onboardedAt }).from(users).where(eq(users.id, id));
+  const { verifiedAt, onboardedAt, ...user } = row;
+  return { ...user, emailVerified: verifiedAt !== null, onboarded: onboardedAt !== null };
 }

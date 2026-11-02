@@ -7,6 +7,10 @@ export type LayoutProfile = {
   firstLineY: number; // baseline of line 1, in PDF points from the bottom of the page
   lineSpacing: number;
   maxLinesPerPage: number;
+  // A page break always continues the testimony when the next page starts at line 1, however many
+  // lines the page had. True for numbered text, whose pages come from the file itself; false for
+  // PDFs, where a short page can mean lines were redacted.
+  pageBreaksContinue?: boolean;
   headerMinY: number; // the printed page number sits at or above this
   footerMaxY: number; // the footer sits at or below this
   rowTolerance: number; // text items within this many points vertically form one row
@@ -33,5 +37,5 @@ export const ELLISON_DOJ_V1: LayoutProfile = {
 // Stored on every deposition and used to detect duplicate ingestion. Bump PARSER_REVISION whenever
 // extraction, validation, speaker attribution or exchange building changes what a file produces
 // (including a pdfjs-dist upgrade), so re-ingesting the same file is a new parse, not a duplicate.
-const PARSER_REVISION = 2;
+const PARSER_REVISION = 3; // 3: numbered text keeps testimony across short pages
 export const PARSER_VERSION = `pdfjs-${ELLISON_DOJ_V1.name}-r${PARSER_REVISION}`;

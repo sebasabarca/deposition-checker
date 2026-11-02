@@ -39,8 +39,8 @@ export function Badge({ tone = "neutral", dot, icon: Icon, children, title }: { 
 }
 
 // The four kinds of statement the interface must never blur, each with its own mark.
-export const ModelMark = ({ children = "Claude's reading" }: { children?: ReactNode }) => (
-  <Badge tone="accent" icon={Sparkles} title="Written by the model. Not testimony and not a legal conclusion.">{children}</Badge>
+export const ModelMark = ({ children = "Veridict's analysis" }: { children?: ReactNode }) => (
+  <Badge tone="accent" icon={Sparkles} title="Written by Veridict's analysis. Not testimony and not a legal conclusion.">{children}</Badge>
 );
 export const TestimonyMark = () => <Badge tone="neutral" icon={BadgeCheck} title="Shown verbatim from the stored transcript lines">Verbatim testimony</Badge>;
 export const OcrMark = () => <Badge tone="warn" icon={ScanText} title="Read from a scan by OCR. The text may differ from the scan.">Read by OCR</Badge>;
@@ -211,6 +211,20 @@ export function Stat({ label, value, note, tone }: { label: string; value: React
       <p className={cx("mt-1 text-lg font-semibold tabular-nums", tone === "bad" && "text-conflict")}>{value}</p>
       {note && <p className="mt-0.5 truncate text-xs text-muted">{note}</p>}
     </div>
+  );
+}
+
+// Evidence strength, out of 100, where a finding has one. Its meaning is explained on the finding.
+export function Strength({ score, size = "sm" }: { score: number | null; size?: "sm" | "lg" }) {
+  if (score === null) return null;
+  const tone = score >= 75 ? "text-ink" : score >= 50 ? "text-muted" : "text-faint";
+  return size === "lg" ? (
+    <div className="flex-none text-right" title="Evidence strength: how well the cited testimony supports review, from fixed checks. Not a probability.">
+      <p className="text-xs text-faint">Evidence strength</p>
+      <p className={cx("text-xl font-semibold tabular-nums", tone)}>{score}<span className="text-sm font-normal text-faint"> / 100</span></p>
+    </div>
+  ) : (
+    <span className={cx("font-sans text-[12px] font-semibold tabular-nums", tone)} title="Evidence strength, out of 100">{score}<span className="font-normal text-faint">/100</span></span>
   );
 }
 

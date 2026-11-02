@@ -20,6 +20,12 @@ export type Route =
   | { name: "analyses" }
   | { name: "analysis"; id: number; findingId: number | null }
   | { name: "help" }
+  | { name: "profile" }
+  | { name: "signin" }
+  | { name: "register" }
+  | { name: "forgot" }
+  | { name: "reset"; token: string }
+  | { name: "verify"; token: string }
   | { name: "not_found" };
 
 export type Section = "overview" | "cases" | "depositions" | "findings" | "analyses" | "help";
@@ -30,6 +36,10 @@ const STATIC: Record<string, Route> = {
   "/findings": { name: "findings" },
   "/analyses": { name: "analyses" },
   "/help": { name: "help" },
+  "/profile": { name: "profile" },
+  "/signin": { name: "signin" },
+  "/register": { name: "register" },
+  "/forgot": { name: "forgot" },
 };
 
 export function parseRoute(hash: string): Route {
@@ -38,6 +48,7 @@ export function parseRoute(hash: string): Route {
   const num = (k: string) => (/^\d+$/.test(q.get(k) ?? "") ? Number(q.get(k)) : null);
   if (STATIC[path]) return STATIC[path];
   if (path === "/depositions") return { name: "depositions", caseId: num("case") };
+  if (path === "/reset" || path === "/verify") return { name: path.slice(1) as "reset" | "verify", token: q.get("token") ?? "" };
   let m = path.match(/^\/cases\/(\d+)$/);
   if (m) return { name: "case", id: Number(m[1]) };
   m = path.match(/^\/cases\/(\d+)\/report$/);
@@ -50,7 +61,7 @@ export function parseRoute(hash: string): Route {
 }
 
 export const sectionOf = (r: Route): Section | null =>
-  ({ overview: "overview", cases: "cases", case: "cases", report: "cases", depositions: "depositions", deposition: "depositions", findings: "findings", analyses: "analyses", analysis: "analyses", help: "help", not_found: null } as const)[r.name];
+  ({ overview: "overview", cases: "cases", case: "cases", report: "cases", depositions: "depositions", deposition: "depositions", findings: "findings", analyses: "analyses", analysis: "analyses", help: "help", profile: null, signin: null, register: null, forgot: null, reset: null, verify: null, not_found: null } as const)[r.name];
 
 const withQuery = (path: string, q: Record<string, string | number | null | undefined>) => {
   const s = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => [k, String(v)])).toString();
@@ -68,6 +79,10 @@ export const href = {
   analyses: () => "#/analyses",
   analysis: (id: number, findingId?: number) => (findingId ? `#/analyses/${id}/findings/${findingId}` : `#/analyses/${id}`),
   help: () => "#/help",
+  profile: () => "#/profile",
+  signin: () => "#/signin",
+  register: () => "#/register",
+  forgot: () => "#/forgot",
 };
 
 export function useRoute(): Route {

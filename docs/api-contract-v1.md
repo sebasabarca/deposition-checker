@@ -22,15 +22,18 @@ Breaking changes get a new `docs/api-contract-v<n>.md`. Adding a field does not.
 
 ## 2. Endpoints
 
-Every endpoint except `/auth/*` and `/health` needs a session cookie (401 without one) and sees only the signed-in user's organization: another firm's case, deposition, analysis or finding answers 404. A request that changes data must come from the site's own origin (403 otherwise).
+Every endpoint except `/auth/*` and `/health` needs a session cookie (401 without one) and sees only the signed-in account's own workspace: another account's case, deposition, analysis or finding answers 404. Uploading, retrying a deposition, and starting or resuming an analysis need a verified email (403 `code: email_unverified`); a live analysis also needs analysis access (403 `code: no_analysis_access`), granted with `npm run admin`. A request that changes data must come from the site's own origin (403 otherwise).
 
 | Screen | Method and path | Success | Errors |
 | --- | --- | --- | --- |
-| Sign-in | `GET /auth/config` | 200 `{ signupOpen, firstUser }` | |
-| Sign-in | `POST /auth/signup` `{ name, email, password, firm }` | 201 `{ user }` and the session cookie | 400, 403 sign-up closed, 409 email taken, 429 |
-| Sign-in | `POST /auth/signin` `{ email, password }` | 200 `{ user }` and the session cookie | 400, 401, 429 |
-| Sign-in | `POST /auth/signout` | 200 `{ ok }`, cookie cleared | |
-| Sign-in | `GET /auth/me` | 200 `{ user: { id, email, name, org } }` | 401 |
+| Accounts | `POST /auth/signup` `{ name, email, password }` | 202 `{ ok, message }`, the same whether or not the email is taken; a verification link (or an "already registered" note) is emailed; no session | 400, 429 |
+| Accounts | `POST /auth/verify` `{ token }` | 200 `{ user }` and the session cookie; the link works once, for 24 hours | 400, 429 |
+| Accounts | `POST /auth/verify/resend` | 202 `{ ok, message }` | 401, 429 |
+| Accounts | `POST /auth/signin` `{ email, password }` | 200 `{ user }` and the session cookie | 400, 401, 429 |
+| Accounts | `POST /auth/forgot` `{ email }` | 202 `{ ok, message }`, the same for any address | 400, 429 |
+| Accounts | `POST /auth/reset` `{ token, password }` | 200 `{ user }` and a new session; every other session ends; the link works once, for 1 hour | 400, 429 |
+| Accounts | `POST /auth/signout` | 200 `{ ok }`, cookie cleared | |
+| Accounts | `GET /auth/me` | 200 `{ user: { id, email, name, emailVerified, analysisAccess } }` | 401 |
 | Health | `GET /health` | 200 `{ ok: true }` | 503 database unreachable |
 | Overview and lists | `GET /workspace` | 200 `{ cases, details, analyses, findings }`: the firm's cases, their details, every analysis, and every finding of finished analyses with `analysisId` and `caseName` | |
 | Case dashboard | `GET /cases` | 200 `{ cases: CaseSummary[] }` | |

@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, ChevronRight, CircleCheck, CircleHelp, Copy, X } from "lucide-react";
 import { ChecksCard, ModelAssessment, Passage, ScoreCard } from "./FindingView";
-import { Alert, Badge, Button, cx, fieldClass, VerifiedMark } from "./ui";
+import { Alert, Badge, Button, cx, fieldClass, Strength, VerifiedMark } from "./ui";
 import { api } from "../lib/api";
 import { citesInferredPage, pinpointCitation } from "../lib/insights";
 import { EVIDENCE_STATUS, evidenceStrength, findingHeadline, formatDate, modelCalledIt, PRIORITY } from "../lib/labels";
@@ -36,7 +36,10 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
           {f.group === "contradictions" && <Badge tone={f.priority === "high" ? "contradiction" : "neutral"}>{PRIORITY[f.priority]}</Badge>}
           {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
         </div>
-        <h2 id="finding-title" className="mt-2.5 font-serif text-[22px] leading-[30px] font-semibold tracking-[-0.01em]">{f.direct?.sharedSubject ?? findingHeadline(f)}</h2>
+        <div className="mt-2.5 flex items-start justify-between gap-6">
+          <h2 id="finding-title" className="font-serif text-[22px] leading-[30px] font-semibold tracking-[-0.01em]">{f.direct?.sharedSubject ?? findingHeadline(f)}</h2>
+          {f.group !== "compatible" && <Strength score={f.score} size="lg" />}
+        </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
           <p className="min-w-0 flex-1 basis-80 font-mono text-[13px] leading-5 break-words text-muted">{citation}</p>
           <CopyCitation text={citation} inferred={citesInferredPage(f.a) || citesInferredPage(f.b)} />
@@ -130,7 +133,7 @@ function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analys
     }
   };
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5 lg:sticky lg:top-20">
+    <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5">
       <h2 className="text-md font-semibold">Your decision</h2>
       <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Decision">
         {OPTIONS.map((o) => (

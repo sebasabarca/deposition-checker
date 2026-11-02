@@ -72,13 +72,13 @@ export const VERIFICATION: Record<string, string> = {
 export const SAME_EVENT: Record<string, string> = { yes: "Same event", no: "Different events", uncertain: "Unclear whether the same event" };
 
 export const DISAGREEMENT: Record<string, string> = {
-  claude_overstates: "The model read this as more certain than the transcript supports; the transcript's reading is used.",
-  claude_understates: "The model read this as less certain than the witness's plain answer; the transcript's reading is used.",
-  claude_differs: "The model and the transcript check describe this differently; the transcript's reading is used.",
+  claude_overstates: "The analysis read this as more certain than the transcript supports; the transcript's reading is used.",
+  claude_understates: "The analysis read this as less certain than the witness's plain answer; the transcript's reading is used.",
+  claude_differs: "The analysis and the transcript check describe this differently; the transcript's reading is used.",
   stance_conflict: "The model misread the witness's yes or no; the side is treated as not the witness's statement.",
 };
 
-export const ORIGIN: Record<string, string> = { code: "Transcript check", claude: "Model", "code+claude": "Both" };
+export const ORIGIN: Record<string, string> = { code: "Transcript check", claude: "Analysis", "code+claude": "Both" };
 
 export const COMPONENT: Record<string, string> = {
   A: "Attribution and source quality",

@@ -24,7 +24,9 @@ services:
       DATABASE_URL: postgres://veridict:${POSTGRES_PASSWORD}@db:5432/veridict
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ALLOW_PAID_CALLS: ${ALLOW_PAID_CALLS:-false}
-      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY in .env}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env, an address on a domain verified in Resend}
+      APP_URL: ${APP_URL:?Set APP_URL in .env, the public https address of the site}
       TRUST_PROXY: ${TRUST_PROXY:-1}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
     depends_on:

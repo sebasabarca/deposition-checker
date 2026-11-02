@@ -1,139 +1,190 @@
-// Overview: what is waiting for the reviewer. Findings to decide lead; checks and depositions that
-// need attention sit beside them; the cases follow.
+// Overview: a welcome, the one thing to do next, and what's happened. It always has a complete
+// shape: a new account sees a short getting-started list and a preview of a finding; a busy one sees
+// what is waiting for a decision; a caught-up one is told so, with where to go.
 
-import { ArrowRight, ArrowLeftRight } from "lucide-react";
-import { Alert, Badge, buttonClass, Card, CardHeader, cx, Empty, Loading, PageHeader, rowClass, Stat, tdClass, thClass } from "../components/ui";
+import type { ReactNode } from "react";
+import { ArrowLeftRight, ArrowRight, Check, CircleCheck, FileText, FileUp, Highlighter, ListChecks, Printer } from "lucide-react";
 import { useAddDeposition } from "../components/Shell";
-import { isActive, relativeTime } from "../lib/insights";
-import { ANALYSIS_STATUS, DEPOSITION_STATUS, findingHeadline, formatDate } from "../lib/labels";
-import { href } from "../lib/router";
+import { Alert, Badge, buttonClass, Card, CardHeader, cx, Loading, rowClass, Strength, tdClass, thClass } from "../components/ui";
 import { shortRef } from "../components/FindingRegister";
+import { isActive, nextStep, recentActivity, relativeTime, type NextStep } from "../lib/insights";
+import { DEPOSITION_STATUS, findingHeadline, formatDate } from "../lib/labels";
+import { href } from "../lib/router";
+import { useUser } from "../lib/session";
 import { useWorkspace, useWorkspaceFindings, type WorkspaceFinding } from "../lib/workspace";
 
 const RANK = { high: 0, medium: 1, needs_context: 2, low: 3, unverified: 4 } as const;
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+};
 
 export function OverviewPage() {
   const { data, error } = useWorkspace();
   const { findings } = useWorkspaceFindings(data);
-  const add = useAddDeposition();
+  const user = useUser();
+  const first = user?.name.trim().split(/\s+/)[0] ?? "";
+
   if (error) return <Alert title="The overview couldn't be loaded">{error}</Alert>;
-  if (!data) return <><PageHeader title="Overview" /><Loading /></>;
+  if (!data || findings === null) return <><Welcome first={first} line="Getting your cases ready…" /><Loading /></>;
 
-  const waiting = (findings ?? []).filter((f) => (f.group === "contradictions" || f.group === "needs_context") && f.reviewState === "unreviewed").sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.rank - b.rank);
-  const kept = (findings ?? []).filter((f) => f.reviewState === "confirmed").length;
-  const depositions = data.details.flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, caseId: d.case.id, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness" })));
-  const attention = depositions.filter((d) => d.status !== "ready").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const waiting = findings.filter((f) => (f.group === "contradictions" || f.group === "needs_context") && f.reviewState === "unreviewed").sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.rank - b.rank);
+  const kept = findings.filter((f) => f.reviewState === "confirmed");
+  const decided = findings.filter((f) => f.reviewState !== "unreviewed");
   const running = data.analyses.filter((a) => isActive(a.status));
-  const recentChecks = [...running, ...data.analyses.filter((a) => !isActive(a.status))].slice(0, 5);
-  const casesWaiting = new Set(waiting.map((f) => f.caseName)).size;
-  const now = Date.now();
+  const depositions = data.details.flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness" })));
+  const failed = depositions.filter((d) => d.status === "failed" || d.status === "unsupported" || d.status === "needs_review");
+  const step = nextStep(data.details, running, waiting.map((f) => ({ id: f.id, analysisId: f.analysis.id })), kept.map((f) => ({ caseId: f.analysis.caseId })));
 
-  if (data.cases.length === 0) {
-    return (
-      <>
-        <PageHeader title="Overview" description="Veridict compares a witness's deposition sessions and shows where the testimony may conflict, line by line." />
-        <Empty title="Start with a deposition" action={<button type="button" onClick={() => add.open()} className={buttonClass("primary")}>Add deposition</button>}>
-          Add two sessions of the same witness, as PDF or text. Veridict reads them into page and line references, then you can check them against each other.
-        </Empty>
-      </>
-    );
-  }
+  // Where things stand, in one sentence.
+  const line = depositions.length === 0
+    ? "Veridict reads every session of a witness's deposition and shows where the testimony may conflict, cited to page and line."
+    : waiting.length
+      ? `${plural(waiting.length, "finding")} ${waiting.length === 1 ? "is" : "are"} waiting for your decision.`
+      : running.length
+        ? `${plural(running.length, "check")} ${running.length === 1 ? "is" : "are"} running. Nothing needs you right now.`
+        : "You're all caught up. Nothing is waiting for your decision.";
+
+  const checklist = [
+    { label: "Add a deposition", done: depositions.length > 0 },
+    { label: "Add a second session of the same witness", done: data.details.some((d) => d.witnesses.some((w) => d.depositions.filter((x) => x.witnessId === w.id).length >= 2)) },
+    { label: "Run a check of the two sessions", done: data.analyses.length > 0 },
+    { label: "Decide on a finding", done: decided.length > 0 },
+  ];
+  const starting = checklist.some((c) => !c.done);
 
   return (
     <>
-      <PageHeader
-        title="Overview"
-        description={findings === null ? "Counting what's waiting for you…" : waiting.length ? `${plural(waiting.length, "finding")} ${waiting.length === 1 ? "is" : "are"} waiting for your decision across ${plural(casesWaiting, "case")}.` : "Nothing is waiting for your decision."}
-      />
+      <Welcome first={first} line={line} step={<NextStepCard step={step} />} stats={depositions.length > 0 ? [
+        ["Waiting for you", waiting.length, waiting.length > 0],
+        ["Kept for follow-up", kept.length, false],
+        ["Checks running", running.length, false],
+        ["Depositions", depositions.length, false],
+      ] : undefined} />
 
-      <Card className="grid grid-cols-2 divide-rule max-md:[&>*:nth-child(-n+2)]:border-b max-md:[&>*:nth-child(-n+2)]:border-rule md:grid-cols-4 md:divide-x">
-        <Stat label="Waiting for your decision" value={findings === null ? "–" : waiting.length} tone={waiting.length ? "bad" : undefined} note={waiting.filter((f) => f.priority === "high").length ? `${waiting.filter((f) => f.priority === "high").length} high priority` : undefined} />
-        <Stat label="Kept for follow-up" value={findings === null ? "–" : kept} />
-        <Stat label="Checks running" value={running.length} note={running.length ? "About 10 minutes each" : undefined} />
-        <Stat label="Depositions ready" value={<>{depositions.filter((d) => d.status === "ready").length}<span className="text-sm font-normal text-faint"> of {depositions.length}</span></>} note={plural(data.cases.length, "case")} />
-      </Card>
+      {failed.length > 0 && (
+        <Alert tone="warn" title={`${plural(failed.length, "deposition")} couldn't be read in full`} action={<a href={href.deposition(failed[0].id)} className={buttonClass("secondary")}>Open</a>}>
+          {failed[0].witness}, {formatDate(failed[0].takenOn)}: {DEPOSITION_STATUS[failed[0].status].label.toLowerCase()}.
+        </Alert>
+      )}
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
-        <Card>
-          <CardHeader title="Waiting for your decision" count={findings ? waiting.length : undefined} action={<a href={href.findings()} className="text-sm font-medium text-info hover:underline">All findings</a>} />
-          {findings === null ? (
-            <div className="px-5 py-3"><Loading rows={4} /></div>
-          ) : waiting.length === 0 ? (
-            <p className="px-5 py-6 text-sm text-muted">Every potential contradiction has a decision. New checks will add findings here.</p>
-          ) : (
-            <ol>{waiting.slice(0, 6).map((f) => <WaitingRow key={f.id} f={f} />)}</ol>
-          )}
-          {waiting.length > 6 && <a href={href.findings()} className="flex h-11 items-center justify-center gap-1.5 border-t border-rule text-sm font-medium text-ink hover:bg-hover">View all {waiting.length}<ArrowRight aria-hidden className="size-4" /></a>}
-        </Card>
-
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
-          <Card>
-            <CardHeader title="Checks" action={<a href={href.analyses()} className="text-sm font-medium text-info hover:underline">All analyses</a>} />
-            {recentChecks.length === 0 ? (
-              <p className="px-5 py-5 text-sm text-muted">No checks yet. Open a case and select two sessions of one witness.</p>
-            ) : (
-              <ul className="divide-y divide-rule">
-                {recentChecks.map((a) => {
-                  const s = ANALYSIS_STATUS[a.status];
-                  return (
-                    <li key={a.id}>
-                      <a href={href.analysis(a.id)} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-hover">
-                        <span className="min-w-0">
-                          <span className="block truncate font-medium">{a.depositions[0].witness}</span>
-                          <span className="block truncate text-xs text-muted">{formatDate(a.depositions[0].takenOn)} and {formatDate(a.depositions[1].takenOn)}</span>
-                        </span>
-                        {a.status === "completed" ? <span className="flex-none text-xs text-muted tabular-nums">{a.findings.decided} of {a.findings.total} decided</span> : <Badge tone={s.tone} dot>{isActive(a.status) ? "Checking" : s.label}</Badge>}
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
-          <Card>
-            <CardHeader title="Depositions" action={<a href={href.depositions()} className="text-sm font-medium text-info hover:underline">All depositions</a>} />
-            {attention.length === 0 ? (
-              <p className="px-5 py-5 text-sm text-muted">All {plural(depositions.length, "deposition")} are read and ready to check.</p>
-            ) : (
-              <ul className="divide-y divide-rule">
-                {attention.slice(0, 4).map((d) => (
-                  <li key={d.id}>
-                    <a href={href.deposition(d.id)} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-hover">
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{d.witness}, {formatDate(d.takenOn)}</span>
-                        <span className="block truncate text-xs text-muted">{d.caseName}</span>
-                      </span>
-                      <Badge tone={DEPOSITION_STATUS[d.status].tone} dot>{DEPOSITION_STATUS[d.status].label}</Badge>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          {starting && <GettingStarted items={checklist} />}
+          {depositions.length === 0 ? <Preview /> : <Waiting waiting={waiting} kept={kept.length} />}
         </div>
+        <Activity details={data.details} />
       </div>
 
-      <Card className="overflow-hidden">
-        <CardHeader title="Cases" count={data.cases.length} action={<a href={href.cases()} className="text-sm font-medium text-info hover:underline">All cases</a>} />
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] text-sm">
-            <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>To decide</th><th className={cx(thClass, "text-right")}>Last activity</th></tr></thead>
-            <tbody>
-              {data.cases.slice(0, 5).map((c) => (
-                <tr key={c.id} className={rowClass}>
-                  <td className={tdClass}><a href={href.case(c.id)} className="font-medium hover:underline">{c.name}</a></td>
-                  <td className={cx(tdClass, "text-muted")}>{c.witnessNames.join(", ") || "–"}</td>
-                  <td className={cx(tdClass, "text-right tabular-nums")}>{c.depositions}</td>
-                  <td className={cx(tdClass, "text-right tabular-nums", c.needsReview > 0 && "font-semibold text-conflict")}>{c.needsReview}</td>
-                  <td className={cx(tdClass, "text-right text-muted tabular-nums")}>{relativeTime(c.lastActivity, now)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {data.cases.length > 0 && <CasesTable cases={data.cases} />}
     </>
+  );
+}
+
+function Welcome({ first, line, step, stats }: { first: string; line: string; step?: ReactNode; stats?: [string, number, boolean][] }) {
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  // Lighter on the left than the sidebar's navy, so the open sidebar never blends into it.
+  return (
+    <section className="overflow-hidden rounded-xl bg-linear-to-r from-navy-2 to-navy text-white">
+      <div className="grid gap-6 px-6 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-center">
+        <div>
+          <p className="text-sm text-navy-ink">{today}</p>
+          <h1 className="mt-1 font-serif text-[30px] leading-9 font-semibold tracking-[-0.015em]">{greeting()}{first ? `, ${first}` : ""}.</h1>
+          <p className="mt-2 max-w-xl text-[15px] leading-6 text-navy-ink">{line}</p>
+        </div>
+        {step}
+      </div>
+      {stats && (
+        <dl className="grid grid-cols-2 border-t border-white/10 sm:grid-cols-4">
+          {stats.map(([label, value, alert], i) => (
+            <div key={label} className={cx("px-6 py-4 sm:px-8", i > 0 && "sm:border-l sm:border-white/10", i % 2 === 1 && "max-sm:border-l max-sm:border-white/10", i > 1 && "max-sm:border-t max-sm:border-white/10")}>
+              <dt className="text-xs text-navy-ink">{label}</dt>
+              <dd className={cx("mt-0.5 text-xl font-semibold tabular-nums", alert ? "text-[#f4d77a]" : "text-white")}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
+// The next step as a card with one button.
+function NextStepCard({ step }: { step: NextStep }) {
+  const add = useAddDeposition();
+  const button = "inline-flex h-9 items-center gap-1.5 rounded-md bg-white px-3.5 text-sm font-semibold text-navy hover:bg-[#e6ebf3]";
+  const go = (to: string, label: string) => <a href={to} className={button}>{label}<ArrowRight aria-hidden className="size-4" /></a>;
+  const upload = (label: string, caseId?: number) => <button type="button" onClick={() => add.open(caseId)} className={button}><FileUp aria-hidden className="size-4" />{label}</button>;
+  const content: { title: string; text: string; action: ReactNode; icon: ReactNode } = (() => {
+    switch (step.kind) {
+      case "first_deposition": return { icon: <FileUp className="size-5" />, title: "Add your first deposition", text: "A PDF, a text file, or pasted text. Start with one session of a witness.", action: upload("Add deposition") };
+      case "second_session": return { icon: <FileUp className="size-5" />, title: `Add another session of ${step.witness}`, text: "A check compares two sessions of the same witness.", action: upload("Add deposition", step.caseId) };
+      case "reading": return { icon: <FileText className="size-5" />, title: `Reading ${plural(step.count, "deposition")}`, text: "Veridict is turning them into page and line references. Scans take a few minutes.", action: go(href.deposition(step.depositionId), "See progress") };
+      case "check": return { icon: <ListChecks className="size-5" />, title: `Check ${step.witness}'s sessions`, text: "Two sessions are ready to compare. You'll see the estimated cost before anything starts.", action: go(href.case(step.caseId), "Open the case") };
+      case "running": return { icon: <ListChecks className="size-5" />, title: "A check is running", text: "It usually takes 4 to 10 minutes. You can keep working.", action: go(href.analysis(step.analysisId), "View progress") };
+      case "decide": return { icon: <Highlighter className="size-5" />, title: `Review ${plural(step.count, "finding")}`, text: "Read both passages side by side and decide: Keep, Needs context or Dismiss.", action: go(href.analysis(step.analysisId, step.findingId), "Start reviewing") };
+      case "export": return { icon: <Printer className="size-5" />, title: `Export the ${step.caseName} report`, text: "Every finding you kept, with citations and your notes, ready to print or save as PDF.", action: go(href.report(step.caseId), "Open the report") };
+      case "more": return { icon: <FileUp className="size-5" />, title: "Add more testimony", text: "Add another session or witness to keep checking.", action: upload("Add deposition") };
+    }
+  })();
+  return (
+    <div className="rounded-lg bg-navy-2 p-5 ring-1 ring-white/10">
+      <p className="flex items-center gap-2 text-xs font-medium text-navy-ink"><span aria-hidden className="text-[#8ea3c0]">{content.icon}</span>Next step</p>
+      <p className="mt-2 text-lg font-semibold">{content.title}</p>
+      <p className="mt-1 text-sm leading-5 text-navy-ink">{content.text}</p>
+      <div className="mt-4">{content.action}</div>
+    </div>
+  );
+}
+
+function GettingStarted({ items }: { items: { label: string; done: boolean }[] }) {
+  const done = items.filter((i) => i.done).length;
+  return (
+    <Card>
+      <CardHeader title="Getting started" action={<span className="text-sm text-muted tabular-nums">{done} of {items.length} done</span>} />
+      <div aria-hidden className="mx-5 mt-4 h-1.5 overflow-hidden rounded-full bg-rule"><div className="h-full rounded-full bg-ok transition-[width]" style={{ width: `${(done / items.length) * 100}%` }} /></div>
+      <ol className="space-y-1 px-5 py-4">
+        {items.map((it) => (
+          <li key={it.label} className="flex items-center gap-3 py-1.5">
+            <span aria-hidden className={cx("flex size-5 flex-none items-center justify-center rounded-full", it.done ? "bg-ok text-white" : "ring-1 ring-inset ring-control")}>{it.done && <Check className="size-3" strokeWidth={3} />}</span>
+            <span className={cx("text-[15px]", it.done && "text-muted line-through decoration-line")}>{it.label}</span>
+            <span className="sr-only">{it.done ? "(done)" : "(to do)"}</span>
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
+}
+
+// For a new account: what a finding looks like, from the real app.
+function Preview() {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader title="What you'll get" description="Each finding shows both passages side by side, cited to page and line, with the lines that may conflict highlighted." />
+      <img src="/landing/hero-analysis.png" width={2880} height={1800} alt="An example finding in Veridict: two sessions of a synthetic deposition side by side, the conflicting lines highlighted." className="w-full border-t border-rule" loading="lazy" />
+    </Card>
+  );
+}
+
+function Waiting({ waiting, kept }: { waiting: WorkspaceFinding[]; kept: number }) {
+  return (
+    <Card>
+      <CardHeader title="Waiting for your decision" count={waiting.length} action={<a href={href.findings()} className="text-sm font-medium text-info hover:underline">All findings</a>} />
+      {waiting.length === 0 ? (
+        <div className="flex flex-col items-center px-6 py-10 text-center">
+          <span aria-hidden className="flex size-12 items-center justify-center rounded-full bg-ok-bg text-ok"><CircleCheck className="size-6" strokeWidth={1.75} /></span>
+          <p className="mt-3 text-md font-semibold">You're all caught up</p>
+          <p className="mt-1 max-w-sm text-sm text-muted">{kept > 0 ? `You've kept ${plural(kept, "finding")} for follow-up. New checks will add their findings here.` : "New checks will add their findings here."}</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <a href={href.findings()} className={buttonClass("secondary")}>Review past findings</a>
+            <a href={href.cases()} className={buttonClass("ghost")}>Go to cases</a>
+          </div>
+        </div>
+      ) : (
+        <ol>{waiting.slice(0, 6).map((f) => <WaitingRow key={f.id} f={f} />)}</ol>
+      )}
+      {waiting.length > 6 && <a href={href.findings()} className="flex h-11 items-center justify-center gap-1.5 border-t border-rule text-sm font-medium text-ink hover:bg-hover">View all {waiting.length}<ArrowRight aria-hidden className="size-4" /></a>}
+    </Card>
   );
 }
 
@@ -142,7 +193,10 @@ function WaitingRow({ f }: { f: WorkspaceFinding }) {
     <li className="border-t border-rule first:border-t-0">
       <a href={href.analysis(f.analysis.id, f.id)} className="group grid grid-cols-1 items-start gap-x-4 gap-y-1.5 px-5 py-3.5 hover:bg-hover sm:grid-cols-[1fr_auto]">
         <span className="line-clamp-2 min-w-0 font-medium leading-5 group-hover:underline">{f.subject ?? f.explanation}</span>
-        <Badge tone={f.group === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : "warn"}>{f.group === "contradictions" ? (f.priority === "high" ? "High priority" : findingHeadline(f)) : "Needs context"}</Badge>
+        <span className="flex items-center gap-2">
+          {f.group !== "compatible" && <Strength score={f.score} />}
+          <Badge tone={f.group === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : "warn"}>{f.group === "contradictions" ? (f.priority === "high" ? "High priority" : findingHeadline(f)) : "Needs context"}</Badge>
+        </span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted sm:col-span-2">
           <span>{f.analysis.depositions[0].witness}</span>
           <span aria-hidden>·</span>
@@ -152,5 +206,65 @@ function WaitingRow({ f }: { f: WorkspaceFinding }) {
         </span>
       </a>
     </li>
+  );
+}
+
+function Activity({ details }: { details: Parameters<typeof recentActivity>[0] }) {
+  const items = recentActivity(details, { case: href.case, analysis: href.analysis }, 7);
+  const now = Date.now();
+  return (
+    <Card>
+      <CardHeader title="Recent activity" />
+      {items.length === 0 ? (
+        <div className="px-5 py-4 text-sm">
+          <p className="text-muted">Your cases, uploads and checks will appear here. Until then, how a review works:</p>
+          <ol className="mt-3 space-y-3">
+            {[["Add", "two sessions of one witness, as PDF or text."], ["Check", "them against each other. You see the cost first."], ["Review", "each finding side by side, and decide."], ["Export", "what you kept, with citations and notes."]].map(([verb, rest]) => (
+              <li key={verb} className="flex gap-2.5"><span aria-hidden className="mt-1.5 size-1.5 flex-none rounded-full bg-slate" /><span><strong className="font-semibold">{verb}</strong> {rest}</span></li>
+            ))}
+          </ol>
+          <a href={href.help()} className="mt-4 inline-flex items-center gap-1 font-medium text-info hover:underline">Read the guide<ArrowRight aria-hidden className="size-3.5" /></a>
+        </div>
+      ) : (
+        <ol className="px-5 py-4">
+          {items.map((a, i) => (
+            <li key={a.key} className="relative grid grid-cols-[1.25rem_1fr] gap-3 pb-4 last:pb-1">
+              {i < items.length - 1 && <span aria-hidden className="absolute top-5 bottom-0 left-[9px] w-px bg-line" />}
+              <span aria-hidden className={cx("mt-1 size-[11px] justify-self-center rounded-full ring-2 ring-sheet", a.kind === "analysis" ? "bg-slate" : a.kind === "deposition" ? "bg-control" : "bg-navy")} />
+              <a href={a.link} className="group min-w-0">
+                <span className="block text-sm font-medium group-hover:underline">{a.title}</span>
+                <span className="block truncate text-xs text-muted">{a.subject}</span>
+                <span className="block text-xs text-faint">{relativeTime(a.at, now)}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
+function CasesTable({ cases }: { cases: { id: number; name: string; witnessNames: string[]; depositions: number; needsReview: number; lastActivity: string }[] }) {
+  const now = Date.now();
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader title="Cases" count={cases.length} action={<a href={href.cases()} className="text-sm font-medium text-info hover:underline">All cases</a>} />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[40rem] text-sm">
+          <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>To decide</th><th className={cx(thClass, "text-right")}>Last activity</th></tr></thead>
+          <tbody>
+            {cases.slice(0, 5).map((c) => (
+              <tr key={c.id} className={rowClass}>
+                <td className={tdClass}><a href={href.case(c.id)} className="font-medium hover:underline">{c.name}</a></td>
+                <td className={cx(tdClass, "text-muted")}>{c.witnessNames.join(", ") || "–"}</td>
+                <td className={cx(tdClass, "text-right tabular-nums")}>{c.depositions}</td>
+                <td className={cx(tdClass, "text-right tabular-nums", c.needsReview > 0 && "font-semibold text-conflict")}>{c.needsReview}</td>
+                <td className={cx(tdClass, "text-right text-muted tabular-nums")}>{relativeTime(c.lastActivity, now)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

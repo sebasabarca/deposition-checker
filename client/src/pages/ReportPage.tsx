@@ -1,5 +1,5 @@
 // A case's report: the findings the reviewer kept, as a document to print or save as PDF. Each one
-// carries its citation, the cited testimony verbatim, Claude's reading (labelled), and the
+// carries its citation, the cited testimony verbatim, Veridict's analysis (labelled), and the
 // reviewer's note. A finding checked more than once appears once, from its latest analysis.
 
 import { useEffect, useMemo, useState } from "react";
@@ -84,7 +84,7 @@ export function ReportPage({ id }: { id: number }) {
           </dl>
         </header>
 
-        <p className="mt-6 text-sm leading-6 text-muted">Each finding below is a lead for review, not a conclusion that the witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. The explanations were written by Claude, a language model, and are labelled as such. Decisions and notes are the reviewer's.</p>
+        <p className="mt-6 text-sm leading-6 text-muted">Each finding below is a lead for review, not a conclusion that the witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. The explanations were written by Veridict's analysis, an AI system, and are labelled as such. Decisions and notes are the reviewer's.</p>
 
         {chosen.length === 0 ? (
           <p className="mt-10 rounded-md border border-dashed border-control px-6 py-10 text-center text-sm text-muted print:hidden">No findings are marked Keep yet. Open an analysis and choose <strong>Keep</strong> on the findings to include them here.</p>
@@ -138,12 +138,12 @@ function Item({ n, e }: { n: number; e: Entry }) {
       </div>
       <div className="mt-4 space-y-3 text-sm leading-6">
         <div>
-          <p className="text-xs font-semibold text-faint">Why the statements may conflict (Claude's reading)</p>
+          <p className="text-xs font-semibold text-faint">Why the statements may conflict (Veridict's analysis)</p>
           <p>{f.assessment.explanation}</p>
         </div>
         {f.assessment.alternativeExplanation && (
           <div>
-            <p className="text-xs font-semibold text-faint">The innocent explanation (Claude's reading)</p>
+            <p className="text-xs font-semibold text-faint">The innocent explanation (Veridict's analysis)</p>
             <p>{f.assessment.alternativeExplanation}</p>
           </div>
         )}

@@ -12,6 +12,7 @@
     "build": "npm run build --prefix client",
     "start": "tsx server/src/index.ts",
     "worker": "tsx server/src/worker.ts",
+    "admin": "tsx scripts/admin.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
     "db:up": "docker compose up -d --wait db",

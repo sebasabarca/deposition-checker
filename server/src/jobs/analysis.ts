@@ -191,7 +191,7 @@ export async function runAnalysis(db: Database, analysisId: number, deps: Analys
 async function runDirect(db: Database, a: Analysis, deps: AnalysisDeps): Promise<RunOutcome> {
   const provider = deps.discovery?.(a) ?? null;
   if (!provider) {
-    await update(db, a.id, { status: "blocked_credentials", error: "Live analysis needs an Anthropic API key and ALLOW_PAID_CALLS=true on the server. No model was called.", finishedAt: new Date() });
+    await update(db, a.id, { status: "blocked_credentials", error: "Checks aren't available on this server yet: it needs its analysis key and ALLOW_PAID_CALLS=true. Nothing was sent.", finishedAt: new Date() });
     return "blocked_credentials";
   }
   await update(db, a.id, { status: "adjudicating", startedAt: a.startedAt ?? new Date(), error: null });
@@ -233,7 +233,7 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
     const models = a.mode === "live" && !prepared && !deps.useStoredCards ? (deps.liveCardModels?.(a) ?? null) : null;
     // Hybrid candidates can't be rebuilt once saved, so a live run with no paid models stops before retrieving.
     if (a.mode === "live" && !prepared && !models && !deps.useStoredCards) {
-      await update(db, a.id, { status: "blocked_credentials", error: "Live analysis needs an Anthropic API key and ALLOW_PAID_CALLS=true on the server. No model was called.", finishedAt: new Date() });
+      await update(db, a.id, { status: "blocked_credentials", error: "Checks aren't available on this server yet: it needs its analysis key and ALLOW_PAID_CALLS=true. Nothing was sent.", finishedAt: new Date() });
       return "blocked_credentials";
     }
     if (models) await prepareCards(db, a, models);
@@ -246,7 +246,7 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
   if (a.mode === "live" && !single) {
     await update(db, a.id, {
       status: "blocked_credentials",
-      error: "Live analysis needs an Anthropic API key and ALLOW_PAID_CALLS=true on the server. No model was called; the candidates are saved.",
+      error: "Checks aren't available on this server yet: it needs its analysis key and ALLOW_PAID_CALLS=true. Nothing was sent; the candidates are saved.",
       finishedAt: new Date(),
     });
     return "blocked_credentials";

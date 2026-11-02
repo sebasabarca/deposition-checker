@@ -38,6 +38,15 @@ describe("text transcripts", () => {
     expect(read.exchanges!.exchanges.length).toBe(2);
   });
 
+  it("keeps an answer that runs onto the next page, even after a short page", async () => {
+    // Page 19 ends at line 22, as in the Webb transcript; the answer finishes on 20:01.
+    const page19 = Array.from({ length: 20 }, (_, i) => `${String(i + 1).padStart(2)}   Q. Question ${i + 1}?`).join("\n");
+    const text = `Page 19\n${page19}\n21   Q. Had you met Daniel Cho before November 3rd?\n22   A. No. I'd never heard of him before this whole thing\nPage 20\n 1   started.\n 2   Q. And then?`;
+    const read = await readDeposition(bytes(text), undefined, undefined, "Marcus Webb");
+    const lines = read.exchanges!.lines;
+    expect(lines.find((l) => l.printedPage === 20 && l.lineNo === 1)?.role).toBe("witness");
+  });
+
   it("reports empty text as unsupported instead of failing", async () => {
     const read = await readDeposition(bytes("   \n\n"));
     expect(read.validation.status).toBe("unsupported");

@@ -159,7 +159,7 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
       )}
       {a.alternativeExplanation && (
         <div className="rounded-md bg-well px-4 py-3">
-          <Heading>The innocent explanation{a.alternativeSupport ? ` (Claude rates it ${a.alternativeSupport})` : ""}</Heading>
+          <Heading>The innocent explanation{a.alternativeSupport ? ` (rated ${a.alternativeSupport})` : ""}</Heading>
           <p className="mt-1 text-sm leading-6">{a.alternativeExplanation}</p>
         </div>
       )}

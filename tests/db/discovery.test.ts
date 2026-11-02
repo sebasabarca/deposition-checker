@@ -92,14 +92,15 @@ describe.skipIf(!TEST_DATABASE_URL)("direct analysis (Postgres, mock provider)",
     expect(groups.find((g) => g.group === "contradictions")?.findings).toHaveLength(1);
     expect(notStored).toEqual([]);
     const row = groups[0].findings[0];
-    expect(row).toMatchObject({ model: DISCOVERY_MODEL, modelName: "Claude Fable 5.1", source: "model" });
+    expect(row).toMatchObject({ model: DISCOVERY_MODEL, modelName: "Veridict's analysis", source: "model" });
     expect(row.score).toEqual(expect.any(Number)); // evidence strength, from stored facts only
     expect(row.priority).toBe("high"); // direct, one subject, plain assertions
     const detail = (await findingDetail(db, row.id))!;
     expect(detail.rubricVersion).toBe("evidence-strength-v1");
     expect(detail.factors).toHaveLength(5);
     expect(detail.a.lines.length).toBeGreaterThan(0);
-    expect(detail.source.label).toContain("Claude Fable 5.1");
+    expect(detail.source.label).toContain("Veridict's analysis");
+    expect(detail.source.label).not.toMatch(/Claude|Anthropic|Fable/);
     expect(detail.a.lines[0].text).toBe((await stored(depositionIds[0])).find((l) => ref(l) === detail.a.lines[0].ref)?.rawText); // quotations are stored lines
     const view = (await analysisView(db, id))!;
     expect(view.status).toBe("completed");
@@ -123,13 +124,13 @@ describe.skipIf(!TEST_DATABASE_URL)("direct analysis (Postgres, mock provider)",
     expect(await finish(id, provider)).toBe("completed");
     expect(sent.map((r) => r.model)).toEqual([DISCOVERY_MODEL, DISCOVERY_FALLBACK_MODEL]);
     const view = (await analysisView(db, id))!;
-    expect(view.discovery).toMatchObject({ usedFallback: true, resultModelName: "Claude Opus 5.5" });
+    expect(view.discovery).toMatchObject({ usedFallback: true, resultModelName: "Veridict's second reading" });
     expect(view.discovery!.attempts.map((r) => [r.status, r.refusalCategory])).toEqual([["refused", "reasoning_extraction"], ["succeeded", null]]);
     expect(await db.$count(llmCalls)).toBe(2); // the refused attempt's cost is recorded too
     const { groups } = await analysisFindings(db, id);
     const detail = (await findingDetail(db, groups[0].findings[0].id))!;
     expect(detail.source.model).toBe(DISCOVERY_FALLBACK_MODEL);
-    expect(detail.source.label).toContain("after the primary model refused");
+    expect(detail.source.label).toContain("after the first reading declined");
   });
 
   it("stops after a failed fallback, with no third request", async () => {

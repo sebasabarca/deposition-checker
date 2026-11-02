@@ -6,8 +6,10 @@ import { ClipboardPaste, FileText, FileType2, UploadCloud } from "lucide-react";
 import { api } from "../lib/api";
 import { describeText } from "../lib/textTranscript";
 import { href } from "../lib/router";
+import { useUser } from "../lib/session";
 import type { CaseSummary } from "../types";
 import { Alert, Button, cx, Dialog, Field, fieldClass, inputClass, selectClass } from "./ui";
+import { DateInput } from "./DateInput";
 
 const MAX_UPLOAD_MB = 50; // server/src/api/depositions.ts
 type Source = "pdf" | "txt" | "paste";
@@ -75,7 +77,8 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
   const wrongType = !!file && (source === "pdf" ? !/\.pdf$/i.test(file.name) && file.type !== "application/pdf" : !/\.(txt|text)$/i.test(file.name) && !file.type.startsWith("text/"));
   const hasSource = source === "paste" ? pasted.trim().length > 0 : !!file && !tooBig && !wrongType;
   const caseReady = caseChoice === NEW_CASE ? newCase.trim().length > 0 : /^\d+$/.test(caseChoice);
-  const ready = hasSource && caseReady && witness.trim().length > 0 && !busy;
+  const verified = useUser()?.emailVerified ?? false;
+  const ready = verified && hasSource && caseReady && witness.trim().length > 0 && !busy;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -117,7 +120,7 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
             <datalist id={`${ids}-witnesses`}>{witnesses.map((w) => <option key={w} value={w} />)}</datalist>
           </Field>
           <Field label="Date taken" htmlFor={`${ids}-date`} hint="Used to order the sessions and in citations.">
-            <input id={`${ids}-date`} className={inputClass} type="date" value={takenOn} onChange={(e) => setTakenOn(e.target.value)} />
+            <DateInput id={`${ids}-date`} value={takenOn} onChange={setTakenOn} />
           </Field>
         </div>
 
@@ -152,6 +155,7 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
           {shape && <TextShape shape={shape} />}
           {tooBig && <Alert tone="warn">This file is larger than {MAX_UPLOAD_MB} MB.</Alert>}
           {wrongType && <Alert tone="warn">{source === "pdf" ? "This isn't a PDF. Choose “Text file” for a .txt transcript." : "This isn't a .txt file. Choose “PDF” for a PDF."}</Alert>}
+          {!verified && <Alert tone="warn" title="Verify your email first">Open the link we emailed you, then add depositions. You can send a new link from the banner at the top of the page.</Alert>}
           {error && <Alert>{error}</Alert>}
         </div>
       </div>

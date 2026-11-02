@@ -1,0 +1,131 @@
+/* The landing page's scroll scenes. Each scene is a tall section with a sticky stage; script sets
+   --p (0 to 1) as the visitor scrolls through it, and everything moves by transform and opacity from
+   that one number. Without motion (reduced motion, or a phone) --p is 1: the final layout, still. */
+
+.scene {
+  --p: 1;
+  position: relative;
+}
+.scene > .stage {
+  position: relative;
+}
+
+@media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+  .scene {
+    height: var(--length, 260vh);
+  }
+  /* The stage is as tall as its content and pins just under the navigation, so neighbouring
+     scenes sit close instead of each owning a full, mostly empty screen. The hero keeps one. */
+  .scene > .stage {
+    position: sticky;
+    top: 80px;
+    overflow: hidden;
+  }
+  .scene > .stage.full {
+    top: 0;
+    height: 100svh;
+  }
+}
+
+/* A part of the scene's progress, mapped to 0..1: --from and --span pick the window. */
+.seg {
+  --s: clamp(0, calc((var(--p) - var(--from, 0)) / var(--span, 1)), 1);
+}
+
+/* Hero: the product tilts up from the desk and fills the view. */
+.hero-shot {
+  transform-origin: 50% 0%;
+  transform: translateY(calc(var(--s) * var(--rise-to, 0px) * -1)) perspective(1800px) rotateX(calc((1 - var(--s)) * 24deg)) scale(calc(0.86 + var(--s) * 0.14));
+  will-change: transform;
+}
+.hero-copy {
+  opacity: calc(1 - var(--s) * 1.25);
+  transform: translateY(calc(var(--s) * -90px)) scale(calc(1 - var(--s) * 0.06));
+}
+
+/* The stack of pages: each sheet rises at its own speed, then all but one line fade. */
+.sheet {
+  transform: translateY(calc((1 - var(--s)) * var(--rise, 200px))) rotate(var(--tilt, 0deg));
+  opacity: calc(0.35 + var(--s) * 0.65);
+}
+.dim-out {
+  opacity: calc(1 - var(--s) * 0.82);
+}
+
+/* The two passages slide in to meet; the highlighter sweeps; the citation types itself out. */
+.slide-left {
+  transform: translateX(calc((1 - var(--s)) * -38vw)) rotate(calc((1 - var(--s)) * -3deg));
+  opacity: calc(0.2 + var(--s) * 0.8);
+}
+.slide-right {
+  transform: translateX(calc((1 - var(--s)) * 38vw)) rotate(calc((1 - var(--s)) * 3deg));
+  opacity: calc(0.2 + var(--s) * 0.8);
+}
+.mark-sweep {
+  position: relative;
+  isolation: isolate;
+}
+.mark-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0 -6px;
+  z-index: -1;
+  background: var(--color-mark);
+  transform-origin: 0 50%;
+  transform: scaleX(var(--s));
+}
+.typed {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  max-width: calc(var(--s) * 100%);
+}
+
+/* A step that appears in its turn and stays. */
+.reveal {
+  opacity: var(--s);
+  transform: translateY(calc((1 - var(--s)) * 24px));
+}
+.pin {
+  transform: scale(calc(0.9 + var(--s) * 0.1));
+  opacity: calc(0.4 + var(--s) * 0.6);
+}
+
+/* How it works: the four steps travel sideways as the page scrolls down. */
+.track {
+  transform: translateX(calc(var(--s) * var(--travel, 0px) * -1));
+}
+
+/* The report slides up out of its tray. */
+.lift {
+  transform: translateY(calc((1 - var(--s)) * 70%));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene {
+    --p: 1 !important;
+  }
+}
+
+/* Still layout (phones, reduced motion): the hero rests with its headline shown and the product
+   flat, and highlights are plain fills that follow wrapped lines. */
+@media (max-width: 899px), (prefers-reduced-motion: reduce) {
+  .hero-copy,
+  .hero-shot {
+    opacity: 1;
+    transform: none;
+  }
+  .mark-sweep {
+    background: var(--color-mark);
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .mark-sweep::before {
+    display: none;
+  }
+  .typed {
+    white-space: normal;
+    max-width: none;
+  }
+}

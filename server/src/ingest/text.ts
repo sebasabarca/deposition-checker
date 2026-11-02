@@ -22,7 +22,7 @@ const TEXT_BASE: Omit<LayoutProfile, "name"> = {
   printedPage: /^$/,
   footer: /^$/,
 };
-export const TEXT_NUMBERED_V1: LayoutProfile = { ...TEXT_BASE, name: "text-numbered-v1" };
+export const TEXT_NUMBERED_V1: LayoutProfile = { ...TEXT_BASE, name: "text-numbered-v1", pageBreaksContinue: true };
 export const TEXT_UNNUMBERED_V1: LayoutProfile = { ...TEXT_BASE, name: "text-unnumbered-v1", maxLinesPerPage: Number.MAX_SAFE_INTEGER };
 export const UNNUMBERED_PAGE = 0;
 

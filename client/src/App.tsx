@@ -8,8 +8,11 @@ import { FindingsPage } from "./pages/FindingsPage";
 import { HelpPage } from "./pages/HelpPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ReportPage } from "./pages/ReportPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { useEffect, useState } from "react";
-import { SignInPage } from "./pages/SignInPage";
+import { ForgotPage, RegisterPage, ResetPage, SignInPage, VerifyPage } from "./pages/AuthPages";
+import { LandingPage } from "./pages/LandingPage";
+import { UserContext } from "./lib/session";
 import { api, SIGNED_OUT, type User } from "./lib/api";
 import { href, sectionOf, useRoute } from "./lib/router";
 import { Empty } from "./components/ui";
@@ -26,11 +29,27 @@ export default function App() {
     return () => window.removeEventListener(SIGNED_OUT, out);
   }, []);
   if (user === undefined) return null;
-  if (user === null) return <SignInPage onSignedIn={setUser} />;
-  const signOut = () => void api.signOut().finally(() => setUser(null));
+  // A verification link works signed in or out; the other account pages are for signed-out visitors.
+  if (route.name === "verify") return <VerifyPage token={route.token} onSignedIn={setUser} />;
+  if (user === null) {
+    if (route.name === "signin") return <SignInPage onSignedIn={setUser} />;
+    if (route.name === "register") return <RegisterPage />;
+    if (route.name === "forgot") return <ForgotPage />;
+    if (route.name === "reset") return <ResetPage token={route.token} onSignedIn={setUser} />;
+    return <LandingPage />;
+  }
+  if (["signin", "register", "forgot", "reset"].includes(route.name)) {
+    window.location.hash = href.overview();
+    return null;
+  }
+  const signOut = () => void api.signOut().finally(() => {
+    setUser(null);
+    window.location.hash = href.overview();
+  });
 
   return (
-    <Shell section={sectionOf(route)} user={user} onSignOut={signOut}>
+    <UserContext.Provider value={user}>
+    <Shell section={sectionOf(route)} user={user} onSignOut={signOut} onUser={setUser}>
       {route.name === "overview" && <OverviewPage />}
       {route.name === "cases" && <CasesPage />}
       {route.name === "case" && <CasePage key={route.id} id={route.id} />}
@@ -41,7 +60,9 @@ export default function App() {
       {route.name === "analyses" && <AnalysesPage />}
       {route.name === "analysis" && <AnalysisPage key={route.id} id={route.id} findingId={route.findingId} />}
       {route.name === "help" && <HelpPage />}
+      {route.name === "profile" && <ProfilePage user={user} onUser={setUser} />}
       {route.name === "not_found" && <Empty title="Page not found">Go back to the <a className="underline" href={href.overview()}>overview</a>.</Empty>}
     </Shell>
+    </UserContext.Provider>
   );
 }

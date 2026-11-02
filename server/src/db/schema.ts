@@ -77,8 +77,10 @@ export const orgs = pgTable("orgs", {
   createdAt: createdAt(),
 });
 
-// People who sign in. Each belongs to one organization (a firm), and sees only its cases. The
-// password is stored as a salted scrypt hash, never in clear (server/src/auth.ts).
+// People who sign in. Each account has its own private workspace (an org, created with it) and
+// sees only its cases. The password is stored as a salted scrypt hash, never in clear
+// (server/src/auth.ts). Uploading and checking need a verified email; paid checks also need
+// analysis_access, granted by an administrator until credits exist.
 export const users = pgTable(
   "users",
   {
@@ -89,9 +91,30 @@ export const users = pgTable(
     email: text("email").notNull(), // lowercased
     name: text("name").notNull(),
     passwordHash: text("password_hash").notNull(),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }), // when the first-run tour was finished or skipped
+    analysisAccess: boolean("analysis_access").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("users_email_unique").on(t.email)],
+);
+
+// One-time links sent by email: verifying an address, or resetting a password. Like sessions, only
+// the token's SHA-256 is stored. A token works once (used_at) and only until it expires.
+export const authTokenPurpose = pgEnum("auth_token_purpose", ["verify_email", "reset_password"]);
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: ref("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: authTokenPurpose("purpose").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("auth_tokens_user_id_idx").on(t.userId)],
 );
 
 // A signed-in browser. The cookie carries a random token; only its SHA-256 is stored, so a leaked

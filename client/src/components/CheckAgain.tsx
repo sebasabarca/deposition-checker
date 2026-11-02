@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { api, type CheckEstimate } from "../lib/api";
 import { href } from "../lib/router";
+import { useUser } from "../lib/session";
 import { Alert, Button, Dialog } from "./ui";
 
 // The cost estimate for two sessions, from the server, or null while it loads or if it failed.
@@ -24,6 +25,8 @@ export function estimateText(e: CheckEstimate | null) {
   // One request's worst case isn't the ceiling (a backup model may run), so the budget is named instead.
   return `Estimated ${usd(e.typicalUsd)}, never more than the ${usd(e.budgetUsd)} budget · about 10 minutes`;
 }
+
+export const NO_ACCESS = "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.";
 
 export function useStartCheck(caseId: number) {
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,7 @@ export function CheckAgain({ caseId, a, b, variant = "secondary" }: { caseId: nu
   const [open, setOpen] = useState(false);
   const { start, error, busy } = useStartCheck(caseId);
   const estimate = useEstimate(caseId, open ? a : null, open ? b : null);
+  const access = useUser()?.analysisAccess ?? false;
   return (
     <>
       <Button variant={variant} onClick={() => setOpen(true)}><RotateCcw aria-hidden className="size-3.5" />Check again</Button>
@@ -54,11 +58,12 @@ export function CheckAgain({ caseId, a, b, variant = "secondary" }: { caseId: nu
         <div className="space-y-4 px-6 py-5">
           <p className="text-base leading-6">This runs a new paid check. The earlier analysis stays, and a new check may find different results. Your decisions carry over wherever a finding cites the same passages.</p>
           <p className="rounded-md bg-well px-4 py-3 text-sm tabular-nums">{estimateText(estimate)}.</p>
+          {!access && <Alert tone="warn">{NO_ACCESS}</Alert>}
           {error && <Alert>{error}</Alert>}
         </div>
         <div className="flex justify-end gap-2 border-t border-rule px-6 py-3.5">
           <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button disabled={busy || estimate?.fits === false} onClick={() => void start(a, b)}>{busy ? "Starting…" : "Start paid check"}</Button>
+          <Button disabled={busy || !access || estimate?.fits === false} onClick={() => void start(a, b)}>{busy ? "Starting…" : "Start paid check"}</Button>
         </div>
       </Dialog>
     </>

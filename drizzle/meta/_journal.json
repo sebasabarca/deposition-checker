@@ -169,6 +169,20 @@
       "when": 1793640028825,
       "tag": "0023_users_and_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793651292678,
+      "tag": "0024_email_verification_and_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793658891212,
+      "tag": "0025_onboarded_at",
+      "breakpoints": true
     }
   ]
 }

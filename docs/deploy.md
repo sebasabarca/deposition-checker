@@ -19,11 +19,28 @@ Put a TLS-terminating proxy (Caddy, nginx or a cloud load balancer) in front of 
 compose file already sets `COOKIE_SECURE=true` (the session cookie is sent only over HTTPS) and
 `TRUST_PROXY=1` (one proxy hop). The proxy must allow request bodies of 50 MB for uploads.
 
-## First account
+## Accounts
 
-Open the site and create the first account. It takes over every case already in the database.
-After that, sign-up is closed unless `ALLOW_SIGNUP=true`; each account created then gets its own
-firm, which sees only its own cases.
+Anyone can register. A new account must verify its email before it can upload depositions or run
+checks, and paid checks stay off until you grant them (credits will replace this):
+
+```sh
+docker compose -f compose.prod.yml exec web npm run admin -- grant-analysis someone@example.com
+```
+
+`npm run admin` also has `verify <email>` (when email isn't working) and `claim-cases <email>`,
+which moves cases created before accounts existed into that account.
+
+## Email
+
+Verification and password-reset emails go through [Resend](https://resend.com). Set, in `.env`:
+
+- `RESEND_API_KEY`: an API key with permission to send.
+- `EMAIL_FROM`: the sender, on a domain verified in Resend, for example `Veridict <no-reply@mail.yourdomain>`.
+- `APP_URL`: the public address of the site, for example `https://veridict.yourdomain`. Links in emails point here.
+
+Tokens in links are single-use, expire (verification 24 hours, reset 1 hour), and are stored only as
+hashes. They're never logged in production.
 
 ## Health
 
@@ -34,6 +51,6 @@ uses it as the web container's health check.
 
 - Sign-in rate limits are kept in memory per web process. Run one web process, or move them to
   Postgres before scaling out.
-- There is no password reset or user management screen; accounts are created by sign-up.
+- There is no user management screen; administration is `npm run admin`.
 - Uploaded files are on a local volume. Moving to object storage means changing
   `server/src/ingest/uploads.ts`.

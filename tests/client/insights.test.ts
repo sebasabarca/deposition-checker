@@ -118,3 +118,20 @@ describe("displayRef", () => {
     expect(displayRef(null)).toBe(null);
   });
 });
+
+describe("nextStep", () => {
+  it("asks for the earliest unfinished step of the work", async () => {
+    const { nextStep } = await import("../../client/src/lib/insights");
+    const dep = (id: number, witnessId: number, status = "ready") => ({ id, witnessId, status, takenOn: null, error: null, pageCount: 10, needsOcrPages: [], originalFilename: null, fileSha256: "", createdAt: "", scanned: false }) as never;
+    const kase = (deps: unknown[], analyses: unknown[] = []) => ({ case: { id: 1, name: "Webb", createdAt: "", findings: 0 }, witnesses: [{ id: 7, name: "Marcus Webb", depositions: [] }], depositions: deps, analyses }) as never;
+    expect(nextStep([], [], [], []).kind).toBe("first_deposition");
+    expect(nextStep([kase([dep(1, 7)])], [], [], [])).toMatchObject({ kind: "second_session", witness: "Marcus Webb" });
+    expect(nextStep([kase([dep(1, 7), dep(2, 7, "processing")])], [], [], []).kind).toBe("reading");
+    expect(nextStep([kase([dep(1, 7), dep(2, 7)])], [], [], [])).toMatchObject({ kind: "check", caseId: 1 });
+    const checked = kase([dep(1, 7), dep(2, 7)], [{ id: 9, depositionA: 1, depositionB: 2, status: "completed" }]);
+    expect(nextStep([checked], [{ id: 9 }], [], []).kind).toBe("running");
+    expect(nextStep([checked], [], [{ id: 5, analysisId: 9 }], [])).toMatchObject({ kind: "decide", findingId: 5 });
+    expect(nextStep([checked], [], [], [{ caseId: 1 }])).toMatchObject({ kind: "export", caseId: 1 });
+    expect(nextStep([checked], [], [], []).kind).toBe("more");
+  });
+});

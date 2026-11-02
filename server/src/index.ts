@@ -4,7 +4,7 @@ import path from "node:path";
 import express from "express";
 import { sql } from "drizzle-orm";
 import { analysisRoutes, caseRoutes, depositionRoutes } from "./api";
-import { authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
+import { accountGates, authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
 import { connect } from "./db/client";
 import { createAnalysisQueues, createIngestQueues, startBoss } from "./jobs";
 
@@ -45,7 +45,7 @@ async function mountDepositionRoutes() {
     });
     // Sign-in is open; everything after it needs a session, and sees only the user's organization.
     app.use("/api", authRoutes(db));
-    app.use("/api", sameOrigin, requireUser(db), scopeToOrg(db));
+    app.use("/api", sameOrigin, requireUser(db), scopeToOrg(db), accountGates());
     app.use("/api", caseRoutes({ db }));
     app.use("/api", analysisRoutes({ db, pool, boss }));
     app.use("/api", depositionRoutes({ db, pool, boss }));

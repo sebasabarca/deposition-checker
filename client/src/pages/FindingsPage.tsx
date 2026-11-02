@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
-import { Alert, Badge, Card, cx, Empty, Loading, PageHeader, rowClass, Search, selectClass, tdClass, thClass } from "../components/ui";
+import { Alert, Badge, Card, cx, Empty, Loading, PageHeader, rowClass, Search, selectClass, Strength, tdClass, thClass } from "../components/ui";
 import { findingHeadline, GROUP_LABEL } from "../lib/labels";
 import { decisionOf, REVIEW_LABEL } from "../lib/review";
 import { href } from "../lib/router";
@@ -47,7 +47,7 @@ export function FindingsPage() {
           {rows.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No finding matches these filters.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[58rem] text-sm">
-                <thead><tr><th className={thClass}>Finding</th><th className={thClass}>Witness</th><th className={thClass}>Testimony</th><th className={thClass}>Category</th><th className={thClass}>Decision</th></tr></thead>
+                <thead><tr><th className={thClass}>Finding</th><th className={thClass}>Witness</th><th className={thClass}>Testimony</th><th className={thClass}>Category</th><th className={cx(thClass, "text-right")}>Strength</th><th className={thClass}>Decision</th></tr></thead>
                 <tbody>
                   {rows.map((f) => {
                     const d = decisionOf(f.reviewState);
@@ -60,6 +60,7 @@ export function FindingsPage() {
                         </td>
                         <td className={cx(tdClass, "font-mono text-[12px] whitespace-nowrap text-muted")}><span className="flex items-center gap-1.5">{shortRef(f.a.ref)}<ArrowLeftRight aria-hidden className="size-3 text-faint" />{shortRef(f.b.ref)}</span></td>
                         <td className={tdClass}><Badge tone={f.group === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : f.group === "unverified" ? "bad" : f.group === "needs_context" ? "warn" : "neutral"}>{f.group === "contradictions" && f.priority === "high" ? "High priority" : findingHeadline(f)}</Badge></td>
+                        <td className={cx(tdClass, "text-right")}>{f.group !== "compatible" && f.score !== null ? <Strength score={f.score} /> : <span className="text-faint">–</span>}</td>
                         <td className={cx(tdClass, "whitespace-nowrap")}><span className="flex items-center gap-2"><span aria-hidden className={cx("size-2.5 rounded-full", DECISION_DOT[d])} />{REVIEW_LABEL[d]}</span></td>
                       </tr>
                     );

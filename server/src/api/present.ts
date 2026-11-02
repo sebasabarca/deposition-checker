@@ -92,11 +92,13 @@ export function candidateCoverage(rows: readonly CandidateRow[]): CandidateCover
 }
 
 export type VerdictSource = "model" | "replayed" | "fixture";
-const MODEL_NAMES: Record<string, string> = { "claude-fable-5-1": "Claude Fable 5.1", "claude-opus-5-5": "Claude Opus 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5" };
-export const modelName = (model: string) => MODEL_NAMES[model] ?? model;
-export const directSourceLabel = (model: string, fallback: boolean) => `Proposed by ${modelName(model)}${fallback ? " after the primary model refused" : ""}, reading both sessions whole. Citations checked by this application.`;
+// The product never names the model or its provider to users: the primary model is "Veridict's
+// analysis" and the fallback its "second reading". Stored rows keep the real model IDs.
+const FALLBACK_MODELS = new Set(["claude-opus-5-5"]);
+export const modelName = (model: string) => (FALLBACK_MODELS.has(model) ? "Veridict's second reading" : "Veridict's analysis");
+export const directSourceLabel = (model: string, fallback: boolean) => `Proposed by ${modelName(model)}${fallback ? ", after the first reading declined" : ""}, reading both sessions whole. Citations checked by Veridict against the transcript.`;
 export const SOURCE_LABELS: Record<VerdictSource, string> = {
-  model: "Model assessment (Claude Sonnet), verified and scored by this application",
-  replayed: "Demo: a stored Claude Sonnet assessment from an earlier run, replayed without a new model call",
+  model: "Veridict's analysis, verified and scored against the transcript",
+  replayed: "Example: a stored assessment from an earlier run, replayed without a new analysis",
   fixture: "Demo: a prepared example assessment for synthetic testimony. Not produced by a model",
 };

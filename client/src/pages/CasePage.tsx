@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, FileText, FileUp, X } from "lucide-react";
-import { CheckAgain, estimateText, useEstimate, useStartCheck } from "../components/CheckAgain";
+import { CheckAgain, estimateText, NO_ACCESS, useEstimate, useStartCheck } from "../components/CheckAgain";
+import { useUser } from "../lib/session";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Empty, Loading, PageHeader, rowClass, tdClass, thClass } from "../components/ui";
@@ -139,6 +140,8 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
   const { start, error, busy } = useStartCheck(detail.case.id);
   const state = checkState(selected, detail.depositions, detail.analyses);
   const estimate = useEstimate(detail.case.id, state.kind === "new" ? state.a : null, state.kind === "new" ? state.b : null);
+  const user = useUser();
+  const blocked = !user?.emailVerified ? "Verify your email before running checks." : !user.analysisAccess ? NO_ACCESS : null;
   const message = { pick: "Select one more session of the same witness.", too_many: "Select exactly two sessions. An analysis compares two.", different_witness: "These are different witnesses. An analysis compares two sessions of one witness.", not_ready: "Both sessions must finish reading first." };
   const pair = () => {
     const [a, b] = selected.map((s) => detail.depositions.find((d) => d.id === s)!).sort((x, y) => (x.takenOn ?? "").localeCompare(y.takenOn ?? ""));
@@ -154,7 +157,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
             <>
               <p className="font-semibold">{pair()}</p>
               <p className="text-sm text-navy-ink">
-                {state.kind === "new" && `${estimateText(estimate)}. Nothing is charged until you start.`}
+                {state.kind === "new" && (blocked ?? `${estimateText(estimate)}. Nothing is charged until you start.`)}
                 {state.kind === "running" && "These sessions are being checked now."}
                 {state.kind === "done" && `Already checked on ${formatDate(state.report.createdAt)}.`}
               </p>
@@ -164,7 +167,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
         </div>
         <div className="flex flex-none flex-wrap items-center gap-2">
           <button type="button" onClick={onClear} className="flex h-8 items-center gap-1 rounded-md px-2.5 text-sm text-navy-ink hover:bg-navy-2 hover:text-white"><X aria-hidden className="size-4" />Clear</button>
-          {state.kind === "new" && <button type="button" disabled={busy || estimate?.fits === false} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : "Check these sessions"}</button>}
+          {state.kind === "new" && !blocked && <button type="button" disabled={busy || estimate?.fits === false} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : "Check these sessions"}</button>}
           {state.kind === "running" && <a href={href.analysis(state.report.id)} className={buttonClass("secondary", "ring-0!")}>View progress</a>}
           {state.kind === "done" && (
             <>

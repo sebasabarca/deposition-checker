@@ -85,7 +85,7 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
       sql`select table_name from information_schema.tables where table_schema = 'public' order by table_name`,
     );
     expect(result.rows.map((r) => r.table_name)).toEqual([
-      "adjudication_requests", "analyses",
+      "adjudication_requests", "analyses", "auth_tokens",
       "budget_reservations",
       "budgets",
       "candidate_topics",

@@ -109,3 +109,36 @@ export function pairsChecked(sessions: readonly number[], reports: readonly Pick
 // Text without page numbers is stored on page 0 and cited by its line: "0:12–0:14" reads "Lines 12–14".
 export const displayRef = <T extends string | null>(ref: T): T =>
   (ref === null ? ref : ref.replace(/\b0:0*(\d+)\s*[–-]\s*0:0*(\d+)/g, "Lines $1–$2").replace(/\b0:0*(\d+)/g, "Line $1")) as T;
+
+// The one thing to do next, for the Overview: the earliest unfinished step of the work, in order.
+// Pure, so each case is testable. `waiting` is the findings awaiting a decision, in priority order.
+export type NextStep =
+  | { kind: "first_deposition" | "second_session"; witness?: string; caseId?: number }
+  | { kind: "reading"; count: number; depositionId: number }
+  | { kind: "check"; witness: string; caseId: number }
+  | { kind: "running"; analysisId: number }
+  | { kind: "decide"; count: number; analysisId: number; findingId: number }
+  | { kind: "export"; caseId: number; caseName: string }
+  | { kind: "more" };
+
+export function nextStep(details: CaseDetail[], running: { id: number }[], waiting: { id: number; analysisId: number }[], kept: { caseId: number }[]): NextStep {
+  const all = details.flatMap((d) => d.depositions.map((x) => ({ ...x, caseId: d.case.id })));
+  if (all.length === 0) return { kind: "first_deposition" };
+  if (running.length) return { kind: "running", analysisId: running[0].id };
+  if (waiting.length) return { kind: "decide", count: waiting.length, analysisId: waiting[0].analysisId, findingId: waiting[0].id };
+  const reading = all.filter((d) => d.status === "processing");
+  if (reading.length) return { kind: "reading", count: reading.length, depositionId: reading[0].id };
+  for (const d of details) {
+    for (const w of d.witnesses) {
+      const ready = d.depositions.filter((x) => x.witnessId === w.id && x.status === "ready").map((x) => x.id);
+      if (ready.length >= 2 && pairsChecked(ready, d.analyses).checked < pairsChecked(ready, d.analyses).total) return { kind: "check", witness: w.name, caseId: d.case.id };
+    }
+  }
+  if (kept.length) {
+    const d = details.find((x) => x.case.id === kept[0].caseId);
+    if (d) return { kind: "export", caseId: d.case.id, caseName: d.case.name };
+  }
+  const lone = details.flatMap((d) => d.witnesses.filter((w) => d.depositions.filter((x) => x.witnessId === w.id).length === 1).map((w) => ({ witness: w.name, caseId: d.case.id })));
+  if (lone.length) return { kind: "second_session", ...lone[0] };
+  return { kind: "more" };
+}

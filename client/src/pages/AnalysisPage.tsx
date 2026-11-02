@@ -5,17 +5,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckAgain } from "../components/CheckAgain";
 import { FindingPanel } from "../components/FindingPanel";
 import { EMPTY, FindingBar, GROUPS } from "../components/FindingRegister";
-import { Alert, Badge, Button, buttonClass, cx, Loading, PageHeader } from "../components/ui";
+import { Alert, Badge, Button, buttonClass, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { isActive } from "../lib/insights";
 import { ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, DiscoveryView, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
+import type { AnalysisView, CaseDetail, DiscoveryView, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
+import { CheckProgress } from "../components/CheckProgress";
 
 export function AnalysisPage({ id, findingId }: { id: number; findingId: number | null }) {
   const [analysis, setAnalysis] = useState<AnalysisView | null>(null);
   const [groups, setGroups] = useState<FindingGroups | null>(null);
-  const [caseName, setCaseName] = useState<string | null>(null);
+  const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
+  const caseName = caseDetail?.case.name ?? null;
   const [error, setError] = useState<string | null>(null);
   const [chosenGroup, setChosenGroup] = useState<FindingGroup | null>(null);
   const load = useCallback(() => {
@@ -32,7 +34,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   }, [id, total]);
   useEffect(() => {
     if (caseId === undefined) return;
-    api.case(caseId).then((c) => setCaseName(c.case.name)).catch(() => undefined);
+    api.case(caseId).then(setCaseDetail).catch(() => undefined);
   }, [caseId]);
   const findings = useMemo(() => groups?.groups.flatMap((g) => g.findings) ?? [], [groups]);
 
@@ -65,14 +67,15 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
           <>
             {caseName && <a href={href.case(analysis.caseId)} className="font-medium text-ink hover:underline">{caseName}</a>}
             {done && <> · checked {formatDate(analysis.finishedAt ?? analysis.createdAt)} · {findings.length} {findings.length === 1 ? "finding" : "findings"} · {decided} decided</>}
-            {!done && <> · {ANALYSIS_STATUS[analysis.status].label}</>}
+            {!done && <> · {active ? "check running" : ANALYSIS_STATUS[analysis.status].label}</>}
           </>
         }
         actions={done ? <CheckAgain caseId={analysis.caseId} a={a.id} b={b.id} /> : undefined}
       />
       {analysis.mode === "demo" && <Alert tone="info">This is an example analysis. No model was called for it.</Alert>}
-      {!done && <Progress analysis={analysis} onResume={(budget) => api.resume(analysis.id, budget).then(load).catch((e: Error) => setError(e.message))} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
-      {analysis.discovery?.usedFallback && done && <Alert tone="warn" title="The primary model declined this check">A backup model, {analysis.discovery.resultModelName}, produced these findings.</Alert>}
+      {active && <CheckProgress analysis={analysis} pages={pagesOf(caseDetail, analysis)} lines={null} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
+      {!done && !active && <Progress analysis={analysis} onResume={(budget) => api.resume(analysis.id, budget).then(load).catch((e: Error) => setError(e.message))} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
+      {analysis.discovery?.usedFallback && done && <Alert tone="warn" title="The first reading couldn't finish this check">A second reading produced these findings. They were verified the same way.</Alert>}
 
       {groups && (done || findings.length > 0) && (
         <div>
@@ -86,7 +89,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
       )}
       {done && !groups && <Loading label="Loading findings" />}
       {(groups?.notStored?.length ?? 0) > 0 && <NotStored items={groups!.notStored!} />}
-      {analysis.discovery && analysis.discovery.attempts.length > 0 && <HowItRan discovery={analysis.discovery} cost={analysis.cost.actualUsd} />}
+      {!active && analysis.discovery && analysis.discovery.attempts.length > 0 && <HowItRan discovery={analysis.discovery} cost={analysis.cost.actualUsd} />}
     </>
   );
 }
@@ -100,7 +103,7 @@ function HowItRan({ discovery, cost }: { discovery: DiscoveryView; cost: number 
       <ul className="divide-y divide-rule border-t border-rule">
         {discovery.attempts.map((a) => (
           <li key={a.attempt} className="flex flex-wrap items-baseline justify-between gap-x-4 px-5 py-2.5">
-            <span><span className="font-semibold">{a.modelName}</span>{a.role === "fallback" ? " (backup)" : ""}: {DISCOVERY_ATTEMPT[a.status] ?? a.status}{a.error ? `. ${a.error}` : ""}</span>
+            <span><span className="font-semibold">{a.modelName}</span>: {DISCOVERY_ATTEMPT[a.status] ?? a.status}{a.error ? `. ${a.error}` : ""}</span>
             <span className="text-xs text-faint tabular-nums">{[a.costUsd !== null ? formatUsd(a.costUsd) : null, a.latencyMs !== null ? seconds(a.latencyMs) : null].filter(Boolean).join(" · ")}</span>
           </li>
         ))}
@@ -129,16 +132,14 @@ function NotStored({ items }: { items: NotStoredFinding[] }) {
   );
 }
 
-const STEPS = [
-  { key: "parsing", title: "Read both depositions" },
-  { key: "adjudicating", title: "Read both sessions in full" },
-  { key: "completed", title: "Check every citation" },
-];
+// Pages in the two sessions of a check, once both are known.
+const pagesOf = (detail: CaseDetail | null, a: AnalysisView) => {
+  const counts = a.depositions.map((d) => detail?.depositions.find((x) => x.id === d.id)?.pageCount ?? null);
+  return counts.every((c) => c !== null) ? counts.reduce((n, c) => n! + c!, 0) : null;
+};
 
-function Progress({ analysis, onResume, onCancel }: { analysis: AnalysisView; onResume: (budget?: number) => void; onCancel: () => void }) {
-  const running = isActive(analysis.status);
-  const at = analysis.status === "queued" ? -1 : analysis.status === "parsing" ? 0 : running ? 1 : -1;
-  if (!running) {
+function Progress({ analysis, onResume }: { analysis: AnalysisView; onResume: (budget?: number) => void; onCancel: () => void }) {
+  if (!isActive(analysis.status)) {
     return (
       <Alert
         tone={analysis.status === "failed" ? "bad" : "warn"}
@@ -156,23 +157,5 @@ function Progress({ analysis, onResume, onCancel }: { analysis: AnalysisView; on
       </Alert>
     );
   }
-  return (
-    <section className="rounded-lg border border-line bg-sheet">
-      <ol className="grid divide-rule sm:grid-cols-3 sm:divide-x">
-        {STEPS.map((s, i) => (
-          <li key={s.key} className="px-5 py-4">
-            <p className={cx("flex items-center gap-2 text-xs font-semibold", i < at ? "text-ok" : i === at ? "text-info" : "text-faint")}>
-              <span aria-hidden className={cx("size-2 rounded-full", i < at ? "bg-ok" : i === at ? "animate-pulse bg-slate" : "bg-control")} />
-              {i < at ? "Done" : i === at ? "In progress" : "Waiting"}
-            </p>
-            <p className="mt-1 font-medium">{s.title}</p>
-          </li>
-        ))}
-      </ol>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-5 py-3 text-sm text-muted">
-        <p>This usually takes about 10 minutes, and can take longer. You can close this page.</p>
-        <Button variant="secondary" onClick={onCancel} disabled={analysis.cancelRequested}>{analysis.cancelRequested ? "Stopping…" : "Stop check"}</Button>
-      </div>
-    </section>
-  );
+  return null;
 }

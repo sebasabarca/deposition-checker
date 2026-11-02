@@ -27,7 +27,7 @@ export async function openTestDatabase(migrationsFolder = "drizzle") {
 // Empties every table, and pg-boss's jobs when its schema exists: IDs restart at 1, so a job left
 // from an earlier test would otherwise look like it belongs to a new deposition.
 export async function emptyTables(db: Database) {
-  await db.execute(sql`truncate orgs, users, sessions, cases, witnesses, depositions, lines, exchanges, exchange_lines, llm_calls, claims, claim_tagging, budgets, budget_reservations, candidates, verdicts, findings, analyses, adjudication_requests, statement_cards, card_coverage, topics, card_topics, candidate_topics restart identity cascade`);
+  await db.execute(sql`truncate orgs, users, sessions, auth_tokens, cases, witnesses, depositions, lines, exchanges, exchange_lines, llm_calls, claims, claim_tagging, budgets, budget_reservations, candidates, verdicts, findings, analyses, adjudication_requests, statement_cards, card_coverage, topics, card_topics, candidate_topics restart identity cascade`);
   await db.execute(sql`do $$ begin if to_regclass('pgboss.job') is not null then delete from pgboss.job; end if; end $$`);
 }
 

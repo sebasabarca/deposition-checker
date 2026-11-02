@@ -7,7 +7,7 @@ import type { Workspace } from "./workspace";
 export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
 
 export const SIGNED_OUT = "veridict:signed-out";
-export type User = { id: number; email: string; name: string; org: string };
+export type User = { id: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean; onboarded: boolean };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -37,10 +37,17 @@ async function request<T>(method: string, url: string, body?: unknown, raw?: { d
 
 export const api = {
   me: () => request<{ user: User }>("GET", "/auth/me"),
-  authConfig: () => request<{ signupOpen: boolean; firstUser: boolean }>("GET", "/auth/config"),
   signIn: (email: string, password: string) => request<{ user: User }>("POST", "/auth/signin", { email, password }),
-  signUp: (body: { name: string; email: string; password: string; firm: string }) => request<{ user: User }>("POST", "/auth/signup", body),
+  signUp: (body: { name: string; email: string; password: string }) => request<{ ok: true; message: string }>("POST", "/auth/signup", body),
+  verifyEmail: (token: string) => request<{ user: User }>("POST", "/auth/verify", { token }),
+  resendVerification: () => request<{ ok: true; message: string }>("POST", "/auth/verify/resend"),
+  forgotPassword: (email: string) => request<{ ok: true; message: string }>("POST", "/auth/forgot", { email }),
+  resetPassword: (token: string, password: string) => request<{ user: User }>("POST", "/auth/reset", { token, password }),
   signOut: () => request<{ ok: true }>("POST", "/auth/signout"),
+  updateProfile: (name: string) => request<{ user: User }>("PATCH", "/auth/profile", { name }),
+  changePassword: (current: string, password: string) => request<{ ok: true; message: string }>("POST", "/auth/password", { current, password }),
+  changeEmail: (email: string, password: string) => request<{ ok: true; message: string }>("POST", "/auth/email", { email, password }),
+  markOnboarded: () => request<{ ok: true }>("POST", "/auth/onboarded"),
   cases: () => request<{ cases: CaseSummary[] }>("GET", "/cases"),
   workspace: () => request<Workspace>("GET", "/workspace"),
   createCase: (name: string, witness?: string) => request<CaseDetail>("POST", "/cases", { name, ...(witness ? { witness } : {}) }),

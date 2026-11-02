@@ -129,12 +129,13 @@ export function markLine(text: string, indentX: number | null, layout: LayoutPro
   return { turn: null, name: null };
 }
 
-// Consecutive lines on one page, or the last line of a full page followed by line 1 of the next.
-// Anything else means testimony between the two lines was redacted.
+// Consecutive lines on one page, or the last line of a full page followed by line 1 of the next (any
+// page, for layouts whose page breaks always continue). Anything else means testimony between the
+// two lines was redacted.
 export function isContiguous(prev: SourceLine, next: SourceLine, layout: LayoutProfile): boolean {
   if (prev.printedPage === null || next.printedPage === null) return false;
   if (next.printedPage === prev.printedPage) return next.lineNo === prev.lineNo + 1;
-  return next.printedPage === prev.printedPage + 1 && next.lineNo === 1 && prev.lineNo === layout.maxLinesPerPage;
+  return next.printedPage === prev.printedPage + 1 && next.lineNo === 1 && (layout.pageBreaksContinue === true || prev.lineNo === layout.maxLinesPerPage);
 }
 
 const ROLE_OF_TURN: Record<Exclude<TurnMarker, null>, SpeakerRole> = {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { DangerZone } from "../components/DangerZone";
 import { TranscriptRows } from "../components/FindingView";
+import { useNow } from "../components/CheckProgress";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, fieldClass, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { isActive } from "../lib/insights";
@@ -54,7 +55,7 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
         description={[d.originalFilename ?? `Deposition #${d.id}`, d.pageCount && d.validation?.layout !== "text-unnumbered-v1" ? `${d.pageCount} ${d.pageCount === 1 ? "page" : "pages"}` : null, d.stored.lines ? `${d.stored.lines.toLocaleString()} lines` : null].filter(Boolean).join(" · ")}
         actions={<a href={api.depositionOriginal(d.id)} target="_blank" rel="noreferrer" className={buttonClass("secondary")}><ExternalLink aria-hidden className="size-3.5" />View original {isText ? "text" : "PDF"}</a>}
       />
-      {d.status === "processing" && <Alert tone="info" title="Reading this deposition">Veridict is turning it into page and line references. Text takes a few seconds, scans can take several minutes. This page updates by itself.</Alert>}
+      {d.status === "processing" && <Reading since={d.createdAt} scanned={!/\.txt$/i.test(d.originalFilename ?? "")} />}
       {(d.status === "failed" || d.status === "unsupported") && <Alert title={s.label} action={d.status === "failed" ? <Button variant="secondary" onClick={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}>Try again</Button> : undefined}>{d.error ?? "This file's layout isn't recognized."}</Alert>}
       {d.status === "needs_review" && <Alert tone="warn" title="Some pages couldn't be read">{d.error ?? "The pages that were read are shown below."}</Alert>}
 
@@ -192,4 +193,22 @@ function Highlight({ text, term }: { text: string; term: string }) {
   const i = text.toLowerCase().indexOf(term.toLowerCase());
   if (i < 0 || !term) return <>{text}</>;
   return <>{text.slice(0, i)}<mark className="bg-mark text-ink">{text.slice(i, i + term.length)}</mark>{text.slice(i + term.length)}</>;
+}
+
+// While a deposition is being read: the time so far, a moving bar, and what happens next.
+function Reading({ since, scanned }: { since: string; scanned: boolean }) {
+  const now = useNow(true);
+  const s = Math.max(0, Math.floor((now - new Date(since).getTime()) / 1000));
+  return (
+    <section className="overflow-hidden rounded-lg border border-line bg-sheet" aria-live="polite">
+      <div aria-hidden className="h-1 overflow-hidden bg-rule"><div className="progress-sweep h-full w-1/3 bg-slate" /></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <p className="font-semibold">Reading this deposition</p>
+          <p className="mt-0.5 text-sm text-muted">{scanned ? "Turning every page into numbered lines. Scanned pages are read by OCR, which can take a few minutes for a long transcript." : "Turning the text into numbered lines. This takes a few seconds."} You can leave this page; it keeps going.</p>
+        </div>
+        <span className="font-mono text-[15px] tabular-nums">{s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`}</span>
+      </div>
+    </section>
+  );
 }

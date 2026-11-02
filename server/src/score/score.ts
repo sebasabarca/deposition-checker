@@ -63,7 +63,7 @@ function attributionFactors(side: "A" | "B", s: SideAttribution, exact: boolean,
       exactFactor,
       {
         component: "A",
-        label: `Side ${side}: code ${s.claudeContradicted ? "contradicts" : "agrees with"} Claude's attribution`,
+        label: `Side ${side}: code ${s.claudeContradicted ? "contradicts" : "agrees with"} the analysis's attribution`,
         points: s.claudeContradicted ? 0 : r.falsePositiveAttribution,
         max: r.falsePositiveAttribution,
         origin: "code+claude",
@@ -148,7 +148,7 @@ export function score(input: ScoringInput, rubric: Rubric = RUBRIC_V1): Assessme
     ...attributionFactors("A", at.a, source.a.matchScore >= 1, !conflict, rubric),
     ...attributionFactors("B", at.b, source.b.matchScore >= 1, !conflict, rubric),
     { component: "C", label: `Code: ${input.context.detail}`, points: input.context.wholeExchanges ? rubric.wholeExchanges : 0, max: rubric.wholeExchanges, origin: "code" },
-    { component: "C", label: `Claude: ${v.needsMoreContext ? "needs more context" : "no more context needed"}`, points: v.needsMoreContext ? 0 : rubric.noMoreContextNeeded, max: rubric.noMoreContextNeeded, origin: "claude" },
+    { component: "C", label: `Analysis: ${v.needsMoreContext ? "needs more context" : "no more context needed"}`, points: v.needsMoreContext ? 0 : rubric.noMoreContextNeeded, max: rubric.noMoreContextNeeded, origin: "claude" },
     ...semanticFactors(v, source.packetIds, rubric, reasons),
   ];
 
@@ -172,12 +172,12 @@ export function score(input: ScoringInput, rubric: Rubric = RUBRIC_V1): Assessme
     allowance += points;
     factors.push({ component: "U", label, points, max: 0, origin });
   };
-  if (v.alternativeExplanation?.trim()) deduct(conflict ? "Claude gave an alternative explanation" : "Claude gave an alternative: it may be a real conflict", rubric.alternativeExplanation, "claude");
+  if (v.alternativeExplanation?.trim()) deduct(conflict ? "The analysis gave an alternative explanation" : "The analysis gave an alternative: it may be a real conflict", rubric.alternativeExplanation, "claude");
   if (conflict) {
     if (at.a.approximation) deduct("Side A: approximation word", rubric.approximationPerSide, "code");
     if (at.b.approximation) deduct("Side B: approximation word", rubric.approximationPerSide, "code");
   }
-  if (input.extractionDisagreement) deduct("Path A's epistemic tag disagrees with Claude's attribution", rubric.extractionDisagreement, "code+claude");
+  if (input.extractionDisagreement) deduct("Path A's epistemic tag disagrees with the analysis's attribution", rubric.extractionDisagreement, "code+claude");
 
   const sum = factors.reduce((t, f) => t + f.points, 0);
 
@@ -187,7 +187,7 @@ export function score(input: ScoringInput, rubric: Rubric = RUBRIC_V1): Assessme
     const levels = [at.a.level, at.b.level];
     if (levels.some((l) => WEAK.includes(l))) caps.push({ rule: "side_not_adopted_or_no_recall", limit: rubric.caps.notAdopted, reason: "a side is not an adopted witness assertion, or the witness doesn't recall" });
     if (levels.some((l) => l === "qualified" || l === "uncertain")) caps.push({ rule: "side_qualified_or_uncertain", limit: rubric.caps.qualified, reason: "a side is qualified, ambiguous or a nonresponsive answer" });
-    if (v.sameEvent === "no") caps.push({ rule: "same_event_no", limit: rubric.caps.notSameEvent, reason: "Claude's classification contradicts its own same-event observation" });
+    if (v.sameEvent === "no") caps.push({ rule: "same_event_no", limit: rubric.caps.notSameEvent, reason: "The analysis's classification contradicts its own same-event observation" });
     if (timing === "compatible") caps.push({ rule: "times_compatible", limit: rubric.caps.compatibleTimes, reason: "the times overlap within tolerance" });
   } else {
     if (timing === "incompatible") caps.push({ rule: "times_incompatible", limit: rubric.caps.incompatibleTimes, reason: "the times differ beyond tolerance, so this may be real" });
