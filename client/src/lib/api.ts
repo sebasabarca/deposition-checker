@@ -1,7 +1,7 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseDetail, CaseSummary, DepositionView, FindingDetail, FindingGroups } from "../types";
+import type { AnalysisView, CaseDetail, CaseSummary, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -46,4 +46,5 @@ export const api = {
   cancel: (id: number) => request<{ analysis: AnalysisView }>("POST", `/analyses/${id}/cancel`, {}),
   findings: (analysisId: number) => request<FindingGroups>("GET", `/analyses/${analysisId}/findings`),
   finding: (id: number) => request<{ finding: FindingDetail }>("GET", `/findings/${id}`),
+  review: (id: number, decision: ReviewDecision | null, note?: string) => request<{ review: { reviewState: string; reviewNote: string | null; reviewedAt: string | null } }>("PATCH", `/findings/${id}/review`, { decision, note }),
 };

@@ -8,6 +8,11 @@ export type CaseSummary = {
   depositions: number;
   witnesses: number;
   findings: number;
+  witnessNames: string[];
+  reports: number;
+  needsReview: number;
+  checking: boolean;
+  lastActivity: string;
   lastAnalysis: { id: number; status: AnalysisStatus } | null;
 };
 
@@ -23,6 +28,7 @@ export type DepositionRow = {
   originalFilename: string | null;
   fileSha256: string;
   createdAt: string;
+  scanned: boolean;
 };
 
 export type OcrReadout = {
@@ -84,6 +90,7 @@ export type CaseDetail = {
   analyses: AnalysisRow[];
 };
 
+export type ReviewDecision = "confirmed" | "needs_context" | "dismissed";
 export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified";
 export type VerdictSource = "model" | "replayed" | "fixture";
 
@@ -133,7 +140,7 @@ export type AnalysisView = {
   effort: string;
   maxCandidates: number;
   depositions: { id: number; takenOn: string | null; status: DepositionStatus; originalFilename: string | null; witness: string }[];
-  findings: { total: number; groups: Record<FindingGroup, number> };
+  findings: { total: number; groups: Record<FindingGroup, number>; decided: number };
   cost: { calls: number; actualUsd: number; budgetUsd: number; budgetSpentUsd: number; budgetReservedUsd: number };
   createdAt: string;
   startedAt: string | null;
@@ -152,6 +159,8 @@ export type FindingSummary = {
   unscoredReason: string | null;
   contextRequested: boolean;
   reviewState: string;
+  reviewNote: string | null;
+  subject: string | null;
   source: VerdictSource;
   model: string;
   modelName: string;
@@ -198,6 +207,9 @@ export type FindingDetail = {
   unscoredExplanation: string | null;
   evidenceStatus: FindingSummary["evidenceStatus"];
   contextRequested: boolean;
+  reviewState: string;
+  reviewNote: string | null;
+  reviewedAt: string | null;
   rubricVersion: string;
   factors: Factor[];
   caps: Cap[];

@@ -64,7 +64,7 @@ export async function analysisView(db: Database, id: number) {
     .innerJoin(witnesses, eq(witnesses.id, depositions.witnessId))
     .where(inArray(depositions.id, [a.depositionA, a.depositionB]));
   const rows = await db
-    .select({ type: findings.type, evidenceStatus: findings.evidenceStatus, score: findings.score, unscoredReason: findings.unscoredReason, priority: findings.priority })
+    .select({ type: findings.type, evidenceStatus: findings.evidenceStatus, score: findings.score, unscoredReason: findings.unscoredReason, priority: findings.priority, reviewState: findings.reviewState })
     .from(findings)
     .innerJoin(candidates, eq(candidates.id, findings.candidateId))
     .where(eq(candidates.candidateSet, candidateSetOf(id)));
@@ -92,7 +92,7 @@ export async function analysisView(db: Database, id: number) {
     maxConcurrency: a.maxConcurrency,
     cancelRequested: a.cancelRequestedAt !== null,
     depositions: [a.depositionA, a.depositionB].map((d) => docs.find((x) => x.id === d)!),
-    findings: { total: rows.length, groups },
+    findings: { total: rows.length, groups, decided: rows.filter((r) => r.reviewState !== "unreviewed").length },
     cost: { calls: cost.calls, actualUsd: cost.actualUsd, budgetUsd: a.budgetUsd, budgetSpentUsd: cost.budget?.spentUsd ?? 0, budgetReservedUsd: cost.budget?.reservedUsd ?? 0 },
     createdAt: a.createdAt,
     startedAt: a.startedAt,
@@ -147,6 +147,8 @@ export async function analysisFindings(db: Database, id: number) {
         unscoredReason: f.unscoredReason,
         contextRequested: f.contextRequested,
         reviewState: f.reviewState,
+        reviewNote: f.reviewNote,
+        subject: (parsed as { sharedSubject?: string }).sharedSubject ?? null,
         source: v.origin as VerdictSource,
         rank: c.mergedRank,
         // A direct finding cites exact lines, which may start well inside the exchange.
@@ -268,6 +270,9 @@ export async function findingDetail(db: Database, id: number) {
     unscoredExplanation: f.unscoredReason ? UNSCORED_REASONS[f.unscoredReason] ?? null : null,
     evidenceStatus: f.evidenceStatus,
     contextRequested: f.contextRequested,
+    reviewState: f.reviewState,
+    reviewNote: f.reviewNote,
+    reviewedAt: f.reviewedAt,
     rubricVersion: f.rubricVersion,
     factors: f.factors,
     caps: f.caps,
@@ -402,6 +407,18 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const [a] = await db.select({ id: analyses.id }).from(analyses).where(eq(analyses.id, id.data));
     if (!a) return res.status(404).json({ error: "Analysis not found." });
     return res.json(await analysisFindings(db, id.data));
+  });
+
+  // A person's decision on a finding, kept with the case. A null decision clears it.
+  router.patch("/findings/:id/review", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    const body = z.object({ decision: z.enum(["confirmed", "needs_context", "dismissed"]).nullable(), note: z.string().trim().max(5000).optional() }).safeParse(req.body ?? {});
+    if (!id.success || !body.success) return res.status(400).json({ error: "Invalid review decision." });
+    const { decision, note } = body.data;
+    const changes = decision === null ? { reviewState: "unreviewed", reviewNote: null, reviewedAt: null } : { reviewState: decision, reviewNote: note || null, reviewedAt: new Date() };
+    const [row] = await db.update(findings).set(changes).where(eq(findings.id, id.data)).returning({ reviewState: findings.reviewState, reviewNote: findings.reviewNote, reviewedAt: findings.reviewedAt });
+    if (!row) return res.status(404).json({ error: "Finding not found." });
+    return res.json({ review: row });
   });
 
   router.get("/findings/:id", async (req, res) => {

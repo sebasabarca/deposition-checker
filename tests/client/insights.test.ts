@@ -1,8 +1,7 @@
 // Figures on screen must add up, and review decisions must never be read from anything but a known value.
 
 import { describe, expect, it } from "vitest";
-import { candidateCoverage, ocrPassage, pinpointCitation, progressShare, recentActivity, relativeTime } from "../../client/src/lib/insights";
-import { parseStore, reviewOf } from "../../client/src/lib/review";
+import { candidateCoverage, ocrPassage, pinpointCitation, progressShare, recentActivity, relativeTime, checkState, pairsChecked } from "../../client/src/lib/insights";
 import type { CaseDetail, EvidenceLine, EvidenceSide } from "../../client/src/types";
 
 describe("OCR passages", () => {
@@ -53,7 +52,7 @@ describe("candidate coverage", () => {
 describe("pinpoint citation", () => {
   const side = (range: string | null, takenOn: string | null) => ({ range, deposition: { id: 1, takenOn, originalFilename: null, witness: "Marcus Webb" }, lines: [] }) as Pick<EvidenceSide, "range" | "deposition" | "lines">;
   it("uses only stored references and says when one is missing", () => {
-    expect(pinpointCitation(side("45:11-15", "2024-03-12"), side(null, null))).toBe("Webb Dep. 45:11-15 (2024-03-12); compare Webb Dep. (no page:line reference) (date not stated).");
+    expect(pinpointCitation(side("45:11-15", "2024-03-12"), side(null, null))).toBe("Webb Dep. 45:11-15 (Mar. 12, 2024); compare Webb Dep. (no page:line reference) (date not stated).");
   });
 });
 
@@ -78,17 +77,34 @@ describe("recent activity", () => {
   });
 });
 
-describe("review adapter", () => {
-  it("ignores unreadable or unknown stored data", () => {
-    expect(parseStore("not json")).toEqual({});
-    expect(parseStore(null)).toEqual({});
-    expect(Object.keys(parseStore(JSON.stringify({ 1: { decision: "confirmed", note: "", decidedAt: "x" }, 2: { decision: "approved" } })))).toEqual(["1"]);
+describe("the new check panel", () => {
+  const deps = [{ id: 1, witnessId: 1, status: "ready" as const }, { id: 2, witnessId: 1, status: "ready" as const }, { id: 3, witnessId: 2, status: "ready" as const }, { id: 4, witnessId: 1, status: "processing" as const }, { id: 5, witnessId: 1, status: "ready" as const }];
+  const report = (id: number, depositionA: number, depositionB: number, status: "completed" | "adjudicating" | "failed") => ({ id, depositionA, depositionB, status, createdAt: "2026-11-01" });
+
+  it("asks for exactly two depositions of one witness, both read", () => {
+    expect(checkState([], deps, []).kind).toBe("pick");
+    expect(checkState([1], deps, []).kind).toBe("pick");
+    expect(checkState([1, 2, 5], deps, []).kind).toBe("too_many");
+    expect(checkState([1, 3], deps, []).kind).toBe("different_witness");
+    expect(checkState([1, 4], deps, []).kind).toBe("not_ready");
   });
 
-  it("prefers the local decision, then a known server state", () => {
-    const store = { 1: { decision: "dismissed" as const, note: "", decidedAt: "x" } };
-    expect(reviewOf(1, "confirmed", store)).toBe("dismissed");
-    expect(reviewOf(2, "confirmed", store)).toBe("confirmed");
-    expect(reviewOf(2, "unreviewed", store)).toBe("unreviewed");
+  it("offers a new check only for a pair with no report", () => {
+    expect(checkState([1, 2], deps, [])).toMatchObject({ kind: "new", a: 1, b: 2 });
+    expect(checkState([1, 2], deps, [report(9, 1, 5, "completed")]).kind).toBe("new");
+    expect(checkState([1, 2], deps, [report(9, 1, 2, "failed")]).kind).toBe("new");
+  });
+
+  it("finds an existing report in either order, and the latest one", () => {
+    const s = checkState([2, 1], deps, [report(8, 1, 2, "completed"), report(9, 2, 1, "completed")]);
+    expect(s).toMatchObject({ kind: "done", report: { id: 9 } });
+  });
+
+  it("prefers a running check over an older report", () => {
+    expect(checkState([1, 2], deps, [report(8, 1, 2, "completed"), report(9, 1, 2, "adjudicating")])).toMatchObject({ kind: "running", report: { id: 9 } });
+  });
+
+  it("counts a witness's finished session pairs once each", () => {
+    expect(pairsChecked([1, 2, 5], [report(8, 1, 2, "completed"), report(9, 2, 1, "completed"), report(10, 1, 5, "failed")])).toEqual({ checked: 1, total: 3 });
   });
 });

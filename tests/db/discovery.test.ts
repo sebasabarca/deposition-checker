@@ -324,6 +324,18 @@ describe.skipIf(!TEST_DATABASE_URL)("direct analysis (Postgres, mock provider)",
     expect((await findingDetail(db, merged.id))!.direct!.duplicates).toHaveLength(1);
   });
 
+  it("carries a person's decision into a later report of the same passages", async () => {
+    const f = await realFinding();
+    const one = await create();
+    await finish(one, mockProvider([success(output([f]))]).provider);
+    await db.update(findings).set({ reviewState: "dismissed", reviewNote: "Not material", reviewedAt: new Date() });
+    const two = await create();
+    await finish(two, mockProvider([success(output([f]))]).provider);
+    const [row] = (await analysisFindings(db, two)).groups.flatMap((g) => g.findings);
+    expect([row.reviewState, row.reviewNote]).toEqual(["dismissed", "Not material"]);
+    expect((await analysisView(db, two))!.findings.decided).toBe(1);
+  });
+
   it("gives the same evidence key in a later analysis, so a review can carry over", async () => {
     const f = await realFinding();
     const keyOf = async (id: number) => (await analysisFindings(db, id)).groups.flatMap((g) => g.findings)[0].direct!.evidenceKey;

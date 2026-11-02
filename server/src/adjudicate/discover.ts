@@ -9,7 +9,7 @@
 // it died between the two writes, nobody can know whether the batch exists, so nothing more is sent.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { BudgetExceeded, closeFailed, failureIsUnbilled, maxBatchRequestCost, recordCall, releaseUnbilled, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { analyses, candidates, depositions, discoveryRuns, exchangeLines, exchanges, findings, lines, verdicts, witnesses } from "../db/schema";
@@ -244,6 +244,8 @@ async function storeFindings(tx: Tx, a: Analysis, llmCallId: number, modelAnswer
     const lane = p.lane;
     const type = PAIR_TYPE[p.finding.classification];
     const strength = evidenceStrength({ classification: p.finding.classification, comparable: p.finding.comparable, lane, a: p.a, b: p.b });
+    // A person's decision on these same passages carries into a new report of them.
+    const [decided] = await tx.select({ state: findings.reviewState, note: findings.reviewNote, at: findings.reviewedAt }).from(findings).where(and(eq(findings.caseId, a.caseId), sql`${findings.checks}->'direct'->>'evidenceKey' = ${key}`, sql`${findings.reviewState} <> 'unreviewed'`)).orderBy(desc(findings.reviewedAt)).limit(1);
     await tx.insert(findings).values({
       caseId: a.caseId, candidateId, verdictId: verdict.id, type, evidenceStatus: p.check.evidenceStatus, attributionA: p.a.level, attributionB: p.b.level, score: strength.score, band: strength.band,
       unscoredReason: unscoredReasonOf(lane, p.check.evidenceStatus, strength.score),
@@ -256,6 +258,7 @@ async function storeFindings(tx: Tx, a: Analysis, llmCallId: number, modelAnswer
       rubricVersion: EVIDENCE_STRENGTH_VERSION,
       priority: strength.priority,
       contextRequested: lane === "needs_context",
+      ...(decided ? { reviewState: decided.state, reviewNote: decided.note, reviewedAt: decided.at } : {}),
     });
     audit[proposed.indexOf(p)].shown = "shown";
     for (const c of copies) audit[proposed.indexOf(c)].shown = "duplicate";

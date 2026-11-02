@@ -213,6 +213,29 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     await startAnalysisWorkers(boss, db, { liveAdjudicator: () => null }, { pollingIntervalSeconds: 0.5 });
   });
 
+  it("saves, returns and clears a review decision, and counts what needs one", async () => {
+    const stored = await storeSynthetic(db, WEBB_SUITE);
+    const [c] = await db.select().from(candidates).where(eq(candidates.id, [...stored.values()][0]));
+    const [d] = await db.select().from(depositions).where(eq(depositions.id, c.depositionA));
+    const started = await call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB });
+    let view = started.body.analysis;
+    for (let i = 0; i < 100 && view.status !== "completed"; i++) {
+      await new Promise((done) => setTimeout(done, 100));
+      view = (await call("GET", `/analyses/${view.id}`)).body.analysis;
+    }
+    const open = (await call("GET", `/analyses/${view.id}/findings`)).body.groups.flatMap((g: { findings: { id: number; group: string }[] }) => g.findings).find((f: { group: string }) => f.group === "contradictions");
+    const needed = (await call("GET", "/cases")).body.cases[0].needsReview;
+    expect(needed).toBeGreaterThan(0);
+    expect((await call("PATCH", `/findings/${open.id}/review`, { decision: "bad" })).status).toBe(400);
+    expect((await call("PATCH", "/findings/999999/review", { decision: "dismissed" })).status).toBe(404);
+    const saved = await call("PATCH", `/findings/${open.id}/review`, { decision: "dismissed", note: "Not material" });
+    expect(saved.body.review).toMatchObject({ reviewState: "dismissed", reviewNote: "Not material" });
+    expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "dismissed", reviewNote: "Not material" });
+    expect((await call("GET", "/cases")).body.cases[0].needsReview).toBe(needed - 1);
+    await call("PATCH", `/findings/${open.id}/review`, { decision: null });
+    expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "unreviewed", reviewNote: null, reviewedAt: null });
+  });
+
   it("never answers with an active analysis of another method", async () => {
     const stored = await storeSynthetic(db, WEBB_SUITE);
     const [c] = await db.select().from(candidates).where(eq(candidates.id, [...stored.values()][0]));

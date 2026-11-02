@@ -25,7 +25,7 @@ export function HelpPage() {
             <div><dt><OcrMark /></dt><dd className="mt-1 text-body-sm text-on-surface-variant">Text read from a scan by OCR. It may differ from the scan, so it isn't exact testimony. Each line shows its OCR confidence; check the original scan before quoting.</dd></div>
             <div><dt><ModelMark /></dt><dd className="mt-1 text-body-sm text-on-surface-variant">Written by the model. It is not testimony and not a legal conclusion.</dd></div>
             <div><dt><VerifiedMark /></dt><dd className="mt-1 text-body-sm text-on-surface-variant">Code found the cited words in the stored transcript. This says the citation is real, not that the contradiction is.</dd></div>
-            <div><dt><HumanMark>Review status</HumanMark></dt><dd className="mt-1 text-body-sm text-on-surface-variant">What a person decided. Decisions stay in this browser until the review service is available.</dd></div>
+            <div><dt><HumanMark>Review status</HumanMark></dt><dd className="mt-1 text-body-sm text-on-surface-variant">What a person decided.</dd></div>
           </dl>
         </Card>
         <Card>

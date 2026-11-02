@@ -1,92 +1,98 @@
-// The evidence-review workbench: one finding, both passages side by side, then the model's
-// interpretation, code's checks and the reviewer's decision, each clearly its own kind of statement.
+// One finding: both passages side by side with the cited lines highlighted, why they may conflict,
+// and the lawyer's decision. Each is clearly its own kind of statement.
 
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, CircleHelp, Copy, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, CircleCheck, CircleHelp, Copy, X } from "lucide-react";
 import { ChecksCard, ModelAssessment, Passage, ScoreCard } from "../components/FindingView";
-import { Alert, Badge, Button, Card, cx, HumanMark, inputClass, Loading, VerifiedMark } from "../components/ui";
+import { Crumbs } from "../components/Shell";
+import { Alert, Badge, Button, Card, cx, inputClass, Loading, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { citesInferredPage, pinpointCitation } from "../lib/insights";
-import { CLASSIFICATION, EVIDENCE_STATUS, evidenceStrength, findingHeadline, modelCalledIt, PRIORITY, priorityTone, scoreLabel } from "../lib/labels";
-import { clearReview, reviewOf, REVIEW_LABEL, savedReview, saveReview, useReviews, type ReviewDecision } from "../lib/review";
+import { CLASSIFICATION, EVIDENCE_STATUS, evidenceStrength, findingHeadline, formatDate, modelCalledIt, PRIORITY, priorityTone, scoreLabel } from "../lib/labels";
+import { decisionOf, REVIEW_LABEL } from "../lib/review";
 import { href } from "../lib/router";
-import type { CaseDetail, FindingDetail } from "../types";
+import type { CaseDetail, FindingDetail, ReviewDecision } from "../types";
+
+const short = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "date not stated");
 
 export function WorkbenchPage({ analysisId, id }: { analysisId: number; id: number }) {
   const [f, setF] = useState<FindingDetail | null>(null);
   const [detail, setDetail] = useState<CaseDetail | null>(null);
-  const [order, setOrder] = useState<{ id: number; reviewState: string }[]>([]);
+  const [order, setOrder] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     api.finding(id).then((r) => setF(r.finding)).catch((e: Error) => setError(e.message));
-    api.findings(analysisId).then((r) => setOrder(r.groups.flatMap((g) => g.findings))).catch((e: Error) => setError(e.message));
-    api.analysis(analysisId)
-      .then((r) => api.case(r.analysis.caseId))
-      .then(setDetail)
-      .catch((e: Error) => setError(e.message));
+    api.findings(analysisId).then((r) => setOrder(r.groups.flatMap((g) => g.findings.map((x) => x.id)))).catch((e: Error) => setError(e.message));
+    api.analysis(analysisId).then((r) => api.case(r.analysis.caseId)).then(setDetail).catch((e: Error) => setError(e.message));
   }, [analysisId, id]);
 
   if (error) return <Alert title="This finding couldn't be loaded">{error}</Alert>;
   if (!f) return <Loading />;
   const contradiction = f.group === "contradictions";
   const verified = f.group !== "unverified" && (f.evidenceStatus === "verified" || f.evidenceStatus === "approximate");
-  const closerLook = f.reasons.filter((r) => !r.startsWith("The model said")); // the notice above already says so
-  const at = order.findIndex((o) => o.id === id);
+  const at = order.indexOf(id);
+  const next = order[at + 1];
   const sha = (depositionId: number) => detail?.depositions.find((d) => d.id === depositionId)?.fileSha256;
+  const closerLook = f.reasons.filter((r) => !r.startsWith("The model said")); // the notice above already says so
+  const citation = pinpointCitation(f.a, f.b);
+  const position = at >= 0 ? `Finding ${at + 1} of ${order.length}` : "Finding";
 
   return (
     <article className="space-y-space-lg" aria-labelledby="finding-title">
+      <Crumbs items={[{ label: "Cases", to: href.cases() }, ...(detail ? [{ label: detail.case.name, to: href.case(detail.case.id) }] : []), { label: `${f.a.deposition.witness.split(" ").pop()}, ${short(f.a.deposition.takenOn)} vs ${short(f.b.deposition.takenOn)}`, to: href.analysis(analysisId) }, { label: position }]} />
       <div className="flex flex-wrap items-center justify-between gap-space-sm">
-        <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-space-xs text-label-md text-on-surface-variant">
-          <a className="hover:text-secondary" href={href.cases()}>Cases</a>
-          <span aria-hidden className="text-outline-variant">/</span>
-          {detail && <><a className="hover:text-secondary" href={href.case(detail.case.id)}>{detail.case.name}</a><span aria-hidden className="text-outline-variant">/</span></>}
-          <a className="hover:text-secondary" href={href.analysis(analysisId)}>{f.a.deposition.witness}</a>
-          <span aria-hidden className="text-outline-variant">/</span>
-          <span aria-current="page" className="text-on-surface">Evidence review</span>
-        </nav>
+        <a href={href.analysis(analysisId)} className="inline-flex items-center gap-1.5 text-body-sm font-medium text-secondary hover:underline"><ArrowLeft aria-hidden className="size-4" />Back to report</a>
         {at >= 0 && (
-          <div className="flex items-center rounded-lg bg-surface-container-lowest shadow-sm">
-            <StepLink to={order[at - 1]?.id} analysisId={analysisId} label="Previous finding"><ChevronLeft aria-hidden className="size-[18px]" /></StepLink>
-            <span className="px-2 text-label-sm font-semibold tabular-nums">Finding {at + 1} of {order.length}</span>
-            <StepLink to={order[at + 1]?.id} analysisId={analysisId} label="Next finding"><ChevronRight aria-hidden className="size-[18px]" /></StepLink>
+          <div className="glass flex items-center rounded-xl">
+            <StepLink to={order[at - 1]} analysisId={analysisId} label="Previous finding"><ChevronLeft aria-hidden className="size-[18px]" /></StepLink>
+            <span className="px-2 text-label-md tabular-nums">{position}</span>
+            <StepLink to={next} analysisId={analysisId} label="Next finding"><ChevronRight aria-hidden className="size-[18px]" /></StepLink>
           </div>
         )}
       </div>
 
-      <div className="flex flex-col justify-between gap-space-md lg:flex-row lg:items-start">
-        <div className="min-w-0 space-y-space-xs">
-          <div className="flex flex-wrap items-center gap-space-xs">
-            <Badge tone={contradiction ? "contradiction" : "neutral"} dot>{f.groupLabel}</Badge>
-            {f.group !== "needs_context" && <Badge tone={priorityTone(f.priority)}>{PRIORITY[f.priority]}</Badge>}
-            {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
-            {f.contextRequested && <Badge tone="warn" title="The assessment says lines outside these passages could change it">More context requested</Badge>}
+      <Card className="p-space-lg">
+        <div className="flex flex-col justify-between gap-space-md lg:flex-row lg:items-start">
+          <div className="min-w-0 space-y-1.5">
+            <Badge tone={contradiction ? "contradiction" : f.group === "unverified" ? "bad" : "neutral"} dot>{findingHeadline(f)}</Badge>
+            <h1 id="finding-title" className="text-headline-lg sm:text-headline-xl">{f.direct?.sharedSubject ?? findingHeadline(f)}</h1>
+            {f.direct ? (
+              <p className="text-body-sm text-on-surface-variant">{f.group !== "compatible" && `${evidenceStrength(f)} · `}Review priority: {PRIORITY[f.priority]} · Classification: {f.group === "contradictions" ? CLASSIFICATION[f.classification] : findingHeadline(f)}</p>
+            ) : (
+              <p className="text-body-sm text-on-surface-variant">{f.a.deposition.witness} · {scoreLabel(f)} · <Badge tone={priorityTone(f.priority)}>{PRIORITY[f.priority]}</Badge></p>
+            )}
+            <div className="pt-0.5">{verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}</div>
           </div>
-          <h1 id="finding-title" className="text-headline-lg sm:text-headline-xl">{findingHeadline(f)}</h1>
-          <p className="text-on-surface-variant">{f.a.deposition.witness} · {f.direct ? (f.direct.sharedSubject ?? "Proposed for review") : scoreLabel(f)}</p>
-          {f.direct && <p className="text-body-sm text-on-surface-variant">{f.group !== "compatible" && `${evidenceStrength(f)} · `}Review priority: {PRIORITY[f.priority]} · Classification: {f.group === "contradictions" ? CLASSIFICATION[f.classification] : findingHeadline(f)}</p>}
+          <CopyCitation text={citation} inferred={citesInferredPage(f.a) || citesInferredPage(f.b)} />
         </div>
-        <CopyCitation text={pinpointCitation(f.a, f.b)} inferred={citesInferredPage(f.a) || citesInferredPage(f.b)} />
-      </div>
+      </Card>
 
-      {(f.source.kind !== "model" || f.direct) && <Alert tone={f.source.usedFallback ? "warn" : "info"}>{f.source.label}{f.direct ? ` ${modelCalledIt(f.source.modelName, f.direct.modelClassification)}` : "."}</Alert>}
+      {f.source.kind !== "model" && <Alert tone="info">{f.source.label}.</Alert>}
+      {f.source.usedFallback && <Alert tone="warn">{f.source.label}</Alert>}
       {f.direct && closerLook.length > 0 && <Alert tone="warn" title="Why this needs a closer look"><ul className="list-disc pl-5">{closerLook.map((r) => <li key={r}>{r}</li>)}</ul></Alert>}
       {!f.direct && f.unscoredExplanation && <Alert tone="warn">{f.unscoredExplanation}</Alert>}
 
       <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-2">
         <Passage label="Session A" side={f.a} sha={sha(f.a.deposition.id)} />
-        <Passage label="Session B" side={f.b} sha={sha(f.b.deposition.id)} conflict={contradiction} />
+        <Passage label="Session B" side={f.b} sha={sha(f.b.deposition.id)} />
       </div>
 
       <div className="grid grid-cols-1 gap-space-lg lg:grid-cols-12">
-        <div className="lg:col-span-7"><ModelAssessment f={f} /></div>
-        <div className="lg:col-span-5"><ReviewCard f={f} citation={pinpointCitation(f.a, f.b)} serverState={order[at]?.reviewState ?? "unreviewed"} /></div>
+        <div className="lg:col-span-7">
+          <ModelAssessment f={f} />
+          {f.direct && <p className="mt-2 text-label-sm text-on-surface-variant">{modelCalledIt(f.source.modelName, f.direct.modelClassification)}</p>}
+        </div>
+        <div className="lg:col-span-5"><Decision key={f.id} f={f} citation={citation} analysisId={analysisId} next={next} /></div>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-space-lg lg:grid-cols-2">
-        <ChecksCard f={f} />
-        <ScoreCard f={f} />
-      </div>
+      <details className="glass rounded-2xl p-space-lg">
+        <summary className="cursor-pointer text-headline-md">How this was checked</summary>
+        <div className="mt-space-md grid grid-cols-1 items-start gap-space-lg lg:grid-cols-2">
+          <ChecksCard f={f} />
+          <ScoreCard f={f} />
+        </div>
+        {f.direct && <p className="mt-space-md text-label-sm text-on-surface-variant">Proposed by {f.source.modelName}, prompt {f.source.promptVersion}.</p>}
+      </details>
     </article>
   );
 }
@@ -107,43 +113,55 @@ function CopyCitation({ text, inferred }: { text: string; inferred: boolean }) {
   return (
     <Button variant="secondary" onClick={copy}>
       {copied ? <CircleCheck aria-hidden className="size-4 text-success" /> : <Copy aria-hidden className="size-4 text-on-surface-variant" />}
-      <span aria-live="polite">{copied ? (inferred ? "Copied. Verify the inferred page" : "Copied") : "Copy pinpoint citation"}</span>
+      <span aria-live="polite">{copied ? (inferred ? "Copied. Verify the inferred page" : "Copied") : "Copy citation"}</span>
     </Button>
   );
 }
 
-function ReviewCard({ f, citation, serverState }: { f: FindingDetail; citation: string; serverState: string }) {
-  const reviews = useReviews();
-  const key = f.direct?.evidenceKey;
-  const saved = savedReview(f.id, reviews, key);
-  const state = reviewOf(f.id, serverState, reviews, key);
-  const [note, setNote] = useState(saved?.note ?? "");
-  const decide = (d: ReviewDecision) => saveReview(f.id, d, note, key);
+function Decision({ f, citation, analysisId, next }: { f: FindingDetail; citation: string; analysisId: number; next?: number }) {
+  const [state, setState] = useState(decisionOf(f.reviewState));
+  const [at, setAt] = useState(f.reviewedAt);
+  const [note, setNote] = useState(f.reviewNote ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async (decision: ReviewDecision | null) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { review } = await api.review(f.id, decision, note);
+      setState(decisionOf(review.reviewState));
+      setAt(review.reviewedAt);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const option = (d: ReviewDecision, label: string, Icon: typeof X) => (
+    <Button variant={state === d ? "primary" : "secondary"} aria-pressed={state === d} disabled={busy} className="h-10" onClick={() => void save(d)}><Icon aria-hidden className="size-4" />{label}</Button>
+  );
   return (
-    <Card className="flex h-full flex-col justify-between gap-space-md p-space-lg">
-      <div className="flex flex-col gap-space-md">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-headline-lg">Your review</h2>
-          <HumanMark>{REVIEW_LABEL[state]}</HumanMark>
-        </div>
-        <div>
-          <h3 className="text-label-md text-on-surface-variant">Pinpoint citation</h3>
-          <p className="mt-1 rounded-lg bg-surface-container p-2.5 font-mono text-label-md font-normal break-words select-all">{citation}</p>
-        </div>
-        <label className="block">
-          <span className="text-label-md text-on-surface-variant">Reviewer note</span>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className={cx(inputClass, "mt-1 h-auto py-2")} placeholder="Why you decided this" />
-        </label>
-        {saved && <p className="text-label-sm text-on-surface-variant">Decided {new Date(saved.decidedAt).toLocaleString()}.</p>}
+    <Card className="flex h-full flex-col gap-space-md p-space-lg">
+      <h2 className="text-headline-lg">Your decision</h2>
+      <div>
+        <h3 className="text-label-md text-on-surface-variant">Pinpoint citation</h3>
+        <p className="mt-1 rounded-lg bg-white p-2.5 text-label-md font-normal break-words select-all">{citation}</p>
       </div>
-      <div className="flex flex-col gap-space-xs">
-        <Button onClick={() => decide("confirmed")} className="h-10 w-full"><CircleCheck aria-hidden className="size-[18px]" />Confirm for follow-up</Button>
-        <div className="grid gap-space-xs sm:grid-cols-2">
-          <Button variant="ghost" onClick={() => decide("needs_context")}><CircleHelp aria-hidden className="size-4" />Needs more context</Button>
-          <Button variant="ghost" onClick={() => decide("dismissed")}><X aria-hidden className="size-4" />Dismiss</Button>
-        </div>
-        {saved && <button type="button" onClick={() => clearReview(f.id, key)} className="text-label-md text-secondary hover:underline">Clear my decision</button>}
-        <p className="pt-1 text-center text-label-sm text-on-surface-variant">Saved in this browser only. It is not stored with the case yet.</p>
+      <label className="block">
+        <span className="text-label-md text-on-surface-variant">Reviewer note</span>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={5000} className={cx(inputClass, "mt-1 h-auto bg-white py-2")} placeholder="Why you decided this" />
+      </label>
+      <div className="grid gap-space-xs sm:grid-cols-3">
+        {option("confirmed", "Keep for follow-up", CircleCheck)}
+        {option("needs_context", "Needs more context", CircleHelp)}
+        {option("dismissed", "Dismiss", X)}
+      </div>
+      {error && <Alert>{error}</Alert>}
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 text-body-sm">
+        <span className="text-on-surface-variant" aria-live="polite">
+          {state === "unreviewed" ? "Not decided yet." : <>{REVIEW_LABEL[state]}{at ? ` on ${formatDate(at)}` : ""}. <button type="button" onClick={() => void save(null)} className="font-medium text-secondary hover:underline">Clear</button></>}
+        </span>
+        {next !== undefined && <a href={href.analysis(analysisId, next)} className="inline-flex items-center gap-1 font-semibold text-secondary hover:underline">Next finding<ArrowRight aria-hidden className="size-4" /></a>}
       </div>
     </Card>
   );

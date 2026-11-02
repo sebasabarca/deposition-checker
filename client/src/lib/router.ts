@@ -1,36 +1,22 @@
 // Hash routes, so the app needs no router library and works behind any static host:
-//   #/                          dashboard
-//   #/cases                     cases
-//   #/cases/:id                 one case: its depositions and analyses
-//   #/depositions               the depositions of the most recent case
-//   #/analyses                  every analysis
-//   #/analyses/:id              an analysis and its findings
-//   #/analyses/:id/findings/:f  the evidence-review workbench for one finding
-//   #/findings                  every finding
-//   #/review                    findings without a human decision
+//   #/                          cases
+//   #/cases/:id                 one case: its depositions, a new check, and its reports
+//   #/analyses/:id              a report: one comparison and its findings
+//   #/analyses/:id/findings/:f  one finding: both passages side by side
 //   #/help                      how to read the results
 
 import { useEffect, useState } from "react";
 
 export type Route =
-  | { name: "dashboard" }
   | { name: "cases" }
   | { name: "case"; id: number }
-  | { name: "depositions" }
-  | { name: "analyses" }
   | { name: "analysis"; id: number; findingId: number | null }
-  | { name: "findings" }
-  | { name: "review" }
   | { name: "help" }
   | { name: "not_found" };
 
 const STATIC: Record<string, Route> = {
-  "/": { name: "dashboard" },
+  "/": { name: "cases" },
   "/cases": { name: "cases" },
-  "/depositions": { name: "depositions" },
-  "/analyses": { name: "analyses" },
-  "/findings": { name: "findings" },
-  "/review": { name: "review" },
   "/help": { name: "help" },
 };
 
@@ -45,14 +31,9 @@ export function parseRoute(hash: string): Route {
 }
 
 export const href = {
-  dashboard: () => "#/",
-  cases: () => "#/cases",
+  cases: () => "#/",
   case: (id: number) => `#/cases/${id}`,
-  depositions: () => "#/depositions",
-  analyses: () => "#/analyses",
   analysis: (id: number, findingId?: number) => (findingId ? `#/analyses/${id}/findings/${findingId}` : `#/analyses/${id}`),
-  findings: () => "#/findings",
-  review: () => "#/review",
   help: () => "#/help",
 };
 

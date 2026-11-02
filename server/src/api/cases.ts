@@ -18,17 +18,29 @@ async function defaultOrg(db: Database): Promise<number> {
   return created.id;
 }
 
+// A finding needing a decision: not yet decided, and neither compatible nor unverified. Only each pair's
+// latest report counts, so checking a pair again doesn't count its findings twice.
+const NEEDS_REVIEW = sql`
+  f.review_state = 'unreviewed' and f.type <> 'false_positive' and f.evidence_status not in ('wrong_reference', 'unsupported')
+  and coalesce(f.unscored_reason, '') <> 'attribution_failed'
+  and k.job_id = (select max(b.id) from analyses b where b.deposition_a = a.deposition_a and b.deposition_b = a.deposition_b)`;
+
 export async function caseSummaries(db: Database) {
-  const rows = await db.execute<{ id: string; name: string; created_at: string; depositions: number; witnesses: number; findings: number; last_status: string | null; last_analysis: string | null }>(sql`
+  const rows = await db.execute<{ id: string; name: string; created_at: string; depositions: number; witnesses: number; witness_names: string[]; reports: number; findings: number; needs_review: number; checking: number; last_activity: string; last_status: string | null; last_analysis: string | null }>(sql`
     select c.id, c.name, c.created_at,
       (select count(*)::int from depositions d where d.case_id = c.id) as depositions,
       (select count(*)::int from witnesses w where w.case_id = c.id) as witnesses,
+      (select coalesce(array_agg(w.name order by w.name), '{}') from witnesses w where w.case_id = c.id) as witness_names,
+      (select count(*)::int from analyses a where a.case_id = c.id) as reports,
       -- Findings of the case's latest analysis: summing every analysis would count a re-run twice.
       (select count(*)::int from findings f join candidates k on k.id = f.candidate_id
         where k.job_id = (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1)) as findings,
+      (select count(*)::int from findings f join candidates k on k.id = f.candidate_id join analyses a on a.id = k.job_id where a.case_id = c.id and ${NEEDS_REVIEW}) as needs_review,
+      (select count(*)::int from analyses a where a.case_id = c.id and a.status in ('queued', 'parsing', 'retrieving', 'adjudicating')) as checking,
+      greatest(c.created_at, (select max(a.updated_at) from analyses a where a.case_id = c.id), (select max(d.created_at) from depositions d where d.case_id = c.id)) as last_activity,
       (select a.status::text from analyses a where a.case_id = c.id order by a.id desc limit 1) as last_status,
       (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1) as last_analysis
-    from cases c order by c.id desc
+    from cases c order by last_activity desc
   `);
   return rows.rows.map((r) => ({
     id: Number(r.id),
@@ -36,7 +48,12 @@ export async function caseSummaries(db: Database) {
     createdAt: r.created_at,
     depositions: r.depositions,
     witnesses: r.witnesses,
+    witnessNames: r.witness_names,
+    reports: r.reports,
     findings: r.findings,
+    needsReview: r.needs_review,
+    checking: r.checking > 0,
+    lastActivity: r.last_activity,
     lastAnalysis: r.last_analysis === null ? null : { id: Number(r.last_analysis), status: r.last_status },
   }));
 }
@@ -57,6 +74,7 @@ export async function caseDetail(db: Database, id: number) {
       originalFilename: depositions.originalFilename,
       fileSha256: depositions.fileSha256,
       createdAt: depositions.createdAt,
+      scanned: sql<boolean>`(${depositions.validation}->'ocr') is not null and ${depositions.validation}->'ocr' <> 'null'::jsonb`,
     })
     .from(depositions)
     .where(eq(depositions.caseId, id))

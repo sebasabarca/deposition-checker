@@ -665,7 +665,9 @@ export const findings = pgTable(
     // Claude asked for lines outside the packet. Shown on the finding; for a false positive it no
     // longer forces the needs_context priority.
     contextRequested: boolean("context_requested").notNull().default(false),
-    reviewState: text("review_state").notNull().default("unreviewed"),
+    reviewState: text("review_state").notNull().default("unreviewed"), // a person's decision: unreviewed | confirmed | needs_context | dismissed
+    reviewNote: text("review_note"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

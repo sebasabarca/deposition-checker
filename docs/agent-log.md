@@ -1085,3 +1085,7 @@ High came from the evidence-strength score alone, which put the Webb home-versus
 ## November 1: review fixes for direct discovery (approved)
 
 Three review findings fixed. A failed batch check keeps polling for about five minutes, then closes the run and counts its reservation in full. Active-analysis reuse now matches the method. A direct analysis resumes only when it can make progress, and otherwise returns 409. Nothing committed or pushed.
+
+## November 1: frontend rebuilt to the Stitch screens (approved)
+
+Three screens below a slim top bar, no sidebar: Cases, Case and Report with Finding. The dashboard, depositions, analyses, findings and review pages are gone. Review decisions now save to the server and carry forward. Stitch's invented compliance claims, metrics and external fonts were left out. Text upload, paste, export and removing a deposition are not built yet. Nothing committed or pushed.

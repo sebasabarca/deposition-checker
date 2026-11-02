@@ -15,7 +15,7 @@ export function Passage({ label, side, sha, conflict }: { label: string; side: E
   const mark: Mark = conflict ? "red" : "amber";
   const ocr = ocrPassage(side);
   return (
-    <Card className="flex flex-col overflow-hidden">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
       <header className={cx("flex flex-col gap-space-xs p-space-md", conflict ? "bg-error-container/20" : "bg-surface-container-low")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className={cx("rounded px-2 py-0.5 text-label-sm font-semibold", conflict ? "bg-error-container text-on-error-container" : "bg-surface-container-highest")}>{label}</span>
@@ -32,7 +32,7 @@ export function Passage({ label, side, sha, conflict }: { label: string; side: E
         <span>{ocr ? "Stored OCR text, not an exact copy of the scan." : "Verbatim from the stored transcript."}</span>
         {sha && <span className="flex items-center gap-1 font-mono" title={`PDF SHA-256 ${sha}`}><BadgeCheck aria-hidden className="size-3.5 text-success" />PDF SHA-256 {sha.slice(0, 6)}…{sha.slice(-3)}</span>}
       </footer>
-    </Card>
+    </section>
   );
 }
 
@@ -158,7 +158,7 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
           <ul className="mt-1 list-disc space-y-1 pl-5 text-body-sm">{a.unestablishedAssumptions.map((s, i) => <li key={i}>{s}</li>)}</ul>
         </div>
       )}
-      {(a.alternativeExplanation || f.contextRequested || f.contextCheck) && (
+      {(a.alternativeExplanation || (!f.direct && (f.contextRequested || f.contextCheck))) && (
         <div className="grid gap-space-md md:grid-cols-2">
           {a.alternativeExplanation && (
             <div className="rounded-lg bg-surface-container p-space-md md:col-span-1">
@@ -166,7 +166,7 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
               <p className="mt-1 text-body-sm">{a.alternativeExplanation}</p>
             </div>
           )}
-          {(f.contextRequested || f.contextCheck) && (
+          {!f.direct && (f.contextRequested || f.contextCheck) && (
             <div className="rounded-lg bg-surface-container p-space-md">
               <Heading>Context</Heading>
               {f.contextRequested && !f.direct && <p className="mt-1 text-body-sm">The assessment says lines outside these passages could change it.</p>}

@@ -1,407 +1,223 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { BookOpen, FileText, FileUp, GitCompareArrows, RefreshCw, TriangleAlert } from "lucide-react";
-import { PassageLines, Term } from "../components/FindingView";
-import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Dialog, Empty, Field, inputClass, Loading, Meter, Metric, ModelMark, OcrMark, PageHeader, tdClass, TestimonyMark, thClass } from "../components/ui";
+// One case, top to bottom: its depositions, a new check of two of them, and its reports. Nothing
+// here is a separate page, so a lawyer never has to work out where something lives.
+
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { ArrowRight, ChevronRight, FileUp } from "lucide-react";
+import { CHECK_ESTIMATE, CheckAgain, useStartCheck } from "../components/CheckAgain";
+import { Crumbs } from "../components/Shell";
+import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, inputClass, Loading, PageHeader, tdClass, thClass } from "../components/ui";
 import { api } from "../lib/api";
-import { isActive, ocrPassage } from "../lib/insights";
+import { checkState, isActive, pairsChecked } from "../lib/insights";
 import { ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { CaseDetail, CaseSummary, DepositionRow, FindingDetail, OcrReadout } from "../types";
+import type { AnalysisView, CaseDetail, DepositionRow } from "../types";
 
 const MAX_UPLOAD_MB = 50; // server/src/api/depositions.ts
-const selectClass = "h-10 max-w-64 min-w-0 truncate rounded-lg bg-surface-container-lowest px-space-md text-body-sm font-medium shadow-sm";
+const sourceOf = (d: DepositionRow) => (d.scanned ? "Scanned PDF" : "PDF");
 
 export function CasePage({ id }: { id: number }) {
   const [detail, setDetail] = useState<CaseDetail | null>(null);
-  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [reports, setReports] = useState<AnalysisView[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [witnessId, setWitnessId] = useState<number | "all">("all");
-  const [selected, setSelected] = useState<number | null>(null);
-  const [dialog, setDialog] = useState<"upload" | "compare" | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
   const load = useCallback(() => {
-    api.case(id).then(setDetail).catch((e: Error) => setError(e.message));
+    api.case(id)
+      .then(async (d) => {
+        setDetail(d);
+        setReports((await Promise.all(d.analyses.map((a) => api.analysis(a.id)))).map((r) => r.analysis));
+      })
+      .catch((e: Error) => setError(e.message));
   }, [id]);
   useEffect(load, [load]);
-  useEffect(() => {
-    api.cases().then((r) => setCases(r.cases)).catch((e: Error) => setError(e.message));
-  }, []);
   const busy = !!detail && (detail.depositions.some((d) => d.status === "processing") || detail.analyses.some((a) => isActive(a.status)));
-  usePoll(busy, 2000, load);
+  usePoll(busy, 3000, load);
 
   if (error) return <Alert title="This case couldn't be loaded">{error}</Alert>;
   if (!detail) return <Loading />;
-  const witnessName = (wid: number) => detail.witnesses.find((w) => w.id === wid)?.name ?? "Unknown witness";
-  const sessions = detail.depositions.filter((d) => witnessId === "all" || d.witnessId === witnessId);
-  const pages = detail.depositions.reduce((n, d) => n + (d.pageCount ?? 0), 0);
-  const noText = detail.depositions.reduce((n, d) => n + d.needsOcrPages.length, 0);
-  const attention = detail.depositions.filter((d) => d.status === "needs_review" || d.status === "failed" || d.status === "unsupported").length;
-  const inspected = selected ?? sessions.find((d) => d.status === "ready")?.id ?? null;
+  const witnessName = (w: number) => detail.witnesses.find((x) => x.id === w)?.name ?? "Unknown witness";
+  const toggle = (d: number) => setSelected((s) => (s.includes(d) ? s.filter((x) => x !== d) : [...s, d]));
+  const needReview = Math.max(reports.reduce((n, r) => n + r.findings.groups.contradictions + r.findings.groups.needs_context - r.findings.decided, 0), 0);
+  const summary = [`${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"}`, `${detail.witnesses.length} ${detail.witnesses.length === 1 ? "witness" : "witnesses"}`, `${reports.length} ${reports.length === 1 ? "report" : "reports"}`, ...(needReview > 0 ? [`${needReview} ${needReview === 1 ? "finding needs" : "findings need"} review`] : [])].join(" · ");
 
   return (
     <>
-      <PageHeader
-        above={
-          <p className="text-label-md text-on-surface-variant">
-            <a href={href.cases()} className="hover:text-secondary">Cases</a> <span aria-hidden className="text-outline-variant">/</span> <span className="text-secondary">{detail.case.name}</span>
-          </p>
-        }
-        title="Deposition management"
-        description="Uploaded transcripts as the parser read them. Only sessions marked Ready can be compared."
-        actions={
-          <>
-            <select aria-label="Case" value={id} onChange={(e) => (window.location.hash = href.case(Number(e.target.value)))} className={selectClass}>
-              {(cases.length ? cases : [detail.case]).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <select aria-label="Witness" value={witnessId} onChange={(e) => setWitnessId(e.target.value === "all" ? "all" : Number(e.target.value))} className={selectClass}>
-              <option value="all">All witnesses</option>
-              {detail.witnesses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-            <Button variant="secondary" className="h-10" onClick={() => setDialog("compare")}><GitCompareArrows aria-hidden className="size-[18px] text-on-surface-variant" />New analysis</Button>
-            <Button className="h-10" onClick={() => setDialog("upload")}><FileUp aria-hidden className="size-[18px]" />Upload transcript</Button>
-          </>
-        }
-      />
+      <Crumbs items={[{ label: "Cases", to: href.cases() }, { label: detail.case.name }]} />
+      <PageHeader title={detail.case.name} description={summary} actions={<Button className="h-10" onClick={() => setAdding(true)}><FileUp aria-hidden className="size-[18px]" />Add deposition</Button>} />
 
-      <div className="grid gap-space-md sm:grid-cols-2 xl:grid-cols-4">
-        <Metric icon={FileText} value={detail.depositions.length} label={detail.depositions.length === 1 ? "Session" : "Sessions"} note={`${detail.witnesses.length} ${detail.witnesses.length === 1 ? "witness" : "witnesses"}`} />
-        <Metric icon={BookOpen} value={pages.toLocaleString()} label="Pages read" note={noText ? `${noText} without text` : "All with text"} />
-        <Metric icon={RefreshCw} value={detail.depositions.filter((d) => d.status === "processing").length} label="Being read" />
-        <Metric icon={TriangleAlert} value={attention} label="Need attention" note="Failed, unsupported or needs review" tone={attention ? "bad" : undefined} />
-      </div>
+      <Card className="overflow-hidden">
+        <CardHeader title="Depositions" description="Select two depositions of the same witness to compare them." />
+        {detail.depositions.length === 0 ? (
+          <div className="px-space-lg pb-space-lg text-center">
+            <p className="py-6 text-body-sm text-on-surface-variant">Upload two deposition sessions of the same witness to compare them.</p>
+            <Button onClick={() => setAdding(true)}>Upload a file</Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[42rem] border-collapse text-left text-body-sm">
+              <thead className="text-on-surface-variant">
+                <tr>
+                  <th className={cx(thClass, "w-10 pr-0")}><span className="sr-only">Select</span></th>
+                  {["Witness", "Date taken", "File", "Source", "Pages", "Status"].map((h) => <th key={h} className={thClass}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {detail.depositions.map((d) => (
+                  <DepositionRowView key={d.id} d={d} witness={witnessName(d.witnessId)} selected={selected.includes(d.id)} onToggle={() => toggle(d.id)} onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
-      <div className="grid grid-cols-1 items-start gap-space-md xl:grid-cols-12">
-        <div className="space-y-space-md xl:col-span-7">
-          <Card className="overflow-hidden">
-            <CardHeader title="Deposition sessions" action={<Badge>{sessions.length} shown</Badge>} />
-            {sessions.length === 0 ? (
-              <div className="px-space-md pb-space-md"><Empty title="No depositions yet"><Button className="mt-space-sm" onClick={() => setDialog("upload")}>Upload a PDF</Button></Empty></div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[36rem] border-collapse text-left text-body-sm">
-                  <thead className="bg-surface-container-low text-on-surface-variant">
-                    <tr>
-                      {["Session", "Date", "Status", "Extent"].map((h) => <th key={h} className={thClass}>{h}</th>)}
-                      <th className={cx(thClass, "pl-0 text-right")}><span className="sr-only">Action</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessions.map((d) => (
-                      <DepositionRowView key={d.id} d={d} witness={witnessName(d.witnessId)} active={d.id === inspected} onInspect={() => setSelected(d.id)} onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
+      {detail.depositions.length > 0 && <NewCheck detail={detail} selected={selected} witnessName={witnessName} />}
 
-          <Card className="overflow-hidden">
-            <CardHeader title="Analyses" description="Each analysis compares two sessions of one witness." />
-            {detail.analyses.length === 0 ? (
-              <div className="px-space-md pb-space-md"><Empty title="No analyses yet">Choose two ready sessions of the same witness and start an analysis.</Empty></div>
-            ) : (
-              <ul className="pb-space-sm">
-                {detail.analyses.map((a) => {
-                  const s = ANALYSIS_STATUS[a.status];
-                  const date = (dep: number) => formatDate(detail.depositions.find((d) => d.id === dep)?.takenOn ?? null);
-                  return (
-                    <li key={a.id}>
-                      <a href={href.analysis(a.id)} className="flex flex-wrap items-center justify-between gap-3 px-space-lg py-space-sm transition-colors hover:bg-surface-container-low/70">
-                        <span className="min-w-0">
-                          <span className="block font-semibold">{witnessName(a.witnessId)}: {date(a.depositionA)} vs. {date(a.depositionB)}</span>
-                          <span className="block text-body-sm text-on-surface-variant">Analysis #{a.id} · {a.progress.findings ?? 0} findings · {a.mode === "demo" ? "Demo (no model calls)" : "Live"}</span>
-                        </span>
-                        <Badge tone={s.tone} dot>{s.label}</Badge>
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
-        </div>
-        <div className="space-y-space-md xl:col-span-5">
-          {inspected !== null && <ScanReadout key={`scan${inspected}`} depositionId={inspected} />}
-          <TranscriptInspector key={inspected} depositionId={inspected} analyses={detail.analyses} />
-        </div>
-      </div>
+      <Card className="overflow-hidden">
+        <CardHeader title="Reports" action={<PairsNote detail={detail} />} />
+        {reports.length === 0 ? (
+          <p className="px-space-lg pb-space-lg text-body-sm text-on-surface-variant">No reports yet. Select two depositions above to start.</p>
+        ) : (
+          <ul className="space-y-space-sm px-space-lg pb-space-lg">{reports.map((r) => <ReportRow key={r.id} r={r} />)}</ul>
+        )}
+      </Card>
 
-      <Dialog open={dialog === "compare"} onClose={() => setDialog(null)} title="Compare two sessions"><StartAnalysis detail={detail} /></Dialog>
-      <Dialog open={dialog === "upload"} onClose={() => setDialog(null)} title="Upload a deposition"><Upload caseId={id} witnesses={detail.witnesses.map((w) => w.name)} onUploaded={load} /></Dialog>
+      <Dialog open={adding} onClose={() => setAdding(false)} title="Add deposition"><Upload caseId={id} witnesses={detail.witnesses.map((w) => w.name)} onDone={() => { setAdding(false); load(); }} onCancel={() => setAdding(false)} /></Dialog>
     </>
   );
 }
 
-function DepositionRowView({ d, witness, active, onInspect, onRetry }: { d: DepositionRow; witness: string; active: boolean; onInspect: () => void; onRetry: () => void }) {
+function DepositionRowView({ d, witness, selected, onToggle, onRetry }: { d: DepositionRow; witness: string; selected: boolean; onToggle: () => void; onRetry: () => void }) {
   const s = DEPOSITION_STATUS[d.status];
   const name = d.originalFilename ?? `Deposition #${d.id}`;
-  return (
-    <tr className={cx("align-top transition-colors", active ? "bg-surface-container/60" : "hover:bg-surface-container-low")}>
-      <td className={cx(tdClass, "max-w-56")}>
-        <span className="block truncate font-semibold" title={`${name} · SHA-256 ${d.fileSha256}`}>{name}</span>
-        <span className="block text-on-surface-variant">{witness}</span>
-      </td>
-      <td className={cx(tdClass, "whitespace-nowrap")}>{formatDate(d.takenOn)}</td>
-      <td className={tdClass}>
-        <Badge tone={s.tone} dot>{s.label}</Badge>
-        {d.error && <p className="mt-1 max-w-48 text-label-sm text-on-error-container">{d.error}</p>}
-      </td>
-      <td className={tdClass}>
-        {d.pageCount === null ? "—" : <span className="whitespace-nowrap tabular-nums">{d.pageCount.toLocaleString()} pp.</span>}
-        {!!d.pageCount && <Meter value={(d.pageCount - d.needsOcrPages.length) / d.pageCount} label={`Pages of ${name} with text`} />}
-        {d.needsOcrPages.length > 0 && <span className="mt-1 block text-label-sm text-on-warning-container">{d.needsOcrPages.length} without text</span>}
-      </td>
-      <td className={cx(tdClass, "pl-0 text-right")}>
-        {d.status === "failed" ? (
-          <Button variant="secondary" className="h-8" onClick={onRetry}>Try again</Button>
-        ) : (
-          <Button variant={active ? "primary" : "ghost"} className="h-8" disabled={d.status !== "ready" && d.status !== "needs_review"} aria-pressed={active} onClick={onInspect}>Inspect</Button>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-// Everything OCR changed or left out is counted here. Nothing shows for a file with a text layer.
-function ScanReadout({ depositionId }: { depositionId: number }) {
-  const [ocr, setOcr] = useState<OcrReadout | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api.deposition(depositionId).then((r) => setOcr(r.deposition.validation?.ocr ?? null)).catch((e: Error) => setError(e.message));
-  }, [depositionId]);
-  if (error) return <Alert title="This session's OCR details couldn't be loaded">{error}</Alert>;
-  if (!ocr) return null;
-  const pageLink = (p: number) => <a key={p} href={api.depositionPdf(depositionId, p)} target="_blank" rel="noreferrer" className="underline">{p}</a>;
-  return (
-    <Card>
-      <CardHeader title="Scanned file" description="This file has no text layer. Its text was read by OCR and may differ from the scan." action={<OcrMark />} />
-      <div className="space-y-space-md px-space-lg pb-space-lg text-body-sm">
-        {ocr.inferredPages.length > 0 && (
-          <Alert tone="warn" title="Inferred page numbers">
-            OCR couldn't read the printed number on these PDF pages, so it was worked out from the pages either side. Check them against the scan before citing: {ocr.inferredPages.map((p, i) => <span key={p}>{i > 0 && ", "}{pageLink(p)}</span>)}.
-          </Alert>
-        )}
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-          <Term label="OCR engine">{ocr.engine}</Term>
-          <Term label="Mean confidence">{ocr.meanConfidence === null ? "Not measured" : `${Math.round(ocr.meanConfidence)}%`}</Term>
-          <Term label="Low-confidence words">{ocr.lowConfidenceWords.toLocaleString()}</Term>
-          <Term label="Line markers corrected">{ocr.markersCorrected.toLocaleString()}</Term>
-          <Term label="Noise marks removed">{ocr.noiseWords.toLocaleString()}</Term>
-          <Term label="Cover pages">{ocr.coverPages.length ? ocr.coverPages.join(", ") : "None"}</Term>
-        </dl>
-        {ocr.annotations.length > 0 && (
-          <details>
-            <summary className="cursor-pointer font-medium">{ocr.annotations.length} {ocr.annotations.length === 1 ? "mark" : "marks"} outside the transcript lines, left out of the testimony</summary>
-            <ul className="mt-1 space-y-0.5 text-on-surface-variant">
-              {ocr.annotations.map((a, i) => <li key={i}>PDF page {a.pdfPage}: {a.text}</li>)}
-            </ul>
-          </details>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// The API serves no whole transcript pages yet, so this shows the stored lines that findings cite.
-function TranscriptInspector({ depositionId, analyses }: { depositionId: number | null; analyses: CaseDetail["analyses"] }) {
-  const [cited, setCited] = useState<{ id: number; ref: string | null }[] | null>(null);
-  const [findingId, setFindingId] = useState<number | null>(null);
-  const [finding, setFinding] = useState<FindingDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const analysisIds = analyses.map((a) => a.id).join();
-  useEffect(() => {
-    if (depositionId === null) return;
-    Promise.all(analyses.map((a) => api.findings(a.id)))
-      .then((all) => {
-        const rows = all.flatMap((r) => r.groups.flatMap((g) => g.findings)).flatMap((f) => (f.a.depositionId === depositionId ? [{ id: f.id, ref: f.a.ref }] : f.b.depositionId === depositionId ? [{ id: f.id, ref: f.b.ref }] : []));
-        setCited(rows);
-        setFindingId(rows[0]?.id ?? null);
-      })
-      .catch((e: Error) => setError(e.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [depositionId, analysisIds]);
-  useEffect(() => {
-    if (findingId === null) return;
-    api.finding(findingId).then((r) => setFinding(r.finding)).catch((e: Error) => setError(e.message));
-  }, [findingId]);
-  const side = finding && (finding.a.deposition.id === depositionId ? finding.a : finding.b);
-
-  return (
-    <Card className="flex flex-col overflow-hidden">
-      <CardHeader title="Transcript inspector" description="Stored lines cited by findings in this session." action={side && ocrPassage(side) ? <OcrMark /> : <TestimonyMark />} />
-      {error && <div className="px-space-md pb-space-md"><Alert>{error}</Alert></div>}
-      {depositionId === null && <div className="px-space-md pb-space-md"><Empty title="No ready session to inspect" /></div>}
-      {depositionId !== null && !error && !cited && <Loading />}
-      {cited?.length === 0 && <div className="px-space-md pb-space-md"><Empty title="No cited passages yet">Cited lines appear here once an analysis of this session has findings.</Empty></div>}
-      {cited && cited.length > 0 && (
-        <>
-          <div className="px-space-lg pb-space-md">
-            <select aria-label="Cited passage" value={findingId ?? ""} onChange={(e) => setFindingId(Number(e.target.value))} className={cx(selectClass, "w-full")}>
-              {cited.map((c, i) => <option key={c.id} value={c.id}>Passage {i + 1} of {cited.length}: {c.ref ?? "no page:line"}</option>)}
-            </select>
-          </div>
-          <div className="max-h-[36rem] overflow-y-auto bg-surface p-space-md">{side ? <PassageLines side={side} mark={finding.classification === "direct" || finding.classification === "inferential" ? "red" : "amber"} /> : <Loading />}</div>
-          {finding && (
-            <div className="space-y-space-sm p-space-md">
-              <ModelMark />
-              <p className="text-body-sm">{finding.assessment.explanation}</p>
-              <a href={href.analysis(finding.analysisId ?? 0, finding.id)} className={buttonClass("primary", "w-full")}>Open in workbench</a>
-            </div>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
-
-function StartAnalysis({ detail }: { detail: CaseDetail }) {
-  const comparable = useMemo(() => detail.witnesses.filter((w) => detail.depositions.filter((d) => d.witnessId === w.id && d.status === "ready").length >= 2), [detail]);
-  const [witnessId, setWitnessId] = useState<number | null>(comparable[0]?.id ?? null);
-  const sessions = detail.depositions.filter((d) => d.witnessId === witnessId && d.status === "ready");
-  const [a, setA] = useState<number | null>(null);
-  const [b, setB] = useState<number | null>(null);
-  const [mode, setMode] = useState<"demo" | "live">("demo");
-  const [budget, setBudget] = useState("6"); // the server's default for a direct analysis
-  const [strategy, setStrategy] = useState("C");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    setA(sessions[0]?.id ?? null);
-    setB(sessions[1]?.id ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [witnessId, detail.depositions.length]);
-
-  const label = (d: DepositionRow) => `${formatDate(d.takenOn)}${d.originalFilename ? ` · ${d.originalFilename}` : ""}`;
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (a === null || b === null) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { analysis } = await api.startAnalysis(detail.case.id, { depositionA: a, depositionB: b, mode, ...(mode === "live" ? { budgetUsd: Number(budget), strategy } : {}) });
-      window.location.hash = href.analysis(analysis.id);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
+  const note = d.status === "failed" || d.status === "unsupported" ? `Couldn't be read: ${d.error ?? "this file's layout isn't recognized."}` : d.status === "needs_review" ? (d.error ?? "Some pages couldn't be read.") : d.scanned ? "Read by OCR. Check the scan before quoting." : null;
   return (
     <>
-      {comparable.length === 0 ? (
-        <div className="p-space-lg">
-          <Empty title="Not enough sessions yet">An analysis needs two ready deposition sessions of the same witness.</Empty>
-        </div>
-      ) : (
-        <form onSubmit={submit} className="space-y-4 p-space-lg">
-          <Field label="Witness">
-            <select className={inputClass} value={witnessId ?? ""} onChange={(e) => setWitnessId(Number(e.target.value))}>
-              {comparable.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="First session">
-            <select className={inputClass} value={a ?? ""} onChange={(e) => setA(Number(e.target.value))}>
-              {sessions.map((d) => (
-                <option key={d.id} value={d.id}>{label(d)}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Second session">
-            <select className={inputClass} value={b ?? ""} onChange={(e) => setB(Number(e.target.value))}>
-              {sessions.map((d) => (
-                <option key={d.id} value={d.id}>{label(d)}</option>
-              ))}
-            </select>
-          </Field>
-          <fieldset className="space-y-2 text-body-sm">
-            <legend className="font-medium">Assessment</legend>
-            <label className="flex items-start gap-2">
-              <input type="radio" name="mode" checked={mode === "demo"} onChange={() => setMode("demo")} className="mt-1" />
-              <span>
-                <span className="font-medium">Demo</span>
-                <span className="block text-on-surface-variant">No model calls and no cost. Shows stored assessments from earlier runs where they exist.</span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2">
-              <input type="radio" name="mode" checked={mode === "live"} onChange={() => setMode("live")} className="mt-1" />
-              <span>
-                <span className="font-medium">Live</span>
-                <span className="block text-on-surface-variant">Calls Claude Sonnet for each candidate pair, within the budget. Needs the server to allow paid calls.</span>
-              </span>
-            </label>
-          </fieldset>
-          {mode === "live" && (
-            <Field label="Budget (USD)" hint="The analysis stops before any call the budget can't fully cover.">
-              <input className={inputClass} type="number" min="0.1" max="20" step="0.1" value={budget} onChange={(e) => setBudget(e.target.value)} />
-            </Field>
-          )}
-          {mode === "live" && (
-            <Field label="Speed" hint="Requests sent at once. The cost is about the same; each is still budgeted before it is sent.">
-              <select className={inputClass} value={strategy} onChange={(e) => setStrategy(e.target.value)}>
-                <option value="C">Ten at a time (recommended)</option>
-                <option value="B">Five at a time</option>
-                <option value="A">One at a time (slowest; use if the service limits requests)</option>
-              </select>
-            </Field>
-          )}
-          {a !== null && a === b && <Alert tone="warn">Choose two different sessions.</Alert>}
-          {error && <Alert>{error}</Alert>}
-          <Button type="submit" disabled={busy || a === null || b === null || a === b} className="w-full">
-            {busy ? "Starting…" : "Start analysis"}
-          </Button>
-        </form>
-      )}
+      <tr className={cx("border-t border-white/60 align-top transition-colors", selected ? "bg-secondary-fixed/40" : "hover:bg-white/50")}>
+        <td className={cx(tdClass, "pr-0")}><input type="checkbox" aria-label={`Select ${witness}, ${formatDate(d.takenOn)}`} checked={selected} disabled={d.status !== "ready"} onChange={onToggle} className="mt-0.5 size-4 accent-secondary" /></td>
+        <td className={cx(tdClass, "font-semibold whitespace-nowrap")}>{witness}</td>
+        <td className={cx(tdClass, "whitespace-nowrap")}>{formatDate(d.takenOn)}</td>
+        <td className={cx(tdClass, "max-w-64")}>
+          <a href={api.depositionPdf(d.id, 1)} target="_blank" rel="noreferrer" title={`Open the original: ${name}`} className="block truncate hover:text-secondary hover:underline">{name}</a>
+          {note && <span className="mt-0.5 block whitespace-normal text-label-sm text-on-surface-variant">{note}</span>}
+        </td>
+        <td className={cx(tdClass, "whitespace-nowrap")}>{sourceOf(d)}</td>
+        <td className={cx(tdClass, "tabular-nums")}>{d.pageCount ?? "—"}</td>
+        <td className={cx(tdClass, "whitespace-nowrap")}>
+          <Badge tone={s.tone} dot>{s.label}</Badge>
+          {d.status === "failed" && <Button variant="secondary" className="ml-2 h-7" onClick={onRetry}>Try again</Button>}
+        </td>
+      </tr>
     </>
   );
 }
 
-function Upload({ caseId, witnesses, onUploaded }: { caseId: number; witnesses: string[]; onUploaded: () => void }) {
+function NewCheck({ detail, selected, witnessName }: { detail: CaseDetail; selected: number[]; witnessName: (w: number) => string }) {
+  const { start, error, busy } = useStartCheck(detail.case.id);
+  const state = checkState(selected, detail.depositions, detail.analyses);
+  const title = () => {
+    const [a, b] = selected.map((id) => detail.depositions.find((d) => d.id === id)!).sort((x, y) => (x.takenOn ?? "").localeCompare(y.takenOn ?? ""));
+    return `${witnessName(a.witnessId)}: ${formatDate(a.takenOn)} vs ${formatDate(b.takenOn)}`;
+  };
+  const message = { pick: "Select two depositions of the same witness to compare them.", too_many: "Select exactly two. Each report compares two depositions.", different_witness: "These are different witnesses. A check compares two sessions of the same witness.", not_ready: "Both depositions must finish reading first." };
+  return (
+    <Card className="p-space-lg">
+      <div aria-live="polite">
+        {state.kind in message ? (
+          <p className="text-body-md text-on-surface-variant">{message[state.kind as keyof typeof message]}</p>
+        ) : (
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div className="min-w-0">
+              <h2 className="text-headline-lg">{title()}</h2>
+              <p className="mt-0.5 text-body-sm text-on-surface-variant">
+                {state.kind === "new" && CHECK_ESTIMATE}
+                {state.kind === "running" && "These depositions are being checked."}
+                {state.kind === "done" && `Already checked on ${formatDate(state.report.createdAt)}.`}
+              </p>
+            </div>
+            <div className="flex flex-none flex-wrap items-center gap-2">
+              {state.kind === "new" && <Button className="h-10" disabled={busy} onClick={() => void start(state.a, state.b)}>{busy ? "Starting…" : "Check these depositions"}</Button>}
+              {state.kind === "running" && <a href={href.analysis(state.report.id)} className={buttonClass("primary", "h-10")}>View progress</a>}
+              {state.kind === "done" && (
+                <>
+                  <CheckAgain caseId={detail.case.id} a={state.a} b={state.b} />
+                  <a href={href.analysis(state.report.id)} className={buttonClass("primary", "h-10")}>Open report<ArrowRight aria-hidden className="size-4" /></a>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      {error && <div className="mt-3"><Alert>{error}</Alert></div>}
+    </Card>
+  );
+}
+
+function PairsNote({ detail }: { detail: CaseDetail }) {
+  const notes = detail.witnesses.map((w) => pairsChecked(detail.depositions.filter((d) => d.witnessId === w.id && d.status === "ready").map((d) => d.id), detail.analyses)).filter((p) => p.total > 1);
+  if (notes.length === 0) return null;
+  return <Badge>{notes.reduce((n, p) => n + p.checked, 0)} of {notes.reduce((n, p) => n + p.total, 0)} session pairs checked</Badge>;
+}
+
+function ReportRow({ r }: { r: AnalysisView }) {
+  const s = ANALYSIS_STATUS[r.status];
+  const [a, b] = r.depositions;
+  return (
+    <li>
+      <a href={href.analysis(r.id)} className="group flex flex-col justify-between gap-2 rounded-xl bg-white/50 p-space-md transition-colors hover:bg-white/85 md:flex-row md:items-center">
+        <span className="min-w-0">
+          <span className="block font-semibold group-hover:text-secondary">{a.witness}: {formatDate(a.takenOn)} vs {formatDate(b.takenOn)}</span>
+          <span className="block text-body-sm text-on-surface-variant">
+            {formatDate(r.createdAt)}
+            {r.status === "completed" && ` · ${r.findings.groups.contradictions} potential ${r.findings.groups.contradictions === 1 ? "contradiction" : "contradictions"} · ${r.findings.groups.needs_context} need context`}
+          </span>
+        </span>
+        <span className="flex flex-none items-center gap-4">
+          {r.status === "completed" ? <span className="text-label-md tabular-nums text-on-surface-variant">{Math.min(r.findings.decided, r.findings.total)} of {r.findings.total} decided</span> : <Badge tone={s.tone} dot>{isActive(r.status) ? "Checking…" : "Couldn't finish"}</Badge>}
+          {r.mode === "demo" && <Badge tone="accent">Example</Badge>}
+          <ChevronRight aria-hidden className="size-5 text-on-surface-variant" />
+        </span>
+      </a>
+    </li>
+  );
+}
+
+function Upload({ caseId, witnesses, onDone, onCancel }: { caseId: number; witnesses: string[]; onDone: () => void; onCancel: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [witness, setWitness] = useState(witnesses[0] ?? "");
   const [takenOn, setTakenOn] = useState("");
-  const [message, setMessage] = useState<{ tone: "bad" | "info"; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const tooBig = !!file && file.size > MAX_UPLOAD_MB * 1024 * 1024;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return;
     setBusy(true);
-    setMessage(null);
+    setError(null);
     try {
-      const r = await api.upload(caseId, file, witness.trim(), takenOn || undefined);
-      setMessage({ tone: "info", text: r.created ? "Uploaded. The transcript is being read; this table updates by itself." : "This file was already uploaded to the case; the existing session is shown." });
-      setFile(null);
-      onUploaded();
+      await api.upload(caseId, file, witness.trim(), takenOn || undefined);
+      onDone();
     } catch (err) {
-      setMessage({ tone: "bad", text: (err as Error).message });
-    } finally {
+      setError((err as Error).message);
       setBusy(false);
     }
   };
   return (
     <form onSubmit={submit} className="space-y-4 p-space-lg">
-        <p className="text-body-sm text-on-surface-variant">A PDF transcript, up to {MAX_UPLOAD_MB} MB. Scanned files are supported where the layout is recognised; their OCR text may differ from the scan.</p>
-        <Field label="Transcript PDF">
-          <input type="file" accept="application/pdf,.pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-body-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface-container file:px-3 file:py-2 file:text-body-sm file:font-medium" />
-        </Field>
-        <Field label="Witness" hint="An existing witness, or a new name.">
-          <input className={inputClass} list="witnesses" value={witness} onChange={(e) => setWitness(e.target.value)} required maxLength={200} />
-          <datalist id="witnesses">
-            {witnesses.map((w) => (
-              <option key={w} value={w} />
-            ))}
-          </datalist>
-        </Field>
-        <Field label="Session date" hint="Optional; if the transcript doesn't state it, leave it empty.">
-          <input className={inputClass} type="date" value={takenOn} onChange={(e) => setTakenOn(e.target.value)} />
-        </Field>
-        {tooBig && <Alert tone="warn">This file is larger than {MAX_UPLOAD_MB} MB.</Alert>}
-        {message && <Alert tone={message.tone}>{message.text}</Alert>}
-        <Button type="submit" disabled={busy || !file || !witness.trim() || tooBig} className="w-full">
-          {busy ? "Uploading…" : "Upload"}
-        </Button>
+      <Field label="Deposition PDF" hint={`Up to ${MAX_UPLOAD_MB} MB.`}>
+        <input type="file" accept="application/pdf,.pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-body-sm file:mr-3 file:rounded-lg file:border-0 file:bg-surface-container file:px-3 file:py-2 file:font-medium" />
+      </Field>
+      <Field label="Witness name">
+        <input className={inputClass} list="witnesses" value={witness} onChange={(e) => setWitness(e.target.value)} required maxLength={200} />
+        <datalist id="witnesses">{witnesses.map((w) => <option key={w} value={w} />)}</datalist>
+      </Field>
+      <Field label="Date taken"><input className={inputClass} type="date" value={takenOn} onChange={(e) => setTakenOn(e.target.value)} /></Field>
+      {tooBig && <Alert tone="warn">This file is larger than {MAX_UPLOAD_MB} MB.</Alert>}
+      {error && <Alert>{error}</Alert>}
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={busy || !file || !witness.trim() || tooBig}>{busy ? "Adding…" : "Add deposition"}</Button>
+      </div>
     </form>
   );
 }

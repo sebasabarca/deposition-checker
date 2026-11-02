@@ -62,7 +62,7 @@ export function Button({ variant, className, type = "button", ...props }: Button
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cx("min-w-0 rounded-xl bg-surface-container-lowest shadow-sm", className)}>{children}</section>;
+  return <section className={cx("glass min-w-0 rounded-2xl", className)}>{children}</section>;
 }
 
 export function CardHeader({ title, description, action }: { title: ReactNode; description?: ReactNode; action?: ReactNode }) {
@@ -158,7 +158,7 @@ export function Alert({ tone = "bad", title, children }: { tone?: "bad" | "warn"
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-lg bg-surface-container-low px-6 py-10 text-center">
+    <div className="glass rounded-2xl px-6 py-10 text-center">
       <p className="font-semibold">{title}</p>
       {children && <div className="mt-1 text-body-sm text-on-surface-variant">{children}</div>}
     </div>

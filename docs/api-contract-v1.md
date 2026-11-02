@@ -242,3 +242,5 @@ No existing field changed or moved. Add to `client/src/types.ts`:
 1. `AnalysisView.retrieval` and `AnalysisView.coverage`, with `AnalysisCoverage`, `CardSummary` and `TopicReport`.
 2. In `AnalysisProgress`: `candidates.excluded`, `pool`, `retrievalVersion`, `cardsStage`, and the existing `rateLimited`, `oversize`, `requests`, `peakConcurrency`, `retryInvalid`.
 3. New analyses are hybrid automatically. A live run needs `ALLOW_PAID_CALLS=true`, or it stops as `blocked_credentials` before any call.
+
+Review decisions: `PATCH /findings/:id/review` takes `{ decision: 'confirmed' | 'needs_context' | 'dismissed' | null, note? }`; null clears it. A decision carries into a later report citing the same passages. `FindingSummary` and `FindingDetail` add `reviewNote`, and detail adds `reviewedAt`. `CaseSummary` adds `witnessNames`, `reports`, `needsReview`, `checking` and `lastActivity`; `DepositionRow` adds `scanned`; `AnalysisView.findings` adds `decided`.

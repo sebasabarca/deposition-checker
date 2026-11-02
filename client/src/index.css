@@ -18,8 +18,8 @@
   --color-on-surface-variant: #44474c;
   --color-outline: #66686e; /* darker than the reference's #75777d: AA on white */
   --color-outline-variant: #c5c6cd;
-  --color-secondary: #1d4ed8;
-  --color-secondary-container: #4069f2;
+  --color-secondary: #0071e3;
+  --color-secondary-container: #0062c4;
   --color-secondary-fixed: #dce1ff;
   --color-on-secondary-fixed: #001551;
   --color-success: #1e7a3c;
@@ -68,7 +68,13 @@
 
 @layer base {
   body {
-    background: var(--color-surface);
+    min-height: 100vh;
+    background:
+      radial-gradient(at 0% 0%, #e0eaff 0, transparent 50%),
+      radial-gradient(at 100% 0%, #d8e5ff 0, transparent 50%),
+      radial-gradient(at 50% 100%, #eff5ff 0, transparent 50%),
+      #edf2fb;
+    background-attachment: fixed;
     color: var(--color-on-surface);
     font-family: var(--font-sans);
     font-size: var(--text-body-md);
@@ -84,6 +90,30 @@
   }
   dialog::backdrop {
     background: rgb(14 28 47 / 0.5);
+  }
+}
+
+/* Frosted surfaces hold navigation and summaries. Testimony always sits on a solid one, because
+   a lawyer reads every word of it. */
+@utility glass {
+  background: rgb(255 255 255 / 0.68);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 8px 32px 0 rgb(31 38 135 / 0.07), inset 0 1px 1px 0 rgb(255 255 255 / 0.9);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
   }
 }
 
