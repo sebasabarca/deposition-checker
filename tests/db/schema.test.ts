@@ -103,8 +103,10 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
       "lines",
       "llm_calls",
       "orgs",
+      "sessions",
       "statement_cards",
       "topics",
+      "users",
       "verdicts",
       "witnesses",
     ]);

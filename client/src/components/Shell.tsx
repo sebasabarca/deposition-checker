@@ -4,6 +4,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Briefcase, CircleHelp, FileText, Highlighter, LayoutGrid, ListChecks, Menu, Plus, X, type LucideIcon } from "lucide-react";
 import { href, type Section } from "../lib/router";
+import type { User } from "../lib/api";
 import { cx } from "./ui";
 import { AddDeposition } from "./AddDeposition";
 
@@ -34,7 +35,7 @@ export function Mark({ className }: { className?: string }) {
 // Labels stay in the DOM, so screen readers and tooltips always have them.
 const label = (rail: boolean) => cx("whitespace-nowrap", rail && "opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100");
 
-export function Shell({ section, children }: { section: Section | null; children: ReactNode }) {
+export function Shell({ section, user, onSignOut, children }: { section: Section | null; user: User; onSignOut: () => void; children: ReactNode }) {
   const [drawer, setDrawer] = useState(false);
   const [adding, setAdding] = useState<{ caseId?: number } | null>(null);
   useEffect(() => setDrawer(false), [section]);
@@ -53,11 +54,18 @@ export function Shell({ section, children }: { section: Section | null; children
   );
 
   const footer = (rail: boolean) => (
-    <div className="border-t border-white/10 px-3 py-3">
+    <div className="space-y-0.5 border-t border-white/10 px-3 py-3">
       <a href={href.help()} aria-current={section === "help" ? "page" : undefined} className={row(section === "help")}>
         <CircleHelp aria-hidden className="size-[18px] flex-none" strokeWidth={1.6} />
         <span className={label(rail)}>Help</span>
       </a>
+      <button type="button" onClick={onSignOut} className={cx(row(false), "w-full")} title={`Signed in as ${user.email}`}>
+        <span aria-hidden className="-mx-[3px] flex size-6 flex-none items-center justify-center rounded-full bg-slate text-[11px] font-semibold text-white">{user.name.trim().charAt(0).toUpperCase()}</span>
+        <span className={cx("min-w-0 text-left leading-tight", label(rail))}>
+          <span className="block truncate text-[13px] text-white">{user.name}</span>
+          <span className="block truncate text-[11px]">{user.org} · Sign out</span>
+        </span>
+      </button>
     </div>
   );
 

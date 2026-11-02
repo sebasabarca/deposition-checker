@@ -1,6 +1,6 @@
 // Hash routes, so the app needs no router library and works behind any static host:
 //   #/                          overview: what needs the reviewer now
-//   #/cases, #/cases/:id        cases, and one case
+//   #/cases, #/cases/:id        cases, and one case; #/cases/:id/report its kept findings, to print
 //   #/depositions[?case=]       every deposition, filtered by case; #/depositions/:id[?page=&q=] one, readable
 //   #/findings                  every finding across cases
 //   #/analyses, #/analyses/:id  every analysis; one, with its findings beside the selected one
@@ -13,6 +13,7 @@ export type Route =
   | { name: "overview" }
   | { name: "cases" }
   | { name: "case"; id: number }
+  | { name: "report"; id: number }
   | { name: "depositions"; caseId: number | null }
   | { name: "deposition"; id: number; page: number | null; q: string }
   | { name: "findings" }
@@ -39,6 +40,8 @@ export function parseRoute(hash: string): Route {
   if (path === "/depositions") return { name: "depositions", caseId: num("case") };
   let m = path.match(/^\/cases\/(\d+)$/);
   if (m) return { name: "case", id: Number(m[1]) };
+  m = path.match(/^\/cases\/(\d+)\/report$/);
+  if (m) return { name: "report", id: Number(m[1]) };
   m = path.match(/^\/depositions\/(\d+)$/);
   if (m) return { name: "deposition", id: Number(m[1]), page: num("page"), q: q.get("q") ?? "" };
   m = path.match(/^\/analyses\/(\d+)(?:\/findings\/(\d+))?$/);
@@ -47,7 +50,7 @@ export function parseRoute(hash: string): Route {
 }
 
 export const sectionOf = (r: Route): Section | null =>
-  ({ overview: "overview", cases: "cases", case: "cases", depositions: "depositions", deposition: "depositions", findings: "findings", analyses: "analyses", analysis: "analyses", help: "help", not_found: null } as const)[r.name];
+  ({ overview: "overview", cases: "cases", case: "cases", report: "cases", depositions: "depositions", deposition: "depositions", findings: "findings", analyses: "analyses", analysis: "analyses", help: "help", not_found: null } as const)[r.name];
 
 const withQuery = (path: string, q: Record<string, string | number | null | undefined>) => {
   const s = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => [k, String(v)])).toString();
@@ -58,6 +61,7 @@ export const href = {
   overview: () => "#/",
   cases: () => "#/cases",
   case: (id: number) => `#/cases/${id}`,
+  report: (caseId: number) => `#/cases/${caseId}/report`,
   depositions: (caseId?: number | null) => withQuery("#/depositions", { case: caseId }),
   deposition: (id: number, at?: { page?: number | null; q?: string }) => withQuery(`#/depositions/${id}`, { page: at?.page, q: at?.q }),
   findings: () => "#/findings",

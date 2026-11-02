@@ -2,7 +2,8 @@
 // records the deposition as processing and queues a job, then answers at once. The worker process
 // does the parsing, and these endpoints only read what it stored.
 
-import express, { Router, type ErrorRequestHandler } from "express";
+import express, { Router, type ErrorRequestHandler, type Response } from "express";
+import { deleteCase, deleteDeposition, type Removal } from "./remove";
 import { and, countDistinct, eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
@@ -202,6 +203,24 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
       return res.status(409).json({ error: `Only failed depositions can be retried; this one is ${outcome}.` });
     }
     return res.status(202).json({ deposition: await depositionView(db, id.data) });
+  });
+
+  // Delete a deposition, with every analysis that compared it and their findings and decisions.
+  // Case deletion lives here too because it removes depositions and their files the same way.
+  const removed = (res: Response, outcome: Removal, what: string) => {
+    if (outcome.outcome === "not_found") return res.status(404).json({ error: `${what} not found.` });
+    if (outcome.outcome === "running") return res.status(409).json({ error: `${what} is being checked right now. Stop the check, or wait for it to finish, then delete it.`, analyses: outcome.analyses });
+    return res.json({ deleted: { depositions: outcome.depositions, analyses: outcome.analyses } });
+  };
+  router.delete("/depositions/:id", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
+    return removed(res, await deleteDeposition(db, pool, id.data, uploadsDir), "This deposition");
+  });
+  router.delete("/cases/:id", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    if (!id.success) return res.status(400).json({ error: "The case ID must be a positive number." });
+    return removed(res, await deleteCase(db, pool, id.data, uploadsDir), "This case");
   });
 
   const errors: ErrorRequestHandler = (error, _req, res, _next) => {

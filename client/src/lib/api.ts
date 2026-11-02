@@ -2,6 +2,12 @@
 // carries the server's own message, so the UI can show it as it is.
 
 import type { AnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { Workspace } from "./workspace";
+
+export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
+
+export const SIGNED_OUT = "veridict:signed-out";
+export type User = { id: number; email: string; name: string; org: string };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -23,12 +29,20 @@ async function request<T>(method: string, url: string, body?: unknown, raw?: { d
     throw new ApiError("The server can't be reached. Is it running?", 0);
   }
   const data = await res.json().catch(() => ({}));
+  // A lapsed session anywhere sends the app back to sign-in.
+  if (res.status === 401 && !url.startsWith("/auth/")) window.dispatchEvent(new Event(SIGNED_OUT));
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `The request failed (${res.status}).`, res.status);
   return data as T;
 }
 
 export const api = {
+  me: () => request<{ user: User }>("GET", "/auth/me"),
+  authConfig: () => request<{ signupOpen: boolean; firstUser: boolean }>("GET", "/auth/config"),
+  signIn: (email: string, password: string) => request<{ user: User }>("POST", "/auth/signin", { email, password }),
+  signUp: (body: { name: string; email: string; password: string; firm: string }) => request<{ user: User }>("POST", "/auth/signup", body),
+  signOut: () => request<{ ok: true }>("POST", "/auth/signout"),
   cases: () => request<{ cases: CaseSummary[] }>("GET", "/cases"),
+  workspace: () => request<Workspace>("GET", "/workspace"),
   createCase: (name: string, witness?: string) => request<CaseDetail>("POST", "/cases", { name, ...(witness ? { witness } : {}) }),
   case: (id: number) => request<CaseDetail>("GET", `/cases/${id}`),
   addWitness: (caseId: number, name: string) => request<{ witness: { id: number; name: string } }>("POST", `/cases/${caseId}/witnesses`, { name }),
@@ -44,7 +58,10 @@ export const api = {
   },
   depositionPdf: (id: number, pdfPage: number) => `/api/depositions/${id}/pdf#page=${pdfPage}`,
   depositionOriginal: (id: number) => `/api/depositions/${id}/pdf`,
+  deleteDeposition: (id: number) => request<{ deleted: { depositions: number; analyses: number } }>("DELETE", `/depositions/${id}`),
+  deleteCase: (id: number) => request<{ deleted: { depositions: number; analyses: number } }>("DELETE", `/cases/${id}`),
   retryDeposition: (id: number) => request<unknown>("POST", `/depositions/${id}/retry`),
+  estimate: (caseId: number, a: number, b: number) => request<{ estimate: CheckEstimate }>("GET", `/cases/${caseId}/estimate?a=${a}&b=${b}`),
   startAnalysis: (caseId: number, body: { depositionA: number; depositionB: number; mode: "demo" | "live"; budgetUsd?: number; maxCandidates?: number; strategy?: string }) =>
     request<{ created: boolean; analysis: AnalysisView }>("POST", `/cases/${caseId}/analyses`, body),
   analysis: (id: number) => request<{ analysis: AnalysisView }>("GET", `/analyses/${id}`),

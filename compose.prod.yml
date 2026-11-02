@@ -1,0 +1,61 @@
+# Veridict in production on one host: Postgres, a one-off migration, the web server and the worker.
+#   docker compose -f compose.prod.yml up -d --build
+# Put a TLS-terminating proxy (Caddy, nginx, a cloud load balancer) in front of port 3001.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: veridict
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: veridict
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veridict -d veridict"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: .
+    command: ["npm", "run", "db:migrate"]
+    environment: &env
+      DATABASE_URL: postgres://veridict:${POSTGRES_PASSWORD}@db:5432/veridict
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ALLOW_PAID_CALLS: ${ALLOW_PAID_CALLS:-false}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: .
+    restart: unless-stopped
+    environment: *env
+    ports:
+      - "3001:3001"
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment: *env
+    volumes:
+      - uploads:/app/data/uploads
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  uploads:

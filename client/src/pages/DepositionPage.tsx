@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { DangerZone } from "../components/DangerZone";
 import { TranscriptRows } from "../components/FindingView";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, fieldClass, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/api";
@@ -149,6 +150,16 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
           </Card>
         </div>
       </div>
+
+      <DangerZone
+        what="deposition"
+        name={`${d.witness.name}, ${formatDate(d.takenOn)}`}
+        consequence={`Deletes this transcript${analyses.length ? `, the ${analyses.length === 1 ? "analysis" : `${analyses.length} analyses`} that compared it, and their findings, decisions and notes` : ""}. Cost records are kept.`}
+        onDelete={async () => {
+          await api.deleteDeposition(d.id);
+          window.location.hash = kase ? href.case(kase.case.id) : href.depositions();
+        }}
+      />
     </>
   );
 }

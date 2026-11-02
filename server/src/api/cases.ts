@@ -25,7 +25,8 @@ const NEEDS_REVIEW = sql`
   and coalesce(f.unscored_reason, '') <> 'attribution_failed'
   and k.job_id = (select max(b.id) from analyses b where b.deposition_a = a.deposition_a and b.deposition_b = a.deposition_b)`;
 
-export async function caseSummaries(db: Database) {
+// orgId limits the list to one organization: always set behind sign-in (server/src/auth.ts).
+export async function caseSummaries(db: Database, orgId?: number) {
   const rows = await db.execute<{ id: string; name: string; created_at: string; depositions: number; witnesses: number; witness_names: string[]; reports: number; findings: number; needs_review: number; checking: number; last_activity: string; last_status: string | null; last_analysis: string | null }>(sql`
     select c.id, c.name, c.created_at,
       (select count(*)::int from depositions d where d.case_id = c.id) as depositions,
@@ -40,7 +41,7 @@ export async function caseSummaries(db: Database) {
       greatest(c.created_at, (select max(a.updated_at) from analyses a where a.case_id = c.id), (select max(d.created_at) from depositions d where d.case_id = c.id)) as last_activity,
       (select a.status::text from analyses a where a.case_id = c.id order by a.id desc limit 1) as last_status,
       (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1) as last_analysis
-    from cases c order by last_activity desc
+    from cases c ${orgId === undefined ? sql`` : sql`where c.org_id = ${orgId}`} order by last_activity desc
   `);
   return rows.rows.map((r) => ({
     id: Number(r.id),
@@ -97,13 +98,13 @@ export function caseRoutes({ db }: { db: Database }): Router {
   const router = Router();
 
   router.get("/cases", async (_req, res) => {
-    res.json({ cases: await caseSummaries(db) });
+    res.json({ cases: await caseSummaries(db, res.locals.user?.orgId) });
   });
 
   router.post("/cases", async (req, res) => {
     const body = z.object({ name: Name, witness: Name.optional() }).safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: "A case name (up to 200 characters) is required." });
-    const orgId = await defaultOrg(db);
+    const orgId: number = res.locals.user?.orgId ?? (await defaultOrg(db));
     const [kase] = await db.insert(cases).values({ orgId, name: body.data.name }).returning();
     if (body.data.witness) await db.insert(witnesses).values({ caseId: kase.id, name: body.data.witness });
     return res.status(201).json(await caseDetail(db, kase.id));

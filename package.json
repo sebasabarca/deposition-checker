@@ -9,6 +9,8 @@
   "scripts": {
     "postinstall": "npm install --prefix client",
     "dev": "concurrently -n server,worker,client -c blue,magenta,green \"tsx watch server/src/index.ts\" \"tsx watch server/src/worker.ts\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client",
+    "start": "tsx server/src/index.ts",
     "worker": "tsx server/src/worker.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",

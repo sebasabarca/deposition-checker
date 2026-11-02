@@ -1,0 +1,16 @@
+node_modules
+client/node_modules
+client/dist
+data
+.env
+.env.*
+!.env.example
+.git
+.DS_Store
+reports
+experiments
+design-reference
+.impeccable
+.codex
+.agents
+.taste-skill

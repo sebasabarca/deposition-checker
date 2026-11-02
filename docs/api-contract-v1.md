@@ -22,8 +22,17 @@ Breaking changes get a new `docs/api-contract-v<n>.md`. Adding a field does not.
 
 ## 2. Endpoints
 
+Every endpoint except `/auth/*` and `/health` needs a session cookie (401 without one) and sees only the signed-in user's organization: another firm's case, deposition, analysis or finding answers 404. A request that changes data must come from the site's own origin (403 otherwise).
+
 | Screen | Method and path | Success | Errors |
 | --- | --- | --- | --- |
+| Sign-in | `GET /auth/config` | 200 `{ signupOpen, firstUser }` | |
+| Sign-in | `POST /auth/signup` `{ name, email, password, firm }` | 201 `{ user }` and the session cookie | 400, 403 sign-up closed, 409 email taken, 429 |
+| Sign-in | `POST /auth/signin` `{ email, password }` | 200 `{ user }` and the session cookie | 400, 401, 429 |
+| Sign-in | `POST /auth/signout` | 200 `{ ok }`, cookie cleared | |
+| Sign-in | `GET /auth/me` | 200 `{ user: { id, email, name, org } }` | 401 |
+| Health | `GET /health` | 200 `{ ok: true }` | 503 database unreachable |
+| Overview and lists | `GET /workspace` | 200 `{ cases, details, analyses, findings }`: the firm's cases, their details, every analysis, and every finding of finished analyses with `analysisId` and `caseName` | |
 | Case dashboard | `GET /cases` | 200 `{ cases: CaseSummary[] }` | |
 | Case dashboard | `POST /cases` `{ name, witness? }` | 201 `CaseDetail` | 400 |
 | Case and depositions | `GET /cases/:id` | 200 `CaseDetail` | 400, 404 |
@@ -33,6 +42,9 @@ Breaking changes get a new `docs/api-contract-v<n>.md`. Adding a field does not.
 | Depositions | `GET /depositions/:id/lines?page=&q=` | 200 `{ page, pages, lines, hits, moreHits }`: one printed page of stored lines (the first when `page` is absent or unknown) and up to 200 lines containing `q` | 400, 404 |
 | Depositions | `GET /depositions/:id/pdf` (open at `#page=<pdfPage>`) | 200 the original file, inline: the PDF, or `text/plain` for a text deposition | 400, 404 |
 | Depositions | `POST /depositions/:id/retry` | 202 `{ deposition }` | 404, 409 unless `failed` |
+| Depositions | `DELETE /depositions/:id` | 200 `{ deleted: { depositions, analyses } }`: the deposition, every analysis that compared it, and their findings and decisions | 404, 409 `{ analyses }` while one is running |
+| Cases | `DELETE /cases/:id` | 200 `{ deleted: { depositions, analyses } }` | 404, 409 while an analysis is running |
+| Analysis | `GET /cases/:id/estimate?a=&b=` | 200 `{ estimate: { inputTokens, typicalUsd, worstUsd, fits, model, budgetUsd } }`; nothing is sent or reserved | 400, 404 |
 | Analysis | `POST /cases/:id/analyses` | 202 `{ created: true, analysis }`; 200 `{ created: false, analysis }` when an active one exists for the pair and mode | 400, 404 |
 | Analysis | `GET /cases/:id/analyses` | 200 `{ analyses: AnalysisView[] }` | 400 |
 | Analysis | `GET /analyses/:id` | 200 `{ analysis: AnalysisView }` | 400, 404 |

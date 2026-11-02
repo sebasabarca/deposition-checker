@@ -77,6 +77,38 @@ export const orgs = pgTable("orgs", {
   createdAt: createdAt(),
 });
 
+// People who sign in. Each belongs to one organization (a firm), and sees only its cases. The
+// password is stored as a salted scrypt hash, never in clear (server/src/auth.ts).
+export const users = pgTable(
+  "users",
+  {
+    id: id(),
+    orgId: ref("org_id")
+      .notNull()
+      .references(() => orgs.id),
+    email: text("email").notNull(), // lowercased
+    name: text("name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("users_email_unique").on(t.email)],
+);
+
+// A signed-in browser. The cookie carries a random token; only its SHA-256 is stored, so a leaked
+// database can't be replayed as a session.
+export const sessions = pgTable(
+  "sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    userId: ref("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sessions_user_id_idx").on(t.userId)],
+);
+
 export const cases = pgTable(
   "cases",
   {

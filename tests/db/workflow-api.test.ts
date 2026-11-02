@@ -145,6 +145,14 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const caseView = await call("GET", `/cases/${docs[0].caseId}`);
     expect(caseView.body.analyses[0]).toMatchObject({ id, status: "completed" });
     expect(await db.$count(llmCalls)).toBe(0);
+
+    // The cross-case screens read all of this in one response, with each finding's analysis and case.
+    const ws = (await call("GET", "/workspace")).body;
+    expect(ws.cases).toHaveLength(1);
+    expect(ws.details[0].case.id).toBe(docs[0].caseId);
+    expect(ws.analyses.map((a: { id: number }) => a.id)).toEqual([id]);
+    expect(ws.findings).toHaveLength(5);
+    expect(ws.findings[0]).toMatchObject({ analysisId: id, caseName: ws.cases[0].name });
   });
 
   it("blocks a live analysis without credentials, visibly, and resumes only blocked or failed ones", async () => {
@@ -234,6 +242,32 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     expect((await call("GET", "/cases")).body.cases[0].needsReview).toBe(needed - 1);
     await call("PATCH", `/findings/${open.id}/review`, { decision: null });
     expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "unreviewed", reviewNote: null, reviewedAt: null });
+  });
+
+  it("deletes a deposition with its analyses and findings, refuses while it is being checked, and deletes a case", async () => {
+    await storeSynthetic(db, WEBB_SUITE);
+    const docs = await db.select().from(depositions).orderBy(depositions.id);
+    const caseId = docs[0].caseId;
+    const started = await call("POST", `/cases/${caseId}/analyses`, { depositionA: docs[0].id, depositionB: docs[1].id, mode: "demo" });
+    const id = started.body.analysis.id;
+    // Held as running: deletion must wait for the check, so no job loses its rows.
+    await db.update(analyses).set({ status: "adjudicating" }).where(eq(analyses.id, id));
+    expect(await call("DELETE", `/depositions/${docs[0].id}`)).toMatchObject({ status: 409, body: { analyses: [id] } });
+    expect((await call("DELETE", `/cases/${caseId}`)).status).toBe(409);
+    await db.update(analyses).set({ status: "completed" }).where(eq(analyses.id, id));
+
+    expect(await call("DELETE", `/depositions/${docs[0].id}`)).toMatchObject({ status: 200, body: { deleted: { depositions: 1, analyses: 1 } } });
+    expect((await call("GET", `/depositions/${docs[0].id}`)).status).toBe(404);
+    expect((await call("GET", `/analyses/${id}`)).status).toBe(404);
+    expect(await db.$count(lines, eq(lines.depositionId, docs[0].id))).toBe(0);
+    expect(await db.$count(candidates, eq(candidates.depositionA, docs[0].id))).toBe(0);
+    expect((await call("GET", `/depositions/${docs[1].id}`)).status).toBe(200);
+    expect((await call("DELETE", `/depositions/${docs[0].id}`)).status).toBe(404);
+
+    expect(await call("DELETE", `/cases/${caseId}`)).toMatchObject({ status: 200, body: { deleted: { depositions: 1 } } });
+    expect((await call("GET", `/cases/${caseId}`)).status).toBe(404);
+    expect(await db.$count(cases)).toBe(0);
+    expect(await db.$count(depositions)).toBe(0);
   });
 
   it("never answers with an active analysis of another method", async () => {

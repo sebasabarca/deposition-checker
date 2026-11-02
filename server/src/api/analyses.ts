@@ -13,6 +13,8 @@ import { withTransaction, type Database } from "../db/client";
 import { analyses, budgets, candidates, depositions, discoveryRuns, exchangeLines, findings, lines, verdicts, witnesses } from "../db/schema";
 import { analysisCost, candidateSetOf, DIRECT_FABLE, enqueueAnalysis } from "../jobs";
 import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claims";
+import { caseDetail, caseSummaries } from "./cases";
+import { estimateDiscovery } from "../adjudicate/estimateDiscovery";
 import { candidateCoverage, compareFindings, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
@@ -305,6 +307,19 @@ type AttributionCheck = { level: string; codeRule?: string; disagreement?: strin
 export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; boss: PgBoss }): Router {
   const router = Router();
 
+  // What checking two sessions is expected to cost, before anything is sent: the prompt the check
+  // would send, sized from measured rates. Nothing is reserved or sent.
+  router.get("/cases/:id/estimate", async (req, res) => {
+    const caseId = Id.safeParse(req.params.id);
+    const q = z.object({ a: Id, b: Id }).safeParse(req.query);
+    if (!caseId.success || !q.success) return res.status(400).json({ error: "The case ID and both deposition IDs (a, b) must be positive numbers." });
+    const docs = await db.select().from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, [q.data.a, q.data.b])));
+    if (docs.length !== 2) return res.status(404).json({ error: "Both depositions must belong to this case." });
+    if (docs[0].witnessId !== docs[1].witnessId) return res.status(400).json({ error: "Both depositions must be of the same witness." });
+    const estimate = await estimateDiscovery(db, { witnessId: docs[0].witnessId, depositionA: docs[0].id, depositionB: docs[1].id });
+    return res.json({ estimate: { ...estimate, budgetUsd: DEFAULT_DIRECT_BUDGET_USD } });
+  });
+
   router.post("/cases/:id/analyses", async (req, res) => {
     const caseId = Id.safeParse(req.params.id);
     if (!caseId.success) return res.status(400).json({ error: "The case ID must be a positive number." });
@@ -347,6 +362,23 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     if (!caseId.success) return res.status(400).json({ error: "The case ID must be a positive number." });
     const ids = await db.select({ id: analyses.id }).from(analyses).where(eq(analyses.caseId, caseId.data)).orderBy(desc(analyses.id));
     return res.json({ analyses: await Promise.all(ids.map((r) => analysisView(db, r.id))) });
+  });
+
+  // Everything the cross-case screens (Overview, Depositions, Findings, Analyses) show, in one
+  // response, so the browser doesn't fetch every case and analysis on its own. Findings come from
+  // finished analyses. shortcut: built per case and per analysis in-process; replace with set-based
+  // queries if a workspace grows past a few hundred analyses.
+  router.get("/workspace", async (_req, res) => {
+    const summaries = await caseSummaries(db, res.locals.user?.orgId);
+    const details = (await Promise.all(summaries.map((c) => caseDetail(db, c.id)))).filter((d) => d !== null);
+    const ids = details.flatMap((d) => d.analyses.map((a) => a.id));
+    const views = (await Promise.all(ids.map((id) => analysisView(db, id)))).filter((v) => v !== null);
+    const caseName = new Map(details.map((d) => [d.case.id, d.case.name]));
+    const findings = (await Promise.all(views.filter((v) => v.findings.total > 0).map(async (v) => {
+      const { groups } = await analysisFindings(db, v.id);
+      return groups.flatMap((g) => g.findings.map((f) => ({ ...f, analysisId: v.id, caseName: caseName.get(v.caseId) ?? "Unknown case" })));
+    }))).flat();
+    return res.json({ cases: summaries, details, analyses: views.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()), findings });
   });
 
   router.get("/analyses/:id", async (req, res) => {

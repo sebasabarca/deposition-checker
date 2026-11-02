@@ -1,8 +1,9 @@
 // One case: its depositions by witness, a check of two sessions of one witness, and its analyses.
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, FileUp, X } from "lucide-react";
-import { CHECK_ESTIMATE, CheckAgain, useStartCheck } from "../components/CheckAgain";
+import { ArrowRight, FileText, FileUp, X } from "lucide-react";
+import { CheckAgain, estimateText, useEstimate, useStartCheck } from "../components/CheckAgain";
+import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Empty, Loading, PageHeader, rowClass, tdClass, thClass } from "../components/ui";
 import { api } from "../lib/api";
@@ -43,7 +44,7 @@ export function CasePage({ id }: { id: number }) {
         above={<a href={href.cases()} className="mb-1 inline-block text-sm text-muted hover:text-ink">Cases</a>}
         title={detail.case.name}
         description={summary}
-        actions={<Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button>}
+        actions={<><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
       />
 
       {detail.depositions.length === 0 ? (
@@ -91,6 +92,17 @@ export function CasePage({ id }: { id: number }) {
         )}
       </Card>
 
+      <DangerZone
+        what="case"
+        name={detail.case.name}
+        typeToConfirm
+        consequence={`Deletes the case, its ${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"} and ${analyses.length} ${analyses.length === 1 ? "analysis" : "analyses"}, with every finding, decision and note. Cost records are kept.`}
+        onDelete={async () => {
+          await api.deleteCase(id);
+          window.location.hash = href.cases();
+        }}
+      />
+
       {selected.length > 0 && <CompareBar detail={detail} selected={selected} onClear={() => setSelected([])} />}
     </>
   );
@@ -126,6 +138,7 @@ function SessionRow({ d, witness, selected, onToggle, onRetry }: { d: Deposition
 function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selected: number[]; onClear: () => void }) {
   const { start, error, busy } = useStartCheck(detail.case.id);
   const state = checkState(selected, detail.depositions, detail.analyses);
+  const estimate = useEstimate(detail.case.id, state.kind === "new" ? state.a : null, state.kind === "new" ? state.b : null);
   const message = { pick: "Select one more session of the same witness.", too_many: "Select exactly two sessions. An analysis compares two.", different_witness: "These are different witnesses. An analysis compares two sessions of one witness.", not_ready: "Both sessions must finish reading first." };
   const pair = () => {
     const [a, b] = selected.map((s) => detail.depositions.find((d) => d.id === s)!).sort((x, y) => (x.takenOn ?? "").localeCompare(y.takenOn ?? ""));
@@ -141,7 +154,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
             <>
               <p className="font-semibold">{pair()}</p>
               <p className="text-sm text-navy-ink">
-                {state.kind === "new" && `${CHECK_ESTIMATE}. Nothing is charged until you start.`}
+                {state.kind === "new" && `${estimateText(estimate)}. Nothing is charged until you start.`}
                 {state.kind === "running" && "These sessions are being checked now."}
                 {state.kind === "done" && `Already checked on ${formatDate(state.report.createdAt)}.`}
               </p>
@@ -151,7 +164,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
         </div>
         <div className="flex flex-none flex-wrap items-center gap-2">
           <button type="button" onClick={onClear} className="flex h-8 items-center gap-1 rounded-md px-2.5 text-sm text-navy-ink hover:bg-navy-2 hover:text-white"><X aria-hidden className="size-4" />Clear</button>
-          {state.kind === "new" && <button type="button" disabled={busy} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : "Check these sessions"}</button>}
+          {state.kind === "new" && <button type="button" disabled={busy || estimate?.fits === false} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : "Check these sessions"}</button>}
           {state.kind === "running" && <a href={href.analysis(state.report.id)} className={buttonClass("secondary", "ring-0!")}>View progress</a>}
           {state.kind === "done" && (
             <>
