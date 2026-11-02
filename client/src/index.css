@@ -1,117 +1,122 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/public-sans";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource/courier-prime/400.css";
+@import "@fontsource/courier-prime/700.css";
 
-/* Tokens from the approved design (design-reference/design.html). Only the ones in use. */
+/* Veridict. Navy from the logo for the sidebar and the one primary action; a grey canvas with
+   white sheets; testimony set like a transcript page with the cited lines in highlighter yellow.
+   Three faces, one job each: Public Sans for the interface, Source Serif for titles, Courier
+   Prime for testimony. */
 @theme {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Public Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", Georgia, serif;
+  --font-mono: "Courier Prime", "Courier New", monospace;
 
-  --color-primary-container: #0e1c2f;
-  --color-on-primary-container: #8d9ab2; /* lighter than the reference's #77849c: AA on navy */
-  --color-primary-fixed-dim: #bac7e1;
-  --color-surface: #faf8ff;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f2f3ff;
-  --color-surface-container: #eaedff;
-  --color-surface-container-high: #e2e7ff;
-  --color-surface-container-highest: #dae2fd;
-  --color-on-surface: #131b2e;
-  --color-on-surface-variant: #44474c;
-  --color-outline: #66686e; /* darker than the reference's #75777d: AA on white */
-  --color-outline-variant: #c5c6cd;
-  --color-secondary: #0071e3;
-  --color-secondary-container: #0062c4;
-  --color-secondary-fixed: #dce1ff;
-  --color-on-secondary-fixed: #001551;
-  --color-success: #1e7a3c;
-  --color-success-container: #dcf5e3;
-  --color-on-success-container: #0c4a22;
-  --color-warning-container: #fef3c7;
-  --color-on-warning-container: #7a4a06;
-  --color-error: #ba1a1a;
-  --color-error-container: #ffdad6;
-  --color-on-error-container: #93000a;
+  --color-navy: #13213a;
+  --color-navy-2: #1d2d4a;
+  --color-navy-3: #2a3c5e;
+  --color-navy-ink: #b9c4d6; /* secondary text on navy, 8:1 */
+  --color-slate: #5b7495;
 
-  --spacing-space-xs: 0.25rem;
-  --spacing-space-sm: 0.5rem;
-  --spacing-space-md: 0.875rem;
-  --spacing-space-lg: 1.25rem;
-  --spacing-space-xl: 2rem;
+  --color-canvas: #f2f3f5;
+  --color-sheet: #ffffff;
+  --color-well: #f7f8fa;
+  --color-hover: #f4f6f9;
+  --color-line: #e1e4e9;
+  --color-rule: #edeff2;
+  --color-control: #c9ced7;
 
-  --text-label-sm: 11px;
-  --text-label-sm--line-height: 14px;
-  --text-label-sm--letter-spacing: 0.01em;
-  --text-label-sm--font-weight: 500;
-  --text-label-md: 12px;
-  --text-label-md--line-height: 16px;
-  --text-label-md--letter-spacing: 0.02em;
-  --text-label-md--font-weight: 600;
-  --text-body-sm: 13px;
-  --text-body-sm--line-height: 18px;
-  --text-body-md: 14px;
-  --text-body-md--line-height: 20px;
-  --text-headline-md: 16px;
-  --text-headline-md--line-height: 24px;
-  --text-headline-md--font-weight: 600;
-  --text-headline-lg: 20px;
-  --text-headline-lg--line-height: 28px;
-  --text-headline-lg--letter-spacing: -0.015em;
-  --text-headline-lg--font-weight: 600;
-  --text-headline-xl: 30px;
-  --text-headline-xl--line-height: 38px;
-  --text-headline-xl--letter-spacing: -0.025em;
-  --text-headline-xl--font-weight: 700;
-  --text-stat-metric: 28px;
-  --text-stat-metric--line-height: 32px;
-  --text-stat-metric--letter-spacing: -0.02em;
-  --text-stat-metric--font-weight: 700;
+  --color-ink: #151b26;
+  --color-muted: #4f5866;
+  --color-faint: #6a7280;
+
+  --color-mark: #fbe7a1; /* the highlighter */
+  --color-mark-ink: #5a4500;
+  --color-margin: #e9b8b8; /* the pleading paper's margin rule */
+
+  --color-conflict: #9b2626;
+  --color-conflict-bg: #fbecec;
+  --color-context: #7d5200;
+  --color-context-bg: #fcf3dd;
+  --color-ok: #1f6b45;
+  --color-ok-bg: #e4f3ea;
+  --color-info: #2c4466;
+  --color-info-bg: #e9eef5;
+
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-lg: 20px;
+  --text-lg--line-height: 26px;
+  --text-xl: 26px;
+  --text-xl--line-height: 32px;
 }
 
 @layer base {
+  html {
+    background: var(--color-canvas);
+    scrollbar-color: var(--color-control) transparent;
+  }
   body {
     min-height: 100vh;
-    background:
-      radial-gradient(at 0% 0%, #e0eaff 0, transparent 50%),
-      radial-gradient(at 100% 0%, #d8e5ff 0, transparent 50%),
-      radial-gradient(at 50% 100%, #eff5ff 0, transparent 50%),
-      #edf2fb;
-    background-attachment: fixed;
-    color: var(--color-on-surface);
+    background: var(--color-canvas);
+    color: var(--color-ink);
     font-family: var(--font-sans);
-    font-size: var(--text-body-md);
-    line-height: var(--text-body-md--line-height);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    font-feature-settings: "tnum" 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
   ::selection {
-    background: var(--color-secondary-fixed);
-    color: var(--color-on-secondary-fixed);
+    background: var(--color-mark);
+    color: var(--color-ink);
   }
   :focus-visible {
-    outline: 2px solid var(--color-secondary);
+    outline: 2px solid var(--color-slate);
     outline-offset: 2px;
   }
+  input,
+  textarea,
+  select {
+    caret-color: var(--color-navy);
+  }
   dialog::backdrop {
-    background: rgb(14 28 47 / 0.5);
+    background: rgb(19 33 58 / 0.55);
+  }
+  dialog[open] {
+    animation: rise 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 
-/* Frosted surfaces hold navigation and summaries. Testimony always sits on a solid one, because
-   a lawyer reads every word of it. */
-@utility glass {
-  background: rgb(255 255 255 / 0.68);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgb(255 255 255 / 0.85);
-  box-shadow: 0 8px 32px 0 rgb(31 38 135 / 0.07), inset 0 1px 1px 0 rgb(255 255 255 / 0.9);
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }
 
-@media (prefers-reduced-transparency: reduce) {
-  .glass {
-    background: #fff;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
+/* A transcript page: line numbers in their own column; each row draws the pleading paper's double
+   margin rule on its text, so the rule runs the length of the lines. */
+@utility transcript {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 24px;
+  background: var(--color-sheet);
 }
 
 @media print {
+  html,
   body {
     background: #fff;
   }

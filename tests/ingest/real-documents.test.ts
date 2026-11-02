@@ -154,7 +154,7 @@ describe.skipIf(!gates.every((g) => existsSync(`${RAW}/gates/${g.file}`)))("Gate
 
 describe("unreadable files", () => {
   it("reports a file that isn't a PDF as unsupported instead of throwing", async () => {
-    const result = await readDeposition(new TextEncoder().encode("this is not a PDF"));
+    const result = await readDeposition(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0xfe])); // text would be read as a text transcript
     expect(result.pdf).toBeNull();
     expect(result.validation.status).toBe("unsupported");
     expect(result.validation.reasons[0]).toMatch(/^the file could not be read as a PDF/);

@@ -245,3 +245,6 @@ export type FindingDetail = {
   a: EvidenceSide;
   b: EvidenceSide;
 };
+
+export type TranscriptLine = { id: number; page: number; lineNo: number; pdfPage: number; speaker: string; text: string; ocrConfidence: number | null };
+export type DepositionLines = { page: number | null; pages: number[]; lines: TranscriptLine[]; hits: TranscriptLine[]; moreHits: boolean };

@@ -1,20 +1,19 @@
-// Home: every case, most recently active first, with what it needs next.
+// Every case, most recently active first, with what each needs next.
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ChevronRight, Plus, Search } from "lucide-react";
-import { Crumbs } from "../components/Shell";
-import { Alert, Badge, Button, Card, Dialog, Empty, Field, inputClass, Loading, PageHeader, type Tone } from "../components/ui";
+import { Plus } from "lucide-react";
+import { Alert, Badge, Button, Card, cx, Dialog, Empty, Field, inputClass, Loading, PageHeader, rowClass, Search, tdClass, thClass, type Tone } from "../components/ui";
 import { api } from "../lib/api";
-import { formatDate } from "../lib/labels";
+import { relativeTime } from "../lib/insights";
 import { href, usePoll } from "../lib/router";
 import type { CaseSummary } from "../types";
 
 function statusOf(c: CaseSummary): { label: string; tone: Tone } {
-  if (c.checking) return { label: "Checking…", tone: "active" };
-  if (c.needsReview > 0) return { label: `${c.needsReview} ${c.needsReview === 1 ? "finding needs" : "findings need"} review`, tone: "contradiction" };
+  if (c.checking) return { label: "Checking", tone: "active" };
+  if (c.needsReview > 0) return { label: `${c.needsReview} to decide`, tone: "contradiction" };
   if (c.depositions === 0) return { label: "No depositions yet", tone: "neutral" };
-  if (c.reports === 0) return { label: "Ready to check", tone: "good" };
-  return { label: "All reviewed", tone: "good" };
+  if (c.reports === 0) return { label: "Ready to check", tone: "neutral" };
+  return { label: "All decided", tone: "good" };
 }
 
 export function CasesPage() {
@@ -31,54 +30,42 @@ export function CasesPage() {
     const term = q.trim().toLowerCase();
     return (cases ?? []).filter((c) => !term || [c.name, ...c.witnessNames].some((s) => s.toLowerCase().includes(term)));
   }, [cases, q]);
+  const now = Date.now();
 
   return (
     <>
-      <Crumbs items={[{ label: "Cases" }]} />
-      <PageHeader title="Cases" actions={<Button className="h-10" onClick={() => setCreating(true)}><Plus aria-hidden className="size-[18px]" />New case</Button>} />
+      <PageHeader title="Cases" description={cases ? `${cases.length} ${cases.length === 1 ? "case" : "cases"}, most recently active first.` : undefined} actions={<Button onClick={() => setCreating(true)}><Plus aria-hidden className="size-4" />New case</Button>} />
       {error && <Alert title="Your cases couldn't be loaded">{error}</Alert>}
       {!cases && !error && <Loading />}
-      {cases?.length === 0 && (
-        <Empty title="No cases yet">
-          Create a case to upload depositions.
-          <div className="mt-space-md"><Button onClick={() => setCreating(true)}>New case</Button></div>
-        </Empty>
-      )}
+      {cases?.length === 0 && <Empty title="No cases yet" action={<Button onClick={() => setCreating(true)}>New case</Button>}>A case holds the depositions of one matter. Create one, then add its depositions.</Empty>}
       {cases && cases.length > 0 && (
-        <>
-          <Card className="p-1.5">
-            <div className="relative">
-              <Search aria-hidden className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-on-surface-variant" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search cases or witnesses" placeholder="Search cases or witnesses" className="h-10 w-full rounded-xl bg-white/60 pr-4 pl-10 text-body-md" />
+        <Card className="overflow-hidden">
+          <div className="border-b border-rule px-5 py-3"><Search value={q} onChange={setQ} label="Search cases or witnesses" className="max-w-sm" /></div>
+          {shown.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No case or witness matches “{q}”.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[46rem] text-sm">
+                <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>Analyses</th><th className={thClass}>Next</th><th className={cx(thClass, "text-right")}>Last activity</th></tr></thead>
+                <tbody>
+                  {shown.map((c) => {
+                    const s = statusOf(c);
+                    return (
+                      <tr key={c.id} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.case(c.id))}>
+                        <td className={tdClass}><a href={href.case(c.id)} className="font-semibold hover:underline">{c.name}</a></td>
+                        <td className={cx(tdClass, "text-muted")}>{c.witnessNames.join(", ") || "–"}</td>
+                        <td className={cx(tdClass, "text-right tabular-nums")}>{c.depositions}</td>
+                        <td className={cx(tdClass, "text-right tabular-nums")}>{c.reports}</td>
+                        <td className={tdClass}><Badge tone={s.tone} dot>{s.label}</Badge></td>
+                        <td className={cx(tdClass, "text-right text-muted tabular-nums")}>{relativeTime(c.lastActivity, now)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </Card>
-          {shown.length === 0 ? <Empty title="No cases match this search" /> : (
-            <ul className="space-y-space-sm">
-              {shown.map((c) => {
-                const s = statusOf(c);
-                return (
-                  <li key={c.id}>
-                    <a href={href.case(c.id)} className="glass group flex flex-col justify-between gap-3 rounded-2xl p-space-lg transition-colors hover:bg-white/85 lg:flex-row lg:items-center">
-                      <span className="min-w-0">
-                        <span className="block text-headline-md group-hover:text-secondary">{c.name}</span>
-                        <span className="mt-0.5 block text-body-sm text-on-surface-variant">
-                          {c.witnessNames.length ? c.witnessNames.join(", ") : "No witnesses yet"} · {c.depositions} {c.depositions === 1 ? "deposition" : "depositions"}
-                        </span>
-                      </span>
-                      <span className="flex flex-none items-center justify-between gap-5">
-                        <Badge tone={s.tone} dot>{s.label}</Badge>
-                        <span className="text-label-sm text-on-surface-variant tabular-nums">{formatDate(c.lastActivity)}</span>
-                        <ChevronRight aria-hidden className="size-5 text-on-surface-variant" />
-                      </span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
           )}
-        </>
+        </Card>
       )}
-      <Dialog open={creating} onClose={() => setCreating(false)} title="New case"><NewCase onCancel={() => setCreating(false)} /></Dialog>
+      <Dialog open={creating} onClose={() => setCreating(false)} title="New case" description="A case holds the depositions of one matter."><NewCase onCancel={() => setCreating(false)} /></Dialog>
     </>
   );
 }
@@ -99,11 +86,13 @@ function NewCase({ onCancel }: { onCancel: () => void }) {
     }
   };
   return (
-    <form onSubmit={submit} className="space-y-4 p-space-lg">
-      <Field label="Case name"><input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} autoFocus placeholder="Webb v. Harlow" /></Field>
-      {error && <Alert>{error}</Alert>}
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+    <form onSubmit={submit}>
+      <div className="space-y-4 px-6 py-5">
+        <Field label="Case name" htmlFor="case-name"><input id="case-name" className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} autoFocus placeholder="Webb v. Harlow Logistics" /></Field>
+        {error && <Alert>{error}</Alert>}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-rule px-6 py-3.5">
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create case"}</Button>
       </div>
     </form>

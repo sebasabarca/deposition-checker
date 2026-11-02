@@ -9,7 +9,8 @@ import { inferPageNumbers, ocrDocument, SCANNED_25_V1, type OcrReader } from "./
 import { validateDeposition, type Validation } from "./validate";
 import type { Database } from "../db/client";
 import { saveDeposition, type SaveResult } from "./store";
-import { storeUpload, UPLOADS_DIR } from "./uploads";
+import { isPdf, storeUpload, UPLOADS_DIR } from "./uploads";
+import { isText, readText } from "./text";
 import { timed, timedSync } from "../timing";
 
 export { ELLISON_DOJ_V1, PARSER_VERSION };
@@ -28,9 +29,11 @@ export {
 } from "./store";
 export { inferPageNumbers, LOW_WORD_CONFIDENCE, MAX_OCR_PAGES, ocrDocument, parseTsv, readOcrPage, SCANNED_25_V1, type OcrPage, type OcrReader, type OcrResult, type OcrWord } from "./ocr";
 export { isPdf, readUpload, storeUpload, UPLOADS_DIR } from "./uploads";
+export { isText, readTextPages, TEXT_NUMBERED_V1, TEXT_UNNUMBERED_V1, UNNUMBERED_PAGE } from "./text";
 
 export type DepositionRead = {
   parserVersion: string;
+  format?: "pdf" | "text"; // absent means pdf
   validation: Validation;
   pdf: ExtractedPdf | null; // null when the file could not be opened as a PDF
   // Built only for a ready deposition, so pages that failed validation never produce evidence.
@@ -63,6 +66,7 @@ async function readScanned(pdf: ExtractedPdf, data: Uint8Array, ocr: OcrReader, 
 
 export async function readDeposition(data: Uint8Array, layout: LayoutProfile = ELLISON_DOJ_V1, ocr: OcrReader = ocrDocument, witnessName?: string): Promise<DepositionRead> {
   const witnessSurname = witnessName ? surnameOf(witnessName) : undefined;
+  if (!isPdf(data) && isText(data)) return { parserVersion: PARSER_VERSION, format: "text", ...timedSync("ingest.text_parse", () => readText(data, witnessSurname)) };
   let pdf: ExtractedPdf;
   try {
     pdf = await timed("ingest.pdf_parse", () => extractPdf(data, layout));

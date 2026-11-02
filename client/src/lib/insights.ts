@@ -48,7 +48,7 @@ const citationDate = (iso: string | null | undefined) => {
 };
 
 export function pinpointCitation(a: Pick<EvidenceSide, "range" | "deposition" | "lines">, b: Pick<EvidenceSide, "range" | "deposition" | "lines">) {
-  const one = (s: typeof a) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${s.range ?? "(no page:line reference)"} (${citationDate(s.deposition.takenOn) ?? "date not stated"})${citesInferredPage(s) ? " [page number inferred; verify against the scan]" : ""}`;
+  const one = (s: typeof a) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${citationDate(s.deposition.takenOn) ?? "date not stated"})${citesInferredPage(s) ? " [page number inferred; verify against the scan]" : ""}`;
   return `${one(a)}; compare ${one(b)}.`;
 }
 
@@ -105,3 +105,7 @@ export function pairsChecked(sessions: readonly number[], reports: readonly Pick
   const checked = new Set(reports.filter((r) => r.status === "completed" && sessions.includes(r.depositionA) && sessions.includes(r.depositionB)).map((r) => key(r.depositionA, r.depositionB)));
   return { checked: checked.size, total };
 }
+
+// Text without page numbers is stored on page 0 and cited by its line: "0:12–0:14" reads "Lines 12–14".
+export const displayRef = <T extends string | null>(ref: T): T =>
+  (ref === null ? ref : ref.replace(/\b0:0*(\d+)\s*[–-]\s*0:0*(\d+)/g, "Lines $1–$2").replace(/\b0:0*(\d+)/g, "Line $1")) as T;

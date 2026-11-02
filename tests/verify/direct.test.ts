@@ -43,6 +43,13 @@ describe("direct finding verification", () => {
     expect(c).toMatchObject({ evidenceStatus: "verified", lane: "contradictions", a: { quote: "exact", speaker: "witness", level: "clear" } });
   });
 
+  it("holds a finding from unnumbered text at needs context, however clear it is", () => {
+    const text: StoredSession = { label: "B", depositionId: 3, lines: [line(0, 240, "referencing what happened in the Presidential SUV on January 6th.")] };
+    const c = verifyDirectFinding(finding({ citation_b: "0:240" }), [june, text], "Cassidy Hutchinson");
+    expect(c).toMatchObject({ evidenceStatus: "verified", lane: "needs_context" });
+    expect(c.reasons.join(" ")).toMatch(/not an official citation/);
+  });
+
   it("rejects an invented quotation, and never repairs it", () => {
     const c = verify({ exact_excerpt_b: "the Presidential motorcade was stopped" });
     expect(c.evidenceStatus).toBe("unsupported");

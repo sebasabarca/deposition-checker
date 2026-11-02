@@ -11,6 +11,7 @@ import type { DiscoveryFinding } from "../adjudicate/discoverSchema";
 import { readAnswer, readRecollection } from "./answers";
 import { normalize, quoteMatchScore } from "./quotes";
 import { findHedge } from "./text";
+import { UNNUMBERED_PAGE } from "../ingest/text";
 
 export const LOW_OCR_LINE_CONFIDENCE = 85; // the same line the client warns at
 export const APPROXIMATE_QUOTE = 0.6;
@@ -149,6 +150,7 @@ export function laneOf(finding: Pick<DiscoveryFinding, "classification" | "compa
   if (sides.some((s) => s.level === "uncertain")) doubts.push("Code couldn't establish who said a cited statement.");
   if (sides.some((s) => s.noRecall)) doubts.push("A cited statement is a lack of recollection, not a denial.");
   if (sides.some((s) => s.ocr.lowLines.length > 0)) doubts.push("A cited line was read by OCR with low confidence. Check the scan.");
+  if (sides.some((s) => parseCitation(s.citation)?.first[0] === UNNUMBERED_PAGE)) doubts.push("A cited passage is from a text without page and line numbers, so its reference is not an official citation.");
   if (finding.classification === "compatible") return doubts.length === 0 || (doubts.length === 1 && finding.comparable !== "yes") ? { lane: "compatible", reasons: [] } : { lane: "needs_context", reasons: doubts };
   return doubts.length > 0 ? { lane: "needs_context", reasons: doubts } : { lane: "contradictions", reasons: [] };
 }

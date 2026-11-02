@@ -92,14 +92,19 @@ describe.skipIf(!TEST_DATABASE_URL)("deposition endpoints (Postgres)", () => {
       expect(await jobsFor(db, INGEST_QUEUE, bodies[0].deposition.id)).toHaveLength(1);
     });
 
-    it("checks the bytes, not the Content-Type: a non-PDF is refused even when labelled as one", async () => {
-      const res = await upload("just some text", undefined, "application/pdf");
+    it("checks the bytes, not the Content-Type: binary that isn't a PDF is refused even when labelled as one", async () => {
+      const res = await upload(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0xff, 0xfe]), undefined, "application/pdf");
       expect(res.status).toBe(415);
-      expect(await res.json()).toEqual({ error: "The file is not a PDF." });
-      const json = await upload(JSON.stringify({ not: "a pdf" }), undefined, "application/json");
-      expect(json.status).toBe(415);
+      expect(await res.json()).toEqual({ error: "The file is not a PDF or plain text." });
       expect(await upload(pdf("unlabelled"), undefined, "application/octet-stream").then((r) => r.status)).toBe(202);
       expect(await db.$count(depositions)).toBe(1);
+    });
+
+    it("accepts plain text, whatever it is labelled, as a text deposition", async () => {
+      const res = await upload(" 1   Q.  Where were you?\n 2   A.  Home.", undefined, "text/plain");
+      expect(res.status).toBe(202);
+      const [row] = await db.select({ format: depositions.sourceFormat }).from(depositions);
+      expect(row.format).toBe("text");
     });
 
     it("refuses an empty body, a missing witness, a bad date, a bad case ID and an unknown case", async () => {

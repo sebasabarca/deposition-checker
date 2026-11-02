@@ -108,3 +108,13 @@ describe("the new check panel", () => {
     expect(pairsChecked([1, 2, 5], [report(8, 1, 2, "completed"), report(9, 2, 1, "completed"), report(10, 1, 5, "failed")])).toEqual({ checked: 1, total: 3 });
   });
 });
+
+describe("displayRef", () => {
+  it("shows unnumbered text by line and leaves page:line alone", async () => {
+    const { displayRef } = await import("../../client/src/lib/insights");
+    expect(displayRef("0:12–0:14")).toBe("Lines 12–14");
+    expect(displayRef("0:240")).toBe("Line 240");
+    expect(displayRef("10:07–10:09")).toBe("10:07–10:09");
+    expect(displayRef(null)).toBe(null);
+  });
+});

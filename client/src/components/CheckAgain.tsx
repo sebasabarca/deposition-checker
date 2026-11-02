@@ -1,6 +1,7 @@
 // Starting a check, and the confirmation before paying for the same comparison again.
 
 import { useState } from "react";
+import { RotateCcw } from "lucide-react";
 import { api } from "../lib/api";
 import { href } from "../lib/router";
 import { Alert, Button, Dialog } from "./ui";
@@ -30,15 +31,15 @@ export function CheckAgain({ caseId, a, b, variant = "secondary" }: { caseId: nu
   const { start, error, busy } = useStartCheck(caseId);
   return (
     <>
-      <Button variant={variant} className="h-10" onClick={() => setOpen(true)}>Check again</Button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="Check these depositions again?">
-        <div className="space-y-4 p-space-lg">
-          <p className="text-body-sm">This runs a new paid check of about $1–2. Your earlier report stays. A new check may find different results. Decisions you've made carry over wherever a finding cites the same passages.</p>
+      <Button variant={variant} onClick={() => setOpen(true)}><RotateCcw aria-hidden className="size-3.5" />Check again</Button>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Check these sessions again?">
+        <div className="space-y-4 px-6 py-5">
+          <p className="text-base leading-6">This runs a new paid check, usually about $1–2. The earlier analysis stays, and a new check may find different results. Your decisions carry over wherever a finding cites the same passages.</p>
           {error && <Alert>{error}</Alert>}
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button disabled={busy} onClick={() => void start(a, b)}>{busy ? "Starting…" : "Check again"}</Button>
-          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-rule px-6 py-3.5">
+          <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button disabled={busy} onClick={() => void start(a, b)}>{busy ? "Starting…" : "Start paid check"}</Button>
         </div>
       </Dialog>
     </>

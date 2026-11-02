@@ -130,7 +130,7 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
       takenOn: input.takenOn,
       fileSha256: input.fileSha256,
       storageKey: input.storageKey,
-      sourceFormat: "pdf" as const,
+      sourceFormat: read.format ?? "pdf",
       pageCount: validation.pageCount,
       needsOcrPages: validation.needsOcrPages,
       blankPages: validation.blankPages,

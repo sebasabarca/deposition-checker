@@ -28,9 +28,10 @@ Breaking changes get a new `docs/api-contract-v<n>.md`. Adding a field does not.
 | Case dashboard | `POST /cases` `{ name, witness? }` | 201 `CaseDetail` | 400 |
 | Case and depositions | `GET /cases/:id` | 200 `CaseDetail` | 400, 404 |
 | Depositions | `POST /cases/:id/witnesses` `{ name }` | 201 `{ witness: { id, name } }` | 400, 404, 409 duplicate |
-| Depositions | `POST /cases/:caseId/depositions?witness=&takenOn=&filename=` with the PDF as the raw body | 202 `{ created: true, deposition }`; 200 `{ created: false, deposition }` when the file is already in the case | 400, 404, 413 over 50 MB, 415 not a PDF |
+| Depositions | `POST /cases/:caseId/depositions?witness=&takenOn=&filename=` with the PDF or UTF-8 text (a .txt transcript or pasted text) as the raw body; the bytes decide, not the Content-Type | 202 `{ created: true, deposition }`; 200 `{ created: false, deposition }` when the file is already in the case | 400, 404, 413 over 50 MB, 415 neither a PDF nor plain text |
 | Depositions | `GET /depositions/:id` | 200 `{ deposition: DepositionView }` | 400, 404 |
-| Depositions | `GET /depositions/:id/pdf` (open at `#page=<pdfPage>`) | 200 the original PDF, inline | 400, 404 |
+| Depositions | `GET /depositions/:id/lines?page=&q=` | 200 `{ page, pages, lines, hits, moreHits }`: one printed page of stored lines (the first when `page` is absent or unknown) and up to 200 lines containing `q` | 400, 404 |
+| Depositions | `GET /depositions/:id/pdf` (open at `#page=<pdfPage>`) | 200 the original file, inline: the PDF, or `text/plain` for a text deposition | 400, 404 |
 | Depositions | `POST /depositions/:id/retry` | 202 `{ deposition }` | 404, 409 unless `failed` |
 | Analysis | `POST /cases/:id/analyses` | 202 `{ created: true, analysis }`; 200 `{ created: false, analysis }` when an active one exists for the pair and mode | 400, 404 |
 | Analysis | `GET /cases/:id/analyses` | 200 `{ analyses: AnalysisView[] }` | 400 |
@@ -40,7 +41,7 @@ Breaking changes get a new `docs/api-contract-v<n>.md`. Adding a field does not.
 | Findings | `GET /analyses/:id/findings` | 200 `FindingGroups` | 400, 404 |
 | Review | `GET /findings/:id` | 200 `{ finding: FindingDetail }` | 400, 404 |
 
-**Not built:** saving a review decision (`POST /findings/:id/review` in DESIGN.md), `GET /cases/:id/findings`, server-side filters and pagination, `GET /depositions/:id/lines`, `GET /cases/:id/estimate`. Show `reviewState` read-only until the review endpoint exists.
+**Not built:** saving a review decision (`POST /findings/:id/review` in DESIGN.md), `GET /cases/:id/findings`, server-side filters and pagination, `GET /cases/:id/estimate`. Show `reviewState` read-only until the review endpoint exists.
 
 **Filters:** `GET /analyses/:id/findings` returns every finding, so filter in the client. Filterable fields are `classification`, `band`, `priority`, `evidenceStatus`, `reviewState`, `source` and `group`.
 

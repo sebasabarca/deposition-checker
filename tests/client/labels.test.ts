@@ -7,13 +7,18 @@ import { href, parseRoute } from "../../client/src/lib/router";
 
 describe("client routes", () => {
   it("parses every route and round-trips the links it makes", () => {
-    expect(parseRoute("")).toEqual({ name: "cases" });
-    expect(parseRoute("#/")).toEqual({ name: "cases" });
+    expect(parseRoute("")).toEqual({ name: "overview" });
+    expect(parseRoute(href.overview())).toEqual({ name: "overview" });
     expect(parseRoute(href.cases())).toEqual({ name: "cases" });
-    expect(parseRoute("#/cases")).toEqual({ name: "cases" });
-    expect(parseRoute("#/depositions")).toEqual({ name: "not_found" });
     expect(parseRoute(href.help())).toEqual({ name: "help" });
     expect(parseRoute(href.case(7))).toEqual({ name: "case", id: 7 });
+    expect(parseRoute(href.depositions())).toEqual({ name: "depositions", caseId: null });
+    expect(parseRoute(href.depositions(4))).toEqual({ name: "depositions", caseId: 4 });
+    expect(parseRoute(href.deposition(9))).toEqual({ name: "deposition", id: 9, page: null, q: "" });
+    expect(parseRoute(href.deposition(9, { page: 33, q: "limo car" }))).toEqual({ name: "deposition", id: 9, page: 33, q: "limo car" });
+    expect(parseRoute(href.deposition(9, { page: 0 }))).toEqual({ name: "deposition", id: 9, page: 0, q: "" });
+    expect(parseRoute(href.findings())).toEqual({ name: "findings" });
+    expect(parseRoute(href.analyses())).toEqual({ name: "analyses" });
     expect(parseRoute(href.analysis(3))).toEqual({ name: "analysis", id: 3, findingId: null });
     expect(parseRoute(href.analysis(3, 41))).toEqual({ name: "analysis", id: 3, findingId: 41 });
     expect(parseRoute("#/cases/abc")).toEqual({ name: "not_found" });

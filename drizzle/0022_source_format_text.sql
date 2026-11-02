@@ -1,0 +1,1 @@
+ALTER TYPE "public"."source_format" ADD VALUE 'text';

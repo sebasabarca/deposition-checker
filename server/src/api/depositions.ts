@@ -9,7 +9,7 @@ import type { Pool } from "pg";
 import { z } from "zod";
 import { withTransaction, type Database } from "../db/client";
 import { cases, depositions, exchanges, lines, witnesses } from "../db/schema";
-import { depositionLockKey, isPdf, PARSER_VERSION, readUpload, storeUpload, UPLOADS_DIR } from "../ingest";
+import { depositionLockKey, isPdf, isText, PARSER_VERSION, readUpload, storeUpload, UPLOADS_DIR } from "../ingest";
 import { enqueueIngest } from "../jobs";
 import { timed, timedSync } from "../timing";
 
@@ -45,6 +45,7 @@ export async function depositionView(db: Database, id: number) {
     witness: { id: d.witnessId, name: row.witnessName },
     takenOn: d.takenOn,
     originalFilename: d.originalFilename,
+    sourceFormat: d.sourceFormat,
     status: d.status,
     error: d.ingestError,
     ingestRun: d.ingestRun,
@@ -77,9 +78,11 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     // A body another parser already read (JSON, say) arrives as an object rather than bytes: not a PDF.
     const body: unknown = req.body;
     if (body === undefined || (Buffer.isBuffer(body) && body.length === 0)) {
-      return res.status(400).json({ error: "Send the PDF file as the request body." });
+      return res.status(400).json({ error: "Send the PDF or text file as the request body." });
     }
-    if (!Buffer.isBuffer(body) || !timedSync("upload.validate", () => isPdf(body))) return res.status(415).json({ error: "The file is not a PDF." });
+    // A PDF, or plain UTF-8 text (a .txt transcript or pasted text), which the worker reads as text.
+    const format = Buffer.isBuffer(body) ? timedSync("upload.validate", () => (isPdf(body) ? "pdf" : isText(body) ? "text" : null)) : null;
+    if (!Buffer.isBuffer(body) || !format) return res.status(415).json({ error: "The file is not a PDF or plain text." });
 
     const [kase] = await db.select({ id: cases.id }).from(cases).where(eq(cases.id, caseId.data));
     if (!kase) return res.status(404).json({ error: "Case not found." });
@@ -114,6 +117,7 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
           fileSha256,
           storageKey,
           originalFilename: query.data.filename ? (query.data.filename.split(/[\\/]/).pop() ?? null) : null,
+          sourceFormat: format,
           parserVersion: PARSER_VERSION,
           status: "processing",
         })
@@ -133,15 +137,42 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     return res.json({ deposition });
   });
 
+  // One printed page of stored lines, for reading the transcript, and the lines matching a search.
+  // The first page when none is asked for; hits are capped so a common word can't flood the reply.
+  const LinesQuery = z.object({ page: z.coerce.number().int().nonnegative().optional(), q: z.string().trim().max(200).optional() });
+  router.get("/depositions/:id/lines", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    const query = LinesQuery.safeParse(req.query);
+    if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
+    if (!query.success) return res.status(400).json({ error: "page must be a whole number and q at most 200 characters." });
+    const [exists] = await db.select({ id: depositions.id }).from(depositions).where(eq(depositions.id, id.data));
+    if (!exists) return res.status(404).json({ error: "Deposition not found." });
+    const pages = (await db.selectDistinct({ page: lines.printedPage }).from(lines).where(eq(lines.depositionId, id.data)).orderBy(lines.printedPage)).map((r) => r.page);
+    const page = query.data.page !== undefined && pages.includes(query.data.page) ? query.data.page : (pages[0] ?? null);
+    const columns = { id: lines.id, page: lines.printedPage, lineNo: lines.lineNo, pdfPage: lines.pdfPage, speaker: lines.speakerRole, text: lines.rawText, ocrConfidence: lines.ocrConfidence };
+    const pageLines = page === null ? [] : await db.select(columns).from(lines).where(and(eq(lines.depositionId, id.data), eq(lines.printedPage, page))).orderBy(lines.lineNo);
+    const term = query.data.q;
+    const HIT_LIMIT = 200;
+    const hits = term
+      ? await db
+          .select(columns)
+          .from(lines)
+          .where(and(eq(lines.depositionId, id.data), sql`${lines.rawText} ilike ${`%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`}`))
+          .orderBy(lines.printedPage, lines.lineNo)
+          .limit(HIT_LIMIT + 1)
+      : [];
+    return res.json({ page, pages, lines: pageLines, hits: hits.slice(0, HIT_LIMIT), moreHits: hits.length > HIT_LIMIT });
+  });
+
   // The original file, so a reader can check OCR text against the scan. Open at #page=<pdfPage>.
   router.get("/depositions/:id/pdf", async (req, res) => {
     const id = Id.safeParse(req.params.id);
     if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
-    const [row] = await db.select({ storageKey: depositions.storageKey }).from(depositions).where(eq(depositions.id, id.data));
+    const [row] = await db.select({ storageKey: depositions.storageKey, format: depositions.sourceFormat }).from(depositions).where(eq(depositions.id, id.data));
     if (!row) return res.status(404).json({ error: "Deposition not found." });
     const data = await readUpload(row.storageKey, uploadsDir).catch(() => null);
     if (!data) return res.status(404).json({ error: "The original file isn't available." });
-    return res.type("application/pdf").set("Content-Disposition", "inline").send(Buffer.from(data));
+    return res.type(row.format === "text" ? "text/plain; charset=utf-8" : "application/pdf").set("Content-Disposition", "inline").send(Buffer.from(data));
   });
 
   // Retry a failed deposition: back to processing as a new run, with a new job queued in the same

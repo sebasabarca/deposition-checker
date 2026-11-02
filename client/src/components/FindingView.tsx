@@ -1,52 +1,50 @@
 // The parts of one finding. Testimony is only ever the stored lines, shown verbatim with their
-// page:line; the model's words appear only under the model mark; checks are labelled as code's.
+// page:line on a transcript sheet; the model's words appear only under the model mark; checks are
+// labelled as code's.
 
 import { useState, type ReactNode } from "react";
-import { BadgeCheck, CircleAlert, FileSearch, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CircleAlert, FileSearch, ShieldCheck, TriangleAlert } from "lucide-react";
 import { api } from "../lib/api";
-import { LOW_OCR_CONFIDENCE, ocrPassage } from "../lib/insights";
+import { displayRef, LOW_OCR_CONFIDENCE, ocrPassage } from "../lib/insights";
 import { ATTRIBUTION_LEVEL, COMPONENT, DISAGREEMENT, EVIDENCE_STRENGTH_NOTE, formatDate, LOCATION, ORIGIN, SAME_EVENT, SPEAKER, VERIFICATION } from "../lib/labels";
+import { href } from "../lib/router";
 import type { EvidenceLine, EvidenceSide, FindingDetail } from "../types";
-import { Alert, Button, Card, cx, Dialog, ModelMark, OcrMark, TestimonyMark } from "./ui";
+import { Alert, Button, cx, Dialog, ModelMark, OcrMark, TestimonyMark } from "./ui";
 
-type Mark = "amber" | "red";
-
-export function Passage({ label, side, sha, conflict }: { label: string; side: EvidenceSide; sha?: string; conflict?: boolean }) {
-  const mark: Mark = conflict ? "red" : "amber";
+export function Passage({ label, side }: { label: string; side: EvidenceSide }) {
   const ocr = ocrPassage(side);
+  const page = side.lines[0] ? Number(side.lines[0].ref.split(":")[0]) : null; // 0 for unnumbered text
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
-      <header className={cx("flex flex-col gap-space-xs p-space-md", conflict ? "bg-error-container/20" : "bg-surface-container-low")}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className={cx("rounded px-2 py-0.5 text-label-sm font-semibold", conflict ? "bg-error-container text-on-error-container" : "bg-surface-container-highest")}>{label}</span>
-          <span className="text-label-sm text-on-surface-variant">{formatDate(side.deposition.takenOn)}</span>
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-sheet">
+      <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 border-b border-rule px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-xs text-faint">{label} · {formatDate(side.deposition.takenOn)}</p>
+          <h3 className="mt-0.5 font-mono text-md font-bold tracking-tight">{displayRef(side.range) ?? "No page:line reference"}</h3>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-mono text-headline-md">{side.range ?? "No page:line reference"}</h2>
-          {ocr ? <OcrMark /> : <TestimonyMark />}
-        </div>
-        <p className="text-body-sm text-on-surface-variant">Witness: {side.deposition.witness} · {side.deposition.originalFilename ?? `Deposition #${side.deposition.id}`}</p>
+        {ocr ? <OcrMark /> : <TestimonyMark />}
       </header>
-      <div className="flex-1 p-space-md"><PassageLines side={side} mark={mark} /></div>
-      <footer className="flex flex-wrap items-center justify-between gap-2 bg-surface-container-low px-space-md py-2.5 text-label-sm text-on-surface-variant">
-        <span>{ocr ? "Stored OCR text, not an exact copy of the scan." : "Verbatim from the stored transcript."}</span>
-        {sha && <span className="flex items-center gap-1 font-mono" title={`PDF SHA-256 ${sha}`}><BadgeCheck aria-hidden className="size-3.5 text-success" />PDF SHA-256 {sha.slice(0, 6)}…{sha.slice(-3)}</span>}
+      <div className="flex-1">
+        <PassageLines side={side} />
+      </div>
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-rule px-4 py-2 text-xs text-faint">
+        <span className="truncate">{side.deposition.witness} · {side.deposition.originalFilename ?? `Deposition #${side.deposition.id}`}</span>
+        {page !== null && <a href={href.deposition(side.deposition.id, { page })} className="flex-none font-medium text-info hover:underline">Read in full</a>}
       </footer>
     </section>
   );
 }
 
-export function PassageLines({ side, mark }: { side: EvidenceSide; mark: Mark }) {
+export function PassageLines({ side }: { side: EvidenceSide }) {
   return (
     <>
-      <OcrNotice side={side} mark={mark} />
-      <LineList side={side} mark={mark} />
+      <OcrNotice side={side} />
+      <LineList side={side} />
     </>
   );
 }
 
 // The warning and the scan sit with the lines themselves, so every place testimony appears gets them.
-function OcrNotice({ side, mark }: { side: EvidenceSide; mark: Mark }) {
+function OcrNotice({ side }: { side: EvidenceSide }) {
   const [open, setOpen] = useState(false);
   const ocr = ocrPassage(side);
   if (!ocr) return null;
@@ -54,25 +52,24 @@ function OcrNotice({ side, mark }: { side: EvidenceSide; mark: Mark }) {
   const low = ocr.lowLines === 1 ? "1 line is" : `${ocr.lowLines} lines are`;
   return (
     <>
-      <div className="mb-space-sm flex flex-wrap items-center justify-between gap-2 rounded-lg bg-warning-container px-space-md py-2 text-body-sm text-on-warning-container">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-context/15 bg-context-bg px-4 py-2.5 text-sm text-context">
         <p className="min-w-0 flex-1 basis-56">
-          Read from a scan by OCR, so this text may differ from the original. Check the scan before quoting it.
+          Read from a scan by OCR. Check the scan before quoting.
           {ocr.lowLines > 0 && ` ${low} below ${LOW_OCR_CONFIDENCE}% confidence.`}
-          {ocr.inferredPages.length > 0 && <strong className="block font-semibold">Page {ocr.inferredPages.join(", ")} inferred: OCR couldn't read the printed number, so verify it against the scan before citing.</strong>}
+          {ocr.inferredPages.length > 0 && <strong className="block font-semibold">Page {ocr.inferredPages.join(", ")} inferred: verify the number against the scan before citing.</strong>}
         </p>
-        <Button variant="secondary" className="h-8" onClick={() => setOpen(true)}><FileSearch aria-hidden className="size-4" />View original scan</Button>
+        <Button variant="secondary" className="h-7" onClick={() => setOpen(true)}><FileSearch aria-hidden className="size-4" />View scan</Button>
       </div>
-      <Dialog wide open={open} onClose={() => setOpen(false)} title={`Original scan of ${side.range ?? "this passage"}`}>
-        <div className="grid grid-cols-1 gap-space-md p-space-lg lg:grid-cols-2">
-          <div className="max-h-[35vh] overflow-y-auto lg:max-h-[75vh]">
-            <p className="mb-space-sm text-label-md text-on-surface-variant">OCR text</p>
-            <LineList side={side} mark={mark} />
+      <Dialog wide open={open} onClose={() => setOpen(false)} title={`Original scan of ${displayRef(side.range) ?? "this passage"}`}>
+        <div className="grid grid-cols-1 gap-5 p-6 lg:grid-cols-2">
+          <div className="max-h-[35vh] overflow-y-auto rounded-lg border border-line lg:max-h-[75vh]">
+            <LineList side={side} />
           </div>
           <div>
-            <p className="mb-space-sm text-label-md text-on-surface-variant">
-              PDF page {ocr.pages.length > 1 ? `${ocr.pages[0]}–${ocr.pages.at(-1)}` : ocr.pages[0]} · <a href={url} target="_blank" rel="noreferrer" className="text-secondary underline">Open in a new tab</a>
+            <p className="mb-2 text-sm text-muted">
+              PDF page {ocr.pages.length > 1 ? `${ocr.pages[0]}–${ocr.pages.at(-1)}` : ocr.pages[0]} · <a href={url} target="_blank" rel="noreferrer" className="font-medium text-info underline">Open in a new tab</a>
             </p>
-            <iframe src={url} title={`Original PDF of ${side.deposition.originalFilename ?? `deposition ${side.deposition.id}`}, page ${ocr.pages[0]}`} className="h-[45vh] w-full rounded-lg bg-surface-container lg:h-[75vh]" />
+            <iframe src={url} title={`Original PDF of ${side.deposition.originalFilename ?? `deposition ${side.deposition.id}`}, page ${ocr.pages[0]}`} className="h-[45vh] w-full rounded-lg border border-line bg-well lg:h-[75vh]" />
           </div>
         </div>
       </Dialog>
@@ -80,25 +77,27 @@ function OcrNotice({ side, mark }: { side: EvidenceSide; mark: Mark }) {
   );
 }
 
-function LineList({ side, mark }: { side: EvidenceSide; mark: Mark }) {
+function LineList({ side }: { side: EvidenceSide }) {
   return (
-    <div className="font-mono text-body-sm leading-relaxed">
-      <Lines lines={side.before} muted mark={mark} />
+    <div className="transcript py-3">
+      <TranscriptRows lines={side.before} muted />
       {side.gapBefore && <Gap />}
-      <Lines lines={side.lines} mark={mark} />
+      <TranscriptRows lines={side.lines} />
       {side.gapAfter && <Gap />}
-      <Lines lines={side.after} muted mark={mark} />
+      <TranscriptRows lines={side.after} muted />
     </div>
   );
 }
 
-function Lines({ lines, muted, mark }: { lines: EvidenceLine[]; muted?: boolean; mark: Mark }) {
+// One row per stored line: its page:line in the number column, the text past the margin rule, and
+// the cited lines in highlighter.
+export function TranscriptRows({ lines, muted }: { lines: (Pick<EvidenceLine, "id" | "ref" | "text" | "ocrConfidence"> & { highlighted?: boolean })[]; muted?: boolean }) {
   return (
     <ol>
       {lines.map((l) => (
-        <li key={l.id} className={cx("-mx-1 flex items-start gap-2 rounded px-1 py-0.5", l.highlighted && (mark === "red" ? "bg-error-container/60 font-semibold" : "bg-warning-container font-medium"))}>
-          <span className={cx("w-14 flex-none select-none text-right", l.highlighted ? (mark === "red" ? "font-semibold text-error" : "font-semibold text-on-warning-container") : "text-outline")}>{l.ref}</span>
-          <span className={cx("min-w-0 flex-1 break-words whitespace-pre-wrap", muted && !l.highlighted && "text-on-surface-variant")}>{l.text}</span>
+        <li key={l.id} className="grid grid-cols-[3.6rem_1fr_auto] items-start">
+          <span className={cx("pr-2.5 text-right text-[12px] select-none tabular-nums", l.highlighted ? "font-bold text-mark-ink" : "text-faint")}>{displayRef(l.ref).replace("Line ", "")}</span>
+          <span className={cx("min-w-0 border-l-[3px] border-double border-margin pr-4 pl-4 break-words whitespace-pre-wrap", l.highlighted && "bg-mark text-ink [box-decoration-break:clone]", muted && !l.highlighted && "text-muted")}>{l.text || " "}</span>
           <Confidence value={l.ocrConfidence} />
         </li>
       ))}
@@ -107,167 +106,163 @@ function Lines({ lines, muted, mark }: { lines: EvidenceLine[]; muted?: boolean;
 }
 
 function Confidence({ value }: { value: number | null }) {
-  if (value == null) return null;
-  const low = value < LOW_OCR_CONFIDENCE;
+  if (value == null || value >= LOW_OCR_CONFIDENCE) return null;
   return (
-    <span className={cx("flex w-[4.5rem] flex-none items-center justify-end gap-1 pt-0.5 font-sans whitespace-nowrap text-label-sm tabular-nums", low ? "font-semibold text-on-warning-container" : "font-normal text-on-surface-variant")}>
-      <span className="sr-only">OCR confidence</span>
-      {low && <TriangleAlert aria-hidden className="size-3" />}
-      {low && "Low "}{value}%
+    <span className="flex items-center gap-1 pr-3 font-sans text-xs whitespace-nowrap text-context tabular-nums" title="OCR confidence for this line">
+      <TriangleAlert aria-hidden className="size-3" />
+      {value}%
     </span>
   );
 }
 
-const Gap = () => <p className="py-1 text-center font-sans text-label-sm text-on-surface-variant italic">Pages omitted from the source transcript here.</p>;
+const Gap = () => <p className="py-1 pl-[4.6rem] font-sans text-xs text-faint italic">Pages omitted from the source transcript here.</p>;
 
-const Heading = ({ children }: { children: ReactNode }) => <h3 className="text-label-md text-on-surface-variant">{children}</h3>;
+const Heading = ({ children }: { children: ReactNode }) => <h3 className="text-xs font-semibold text-faint">{children}</h3>;
 
 export function ModelAssessment({ f }: { f: FindingDetail }) {
   const contradiction = f.group === "contradictions" || (f.direct === null && (f.classification === "direct" || f.classification === "inferential"));
   const a = f.assessment;
   return (
-    <Card className="flex flex-col gap-space-md p-space-lg">
+    <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-headline-lg">{contradiction ? "Why the statements may conflict" : f.classification === "false_positive" ? "Why they may be compatible" : "Assessment"}</h2>
+        <h2 className="text-md font-semibold">{contradiction ? "Why the statements may conflict" : f.classification === "false_positive" ? "Why they may be compatible" : "Assessment"}</h2>
         <ModelMark />
       </div>
-      <div className="rounded-lg bg-surface-container-low p-space-md leading-relaxed">{a.explanation}</div>
+      <p className="font-serif text-[17px] leading-7">{a.explanation}</p>
       {f.direct ? (
-        <dl className="grid grid-cols-1 gap-y-2 text-body-sm">
-          {f.direct.conflictBasis && <Term label="What the possible conflict rests on">{f.direct.conflictBasis}</Term>}
-          {f.direct.reasoning && <Term label="What the judgement rests on">{f.direct.reasoning}</Term>}
-          {f.direct.missingContext && <Term label="What's missing">{f.direct.missingContext}</Term>}
-        </dl>
+        (f.direct.conflictBasis || f.direct.reasoning || f.direct.missingContext) && (
+          <dl className="grid grid-cols-1 gap-3 border-t border-rule pt-4 text-sm">
+            {f.direct.conflictBasis && <Term label="What the possible conflict rests on">{f.direct.conflictBasis}</Term>}
+            {f.direct.reasoning && <Term label="What the judgement rests on">{f.direct.reasoning}</Term>}
+            {f.direct.missingContext && <Term label="What's missing">{f.direct.missingContext}</Term>}
+          </dl>
+        )
       ) : (
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm">
-        <Term label="Same event?">{SAME_EVENT[a.sameEvent] ?? a.sameEvent}</Term>
-        <Term label="Same time frame and circumstances?">{SAME_EVENT[a.scopeAligned]?.replace("Same event", "Yes").replace("Different events", "No").replace("Unclear whether the same event", "Unclear") ?? a.scopeAligned}</Term>
-        {contradiction && <Term label="Kind of conflict">{a.conflictBasis.replaceAll("_", " ")}</Term>}
-        {a.falsePositiveReason && <Term label="Reason it may be compatible">{a.falsePositiveReason.replaceAll("_", " ")}</Term>}
-      </dl>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-rule pt-4 text-sm">
+          <Term label="Same event?">{SAME_EVENT[a.sameEvent] ?? a.sameEvent}</Term>
+          <Term label="Same time frame and circumstances?">{SAME_EVENT[a.scopeAligned]?.replace("Same event", "Yes").replace("Different events", "No").replace("Unclear whether the same event", "Unclear") ?? a.scopeAligned}</Term>
+          {contradiction && <Term label="Kind of conflict">{a.conflictBasis.replaceAll("_", " ")}</Term>}
+          {a.falsePositiveReason && <Term label="Reason it may be compatible">{a.falsePositiveReason.replaceAll("_", " ")}</Term>}
+        </dl>
       )}
       {a.inferenceSteps.length > 0 && (
         <div>
           <Heading>Reasoning steps</Heading>
-          <ol className="mt-1 list-decimal space-y-1 pl-5 text-body-sm">{a.inferenceSteps.map((s, i) => <li key={i}>{s.statement}</li>)}</ol>
+          <ol className="mt-1.5 list-decimal space-y-1 pl-5 text-sm">{a.inferenceSteps.map((s, i) => <li key={i}>{s.statement}</li>)}</ol>
         </div>
       )}
       {!f.direct && a.unestablishedAssumptions.length > 0 && (
         <div>
           <Heading>Assumptions the testimony doesn't establish</Heading>
-          <ul className="mt-1 list-disc space-y-1 pl-5 text-body-sm">{a.unestablishedAssumptions.map((s, i) => <li key={i}>{s}</li>)}</ul>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm">{a.unestablishedAssumptions.map((s, i) => <li key={i}>{s}</li>)}</ul>
         </div>
       )}
-      {(a.alternativeExplanation || (!f.direct && (f.contextRequested || f.contextCheck))) && (
-        <div className="grid gap-space-md md:grid-cols-2">
-          {a.alternativeExplanation && (
-            <div className="rounded-lg bg-surface-container p-space-md md:col-span-1">
-              <Heading>Alternative explanation{a.alternativeSupport ? ` (the model rates it ${a.alternativeSupport})` : ""}</Heading>
-              <p className="mt-1 text-body-sm">{a.alternativeExplanation}</p>
-            </div>
-          )}
-          {!f.direct && (f.contextRequested || f.contextCheck) && (
-            <div className="rounded-lg bg-surface-container p-space-md">
-              <Heading>Context</Heading>
-              {f.contextRequested && !f.direct && <p className="mt-1 text-body-sm">The assessment says lines outside these passages could change it.</p>}
-              {f.contextCheck && <p className="mt-1 text-body-sm">Transcript check: {f.contextCheck.replace(/\.$/, "")}.</p>}
-            </div>
-          )}
+      {a.alternativeExplanation && (
+        <div className="rounded-md bg-well px-4 py-3">
+          <Heading>The innocent explanation{a.alternativeSupport ? ` (Claude rates it ${a.alternativeSupport})` : ""}</Heading>
+          <p className="mt-1 text-sm leading-6">{a.alternativeExplanation}</p>
         </div>
       )}
-    </Card>
+      {!f.direct && (f.contextRequested || f.contextCheck) && (
+        <div className="rounded-md bg-well px-4 py-3 text-sm">
+          <Heading>Context</Heading>
+          {f.contextRequested && <p className="mt-1">The assessment says lines outside these passages could change it.</p>}
+          {f.contextCheck && <p className="mt-1">Transcript check: {f.contextCheck.replace(/\.$/, "")}.</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
 export function ChecksCard({ f }: { f: FindingDetail }) {
   return (
-    <Card className="p-space-lg">
+    <div>
       <div className="flex items-center gap-2">
-        <ShieldCheck aria-hidden className="size-5 text-success" />
-        <h2 className="text-headline-md">How this was checked</h2>
+        <ShieldCheck aria-hidden className="size-4 text-ok" />
+        <h3 className="font-semibold">Transcript checks</h3>
       </div>
-      <p className="text-body-sm text-on-surface-variant">Deterministic checks against the stored transcript.</p>
-      <ul className="mt-space-md space-y-space-md text-body-sm">
+      <p className="text-sm text-muted">Done by code against the stored transcript, not by the model.</p>
+      <ul className="mt-3 space-y-3 text-sm">
         {(["a", "b"] as const).map((k) => {
           const s = f[k];
           return (
-            <li key={k}>
+            <li key={k} className="space-y-0.5">
               <p className="font-semibold">Session {k.toUpperCase()}</p>
               <p>
                 {VERIFICATION[s.verification.status] ?? s.verification.status}
                 {s.verification.location ? `, ${LOCATION[s.verification.location] ?? s.verification.location}` : ""}.
                 {s.verification.bareAnswer ? " The quoted words are a short answer, so the question they answer is shown with them." : ""}
               </p>
-              {ocrPassage(s) && <p className="text-on-warning-container">Checked against the OCR text, not the scan itself.</p>}
+              {ocrPassage(s) && <p className="text-context">Checked against the OCR text, not the scan itself.</p>}
               <p>Attribution: {ATTRIBUTION_LEVEL[s.attribution.level] ?? s.attribution.level}.</p>
               {f.direct && <p>Speaker: {SPEAKER[f.direct[k].speaker] ?? f.direct[k].speaker}.{f.direct[k].reportedSpeech ? " This reports what someone else said." : ""}</p>}
-              {f.direct && f.direct[k].ocr.lowLines.length > 0 && <p className="text-on-warning-container">Low OCR confidence on {f.direct[k].ocr.lowLines.join(", ")}.</p>}
-              {s.attribution.disagreement && <p className="text-on-warning-container">{DISAGREEMENT[s.attribution.disagreement]}</p>}
-              {s.verification.reason && <p className="text-on-error-container">{s.verification.reason}.</p>}
+              {f.direct && f.direct[k].ocr.lowLines.length > 0 && <p className="text-context">Low OCR confidence on {f.direct[k].ocr.lowLines.join(", ")}.</p>}
+              {s.attribution.disagreement && <p className="text-context">{DISAGREEMENT[s.attribution.disagreement]}</p>}
+              {s.verification.reason && <p className="text-conflict">{s.verification.reason}.</p>}
             </li>
           );
         })}
       </ul>
       {f.direct && f.direct.duplicates.length > 0 && (
-        <div className="mt-space-md text-body-sm">
+        <div className="mt-4 text-sm">
           <p className="font-semibold">Merged proposals</p>
-          <p className="text-on-surface-variant">These rest on the same passages, so they are shown once. The most cautious reading is the one above.</p>
-          <ul className="mt-1 list-disc space-y-1 pl-5">{f.direct.duplicates.map((d) => <li key={d.findingId}><span className="font-mono text-label-md font-normal">{d.a} / {d.b}</span>: {d.explanation}</li>)}</ul>
+          <p className="text-muted">These rest on the same passages, so they are shown once. The most cautious reading is the one above.</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">{f.direct.duplicates.map((d) => <li key={d.findingId}><span className="font-mono">{d.a} / {d.b}</span>: {d.explanation}</li>)}</ul>
         </div>
       )}
-      {f.timeCheck && <p className="mt-space-md text-body-sm">Time check: {f.timeCheck.detail}</p>}
+      {f.timeCheck && <p className="mt-4 text-sm">Time check: {f.timeCheck.detail}</p>}
       {f.consistencyIssues.length > 0 && (
-        <div className="mt-space-md">
+        <div className="mt-4">
           <Alert tone="warn" title="The assessment contradicts itself">{f.consistencyIssues.map((i) => i.replaceAll("_", " ")).join("; ")}.</Alert>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
 export function ScoreCard({ f }: { f: FindingDetail }) {
   if (f.direct && f.score !== null) {
     return (
-      <Card className="p-space-lg">
+      <div>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-headline-md">Evidence strength</h2>
-          <span className="text-stat-metric tabular-nums">{f.score}<span className="text-body-sm font-normal text-on-surface-variant"> /100</span></span>
+          <h3 className="font-semibold">Evidence strength</h3>
+          <span className="text-lg font-semibold tabular-nums">{f.score}<span className="text-sm font-normal text-faint"> / 100</span></span>
         </div>
-        <p className="text-body-sm text-on-surface-variant">{EVIDENCE_STRENGTH_NOTE} It doesn't set the priority or the category. Version {f.rubricVersion}.</p>
-        <ul className="mt-space-md space-y-3 text-body-sm">
+        <p className="text-sm text-muted">{EVIDENCE_STRENGTH_NOTE} It doesn't set the priority or the category. Version {f.rubricVersion}.</p>
+        <ul className="mt-3 divide-y divide-rule text-sm">
           {f.factors.map((c) => (
-            <li key={c.label}>
+            <li key={c.label} className="py-2">
               <p className="flex items-baseline justify-between gap-3">
-                <span className="font-semibold">{c.label}</span>
-                <span className="flex-none text-label-sm text-on-surface-variant tabular-nums">{c.points}/{c.max} · {ORIGIN[c.origin]}</span>
+                <span className="font-medium">{c.label}</span>
+                <span className="flex-none text-xs text-faint tabular-nums">{c.points}/{c.max} · {ORIGIN[c.origin]}</span>
               </p>
-              <p className="text-on-surface-variant">{c.detail}</p>
+              {c.detail && <p className="text-muted">{c.detail}</p>}
             </li>
           ))}
         </ul>
-      </Card>
+      </div>
     );
   }
   if (f.score === null) {
     return (
-      <Card className="p-space-lg">
+      <div>
         <div className="flex items-center gap-2">
-          <CircleAlert aria-hidden className="size-5 text-on-warning-container" />
-          <h2 className="text-headline-md">Not scored</h2>
+          <CircleAlert aria-hidden className="size-4 text-context" />
+          <h3 className="font-semibold">Not scored</h3>
         </div>
-        <p className="mt-1 text-body-sm text-on-surface-variant">{f.unscoredExplanation ?? "This finding has no score. Read both passages yourself."}</p>
-      </Card>
+        <p className="mt-1 text-sm text-muted">{f.unscoredExplanation ?? "This finding has no score. Read both passages yourself."}</p>
+      </div>
     );
   }
   const byComponent = (["A", "C", "S", "K", "U"] as const).map((c) => ({ c, factors: f.factors.filter((x) => x.component === c) })).filter((g) => g.factors.length > 0);
   return (
-    <Card className="p-space-lg">
+    <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-headline-md">Why this score?</h2>
-        <span className="text-stat-metric tabular-nums">{f.score}<span className="text-body-sm font-normal text-on-surface-variant"> /100</span></span>
+        <h3 className="font-semibold">Why this score?</h3>
+        <span className="text-lg font-semibold tabular-nums">{f.score}<span className="text-sm font-normal text-faint"> / 100</span></span>
       </div>
-      <p className="text-body-sm text-on-surface-variant">Calculated by this application with rubric {f.rubricVersion}. Each point traces to a check; caps limit the total. Not a probability that the witness contradicted themself.</p>
-      <div className="mt-space-md space-y-3 text-body-sm">
+      <p className="text-sm text-muted">Calculated by this application with rubric {f.rubricVersion}. Each point traces to a check; caps limit the total. Not a probability that the witness contradicted themself.</p>
+      <div className="mt-3 space-y-3 text-sm">
         {byComponent.map(({ c, factors }) => (
           <div key={c}>
             <Heading>{COMPONENT[c]} · {factors.reduce((t, x) => t + x.points, 0)}</Heading>
@@ -275,7 +270,7 @@ export function ScoreCard({ f }: { f: FindingDetail }) {
               {factors.map((x, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-3">
                   <span>{x.label}</span>
-                  <span className="flex-none text-label-sm text-on-surface-variant tabular-nums">{x.points > 0 ? "+" : ""}{x.points}{x.max > 0 ? `/${x.max}` : ""} · {ORIGIN[x.origin]}</span>
+                  <span className="flex-none text-xs text-faint tabular-nums">{x.points > 0 ? "+" : ""}{x.points}{x.max > 0 ? `/${x.max}` : ""} · {ORIGIN[x.origin]}</span>
                 </li>
               ))}
             </ul>
@@ -289,17 +284,17 @@ export function ScoreCard({ f }: { f: FindingDetail }) {
             </ul>
           </div>
         )}
-        {f.notCorroborated.length > 0 && <p className="text-label-sm text-on-surface-variant">Not independently corroborated: {f.notCorroborated.join("; ")}.</p>}
+        {f.notCorroborated.length > 0 && <p className="text-xs text-faint">Not independently corroborated: {f.notCorroborated.join("; ")}.</p>}
       </div>
-    </Card>
+    </div>
   );
 }
 
 export function Term({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <dt className="text-label-sm text-on-surface-variant">{label}</dt>
-      <dd>{children}</dd>
+      <dt className="text-xs font-semibold text-faint">{label}</dt>
+      <dd className="mt-0.5 leading-6">{children}</dd>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseDetail, CaseSummary, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { AnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -34,10 +34,16 @@ export const api = {
   addWitness: (caseId: number, name: string) => request<{ witness: { id: number; name: string } }>("POST", `/cases/${caseId}/witnesses`, { name }),
   upload: (caseId: number, file: File, witness: string, takenOn?: string) => {
     const q = new URLSearchParams({ witness, filename: file.name, ...(takenOn ? { takenOn } : {}) });
-    return request<{ created: boolean; deposition: { id: number; status: string } }>("POST", `/cases/${caseId}/depositions?${q}`, undefined, { data: file, contentType: "application/pdf" });
+    const text = file.type.startsWith("text/") || /\.txt$/i.test(file.name);
+    return request<{ created: boolean; deposition: { id: number; status: string } }>("POST", `/cases/${caseId}/depositions?${q}`, undefined, { data: file, contentType: text ? "text/plain; charset=utf-8" : "application/pdf" });
   },
   deposition: (id: number) => request<{ deposition: DepositionView }>("GET", `/depositions/${id}`),
+  lines: (id: number, at: { page?: number | null; q?: string }) => {
+    const q = new URLSearchParams({ ...(at.page ? { page: String(at.page) } : {}), ...(at.q ? { q: at.q } : {}) });
+    return request<DepositionLines>("GET", `/depositions/${id}/lines?${q}`);
+  },
   depositionPdf: (id: number, pdfPage: number) => `/api/depositions/${id}/pdf#page=${pdfPage}`,
+  depositionOriginal: (id: number) => `/api/depositions/${id}/pdf`,
   retryDeposition: (id: number) => request<unknown>("POST", `/depositions/${id}/retry`),
   startAnalysis: (caseId: number, body: { depositionA: number; depositionB: number; mode: "demo" | "live"; budgetUsd?: number; maxCandidates?: number; strategy?: string }) =>
     request<{ created: boolean; analysis: AnalysisView }>("POST", `/cases/${caseId}/analyses`, body),
