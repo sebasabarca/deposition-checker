@@ -66,21 +66,54 @@ const NAME = String.raw`(?:MR|MS|MRS|DR)\. [A-Z][A-Za-z'-]+(?: [A-Z][A-Za-z'-]+)
 // Lines are trimmed before matching, so a label alone on its line ends at the colon: every label
 // pattern accepts end-of-line as well as whitespace after it.
 const ANY_LABEL = /^([A-Z][A-Z.'-]*(?: [A-Z][A-Z.'-]*)*):(?:\s|$)/;
-const QA_MARKER = /^([QA])(?:\.|\s|$)/;
+const QA_MARKER = /^([QA])(?:[._]|\s|$)/; // OCR can read the space after a marker as "_"
 const ATTORNEY_QUESTION = new RegExp(`^(${NAME}):\\s+Q\\.(?:\\s|$)`);
 const WITNESS = /^THE WITNESS:(?:\s|$)/;
 const COLLOQUY = new RegExp(`^(${NAME}|THE (?:REPORTER|VIDEOGRAPHER)):`);
 const EXAMINER = new RegExp(`^BY (${NAME}):`);
+// Congressional transcripts label a turn "Ms. Cheney." at the Q/A indent, with no colon.
+const HEARING_LABEL = /^((?:Mr|Ms|Mrs|Dr)\. [A-Z][A-Za-z'-]+)[.,](?:\s|$)/;
+// A blacked-out speaker's name reads as stray marks at the start of a turn ("P| Can I ask ..."), or as
+// a line of only a character or two ("a" where "BY [redacted]:" stood).
+const REDACTED_LABEL = /^(?:[A-Za-z]{0,3}[|\]=~_]+(?:\s|$)|.{1,2}$)/;
 const OBJECTION = /\bobject(?:ion)?\b/i;
 const EXHIBIT = /\bexhibit\b|\bmarked\b/i;
 
+// Characters that differ between two words of similar length, or Infinity when they aren't similar.
+function misread(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 1 || a[0] !== b[0]) return Infinity;
+  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
+  let i = 0, j = 0, misses = 0;
+  while (i < long.length) {
+    if (long[i] === short[j]) { i++; j++; continue; }
+    misses++;
+    i++;
+    if (long.length === short.length) j++;
+  }
+  return misses;
+}
+
+// Who a hearing label names. Anything short of a clean label stays unknown, because the guess would
+// decide whether words count as testimony: no known witness, a comma where the period belongs, or a
+// surname one or two letters from the witness's, which is OCR noise or a relative.
+function hearingTurn(name: string, clean: boolean, witnessSurname?: string): { turn: TurnMarker; name: string | null } {
+  const surname = name.split(" ")[1].toLowerCase();
+  if (!witnessSurname || !clean) return { turn: "unrecognized", name };
+  if (surname === witnessSurname) return { turn: "A", name: null };
+  return misread(surname, witnessSurname) <= 2 ? { turn: "unrecognized", name } : { turn: "Q", name };
+}
+
 // Q./A. turn markers are indented less than paragraph and colloquy indents (x ≈ 110–113 against
 // 122–125 in the Ellison PDFs); the layout profile holds the threshold between them.
-export function markLine(text: string, indentX: number | null, layout: LayoutProfile): { turn: TurnMarker; name: string | null } {
+export function markLine(text: string, indentX: number | null, layout: LayoutProfile, witnessSurname?: string, ocr = false): { turn: TurnMarker; name: string | null } {
   const t = text.trim();
   const examiner = t.match(EXAMINER);
   if (examiner) return { turn: "examiner", name: examiner[1] };
   if (indentX === null) return { turn: null, name: null };
+  const hearing = t.match(HEARING_LABEL);
+  const clean = hearing !== null && t.charAt(hearing[1].length) === ".";
+  if (hearing && (clean || ocr)) return hearingTurn(hearing[1], clean, witnessSurname); // in a text layer, "Mr. Scott, on behalf of" is a sentence
+  if (ocr && !QA_MARKER.test(t) && !t.startsWith("[") && !t.startsWith("(") && REDACTED_LABEL.test(t)) return { turn: "unrecognized", name: null };
   if (indentX < layout.turnIndentMaxX) {
     const qa = t.match(QA_MARKER);
     return { turn: qa ? (qa[1] as "Q" | "A") : null, name: null };
@@ -113,10 +146,12 @@ const ROLE_OF_TURN: Record<Exclude<TurnMarker, null>, SpeakerRole> = {
   unrecognized: "unknown",
 };
 
-export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile): AttributedLine[] {
+export const surnameOf = (name: string) => name.trim().replace(/,?\s+(?:jr|sr|ii|iii)\.?$/i, "").split(/\s+/).pop()!.toLowerCase();
+
+export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, witnessSurname?: string): AttributedLine[] {
   const result: AttributedLine[] = [];
   lines.forEach((line, index) => {
-    const { turn, name } = markLine(line.rawText, line.indentX, layout);
+    const { turn, name } = markLine(line.rawText, line.indentX, layout, witnessSurname, line.ocrConfidence !== undefined);
     const previous = result[index - 1];
     const continuesTurn = previous !== undefined && isContiguous(lines[index - 1], line, layout);
     if (turn !== null) {
@@ -194,7 +229,9 @@ function stripMarker(text: string): string {
   return text
     .trim()
     .replace(WITNESS, "")
-    .replace(new RegExp(`^(?:${NAME}:\\s+)?[QA](?:\\.|\\s)\\s*`), "");
+    .replace(HEARING_LABEL, "")
+    .replace(new RegExp(`^(?:${NAME}:\\s+)?[QA](?:[._]|\\s)\\s*`), "")
+    .trim();
 }
 
 type DerivedTurn = { role: SpeakerRole; label: string; text: string };
@@ -306,8 +343,8 @@ export function splitExchange(exchange: Exchange, lines: AttributedLine[]): Exch
 
 export type ExchangeResult = { lines: AttributedLine[]; exchanges: Exchange[]; parts: ExchangePart[] };
 
-export function buildExchangeParts(sourceLines: SourceLine[], layout: LayoutProfile): ExchangeResult {
-  const lines = attributeSpeakers(sourceLines, layout);
+export function buildExchangeParts(sourceLines: SourceLine[], layout: LayoutProfile, witnessSurname?: string): ExchangeResult {
+  const lines = attributeSpeakers(sourceLines, layout, witnessSurname);
   const exchanges = buildExchanges(lines, layout);
   return { lines, exchanges, parts: exchanges.flatMap((e) => splitExchange(e, lines)) };
 }

@@ -34,8 +34,12 @@ export const STOPWORDS = new Set([
   "do",
 ]);
 
+// The transcript's capital "I" reads as a bar, joined to the next or last word ("|saw", "And|"). A
+// bar is never testimony, so matching reads it as "I". The stored line keeps what OCR read.
 export function normalize(text: string): string {
   return text
+    .replace(/\|(?=[a-z])/g, "I ")
+    .replace(/(?<=[a-z])\|/g, " I")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();

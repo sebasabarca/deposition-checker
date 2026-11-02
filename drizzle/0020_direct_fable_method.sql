@@ -1,0 +1,2 @@
+ALTER TABLE "analyses" DROP CONSTRAINT "analyses_retrieval_check";--> statement-breakpoint
+ALTER TABLE "analyses" ADD CONSTRAINT "analyses_retrieval_check" CHECK ("analyses"."retrieval" in ('pair', 'hybrid', 'direct_fable'));

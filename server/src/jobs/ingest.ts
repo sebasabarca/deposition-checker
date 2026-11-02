@@ -10,7 +10,7 @@
 
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { depositions } from "../db/schema";
+import { depositions, witnesses } from "../db/schema";
 import { depositionLockKey, PARSER_VERSION, readDeposition, readUpload, saveDeposition, UPLOADS_DIR, type SaveResult } from "../ingest";
 import { timed } from "../timing";
 import type { IngestJob } from "./queue";
@@ -40,7 +40,8 @@ export async function runIngestJob(db: Database, job: IngestJob, uploadsDir = UP
   }
 
   const data = await timed("ingest.read_file", () => readUpload(deposition.storageKey, uploadsDir));
-  const read = await readDeposition(data);
+  const [witness] = await db.select({ name: witnesses.name }).from(witnesses).where(eq(witnesses.id, deposition.witnessId));
+  const read = await readDeposition(data, undefined, undefined, witness?.name);
   // The run is checked again inside the save, under its lock: parsing takes time, and meanwhile this
   // attempt may have been given up on (marked failed, then retried as a newer run). saveDeposition
   // throws if the result would land on another deposition, so a job never succeeds while leaving its

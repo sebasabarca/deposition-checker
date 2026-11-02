@@ -5,6 +5,7 @@ import {
   ANSWER_OVERLAP_LINES,
   MAX_ANSWER_LINES,
   attributeSpeakers,
+  surnameOf,
   buildExchangeParts,
   markLine,
 } from "../../server/src/ingest/exchanges";
@@ -322,5 +323,56 @@ describe("long answers", () => {
     const first = parts[1].answer!;
     expect(lines[first.first].rawText).toBe("answer line 36");
     expect(parts[1].span.last).toBe(lines.length - 1);
+  });
+});
+
+describe("congressional transcripts", () => {
+  const line = (rawText: string, lineNo: number, indentX: number | null = 100) => ({ rawText, lineNo, printedPage: 110, indentX, ocrConfidence: 95 }) as never;
+  const lines = [line("Ms. Cheney. Can you say more?", 1), line("Tell us about that.", 2, null), line("Ms. Hutchinson. Mark spoke to me.", 3), line("He said so.", 4, null), line("Q_ And then?", 5), line("A No.", 6)];
+
+  it("tells the witness from the questioners by surname, and reads an OCR Q_", () => {
+    const attributed = attributeSpeakers(lines, LAYOUT, surnameOf("Cassidy Hutchinson"));
+    expect(attributed.map((l) => l.role)).toEqual(["attorney", "attorney", "witness", "witness", "attorney", "witness"]);
+    expect(attributed[0].speakerName).toBe("Ms. Cheney");
+  });
+
+  it("keeps a label unknown without a known witness, never inheriting a speaker", () => {
+    const [q, label] = attributeSpeakers([line("A I saw him.", 1), line("Ms. Cheney. Go on.", 2)], LAYOUT);
+    expect([q.role, label.role, label.speakerName]).toEqual(["witness", "unknown", "Ms. Cheney"]);
+  });
+
+  it("doesn't read a wrapped line as a label", () => {
+    expect(attributeSpeakers([line("Mr. Meadows. He left.", 1, null)], LAYOUT, "hutchinson")[0].turn).toBeNull();
+  });
+
+  // June 110:24-25 and 111:2: a blacked-out questioner read as stray marks, after the witness.
+  it("marks a redacted speaker unknown instead of letting the witness's turn run on", () => {
+    const roles = attributeSpeakers([line("A It was a Biden inauguration.", 24), line("P| Can I ask some followup on that?", 25)], LAYOUT).map((l) => l.role);
+    expect(roles).toEqual(["witness", "unknown"]);
+    expect(attributeSpeakers([line("A Uh-huh.", 1), line("a", 2)], LAYOUT).map((l) => l.role)).toEqual(["witness", "unknown"]);
+    expect(attributeSpeakers([line("A Uh-huh.", 1), line("| So what happened?", 2)], LAYOUT).map((l) => l.role)).toEqual(["witness", "unknown"]);
+  });
+
+  it("keeps a garbled or near-miss label unknown rather than guessing", () => {
+    const roles = (text: string) => attributeSpeakers([line("A Yes.", 1), line(text, 2)], LAYOUT, "hutchinson")[1];
+    expect(roles("Ms. Hutchinsen. I said that.").role).toBe("unknown");
+    expect(roles("Ms. Hutchinson, I said that.").role).toBe("unknown");
+    expect(roles("Ms. Cheney. Thank you.").role).toBe("attorney");
+    expect(roles("Ms. Hutchinson. Thank you.").role).toBe("witness");
+  });
+
+  it("carries testimony across a page only when the page is full", () => {
+    const next = (lineNo: number) => [{ ...(line("A I went there.", lineNo) as object), printedPage: 110 }, { rawText: "and came back.", lineNo: 1, printedPage: 111, indentX: null }] as never[];
+    expect(attributeSpeakers(next(LAYOUT.maxLinesPerPage), LAYOUT)[1].role).toBe("witness");
+    expect(attributeSpeakers(next(6), LAYOUT)[1].role).toBe("unknown");
+  });
+
+  it("reads a comma as a sentence, not a label, in a clean text layer", () => {
+    expect(attributeSpeakers([{ rawText: "Mr. Scott, on behalf of the Department,", lineNo: 11, printedPage: 297, indentX: 125 } as never], LAYOUT, "ellison")[0].turn).toBeNull();
+  });
+
+  it("takes the surname from a full name", () => {
+    expect(surnameOf("Lawrence J. Ellison")).toBe("ellison");
+    expect(surnameOf("John Smith, Jr.")).toBe("smith");
   });
 });

@@ -38,7 +38,7 @@ async function main() {
   const { db, pool } = connect();
   try {
     const target = await findOrCreateWitness(db, args.case, args.witness);
-    const result = await ingestFile(db, data, { ...target, takenOn: args.takenOn });
+    const result = await ingestFile(db, data, { ...target, takenOn: args.takenOn, witnessName: args.witness });
     const { counts, reasons } = result.attempt;
 
     if (result.outcome === "kept_previous") {

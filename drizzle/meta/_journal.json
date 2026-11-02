@@ -127,6 +127,27 @@
       "when": 1793490193388,
       "tag": "0017_hybrid_default",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793565623707,
+      "tag": "0018_line_ocr_text",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793565950665,
+      "tag": "0019_discovery_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793566245353,
+      "tag": "0020_direct_fable_method",
+      "breakpoints": true
     }
   ]
 }

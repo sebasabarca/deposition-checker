@@ -29,6 +29,7 @@ export function toLineRows(depositionId: number, attributed: AttributedLine[]): 
       speakerRole: line.role,
       speakerName: line.speakerName,
       rawText: line.rawText,
+      ocrText: line.ocrText ?? null,
       normText: normalize(line.rawText),
       ocrConfidence: line.ocrConfidence ?? null,
     };

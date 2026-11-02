@@ -44,6 +44,7 @@ describe("toLineRows", () => {
       speakerRole: "witness",
       speakerName: null,
       rawText: "A. No, I didn't.",
+      ocrText: null,
       normText: "a no i didn t",
       ocrConfidence: null,
     });

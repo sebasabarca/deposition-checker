@@ -3,7 +3,7 @@
 // then stored in Postgres with the uploaded file kept under data/uploads/.
 
 import { ELLISON_DOJ_V1, PARSER_VERSION, type LayoutProfile } from "./layout";
-import { buildExchangeParts, type ExchangeResult } from "./exchanges";
+import { buildExchangeParts, surnameOf, type ExchangeResult } from "./exchanges";
 import { extractPdf, type ExtractedPdf } from "./pdf";
 import { inferPageNumbers, ocrDocument, SCANNED_25_V1, type OcrReader } from "./ocr";
 import { validateDeposition, type Validation } from "./validate";
@@ -39,7 +39,7 @@ export type DepositionRead = {
 
 // A file with no text layer at all goes through OCR. A file mixing text and scanned pages stays as it
 // was, with those pages needs_ocr. shortcut: mixed files aren't OCR'd; add it when one appears.
-async function readScanned(pdf: ExtractedPdf, data: Uint8Array, ocr: OcrReader): Promise<DepositionRead | { unavailable: string }> {
+async function readScanned(pdf: ExtractedPdf, data: Uint8Array, ocr: OcrReader, witnessSurname?: string): Promise<DepositionRead | { unavailable: string }> {
   const result = await timed("ingest.ocr", () => ocr(data, pdf.pageCount));
   if (!result.available) return { unavailable: result.reason };
   const pages = result.pages;
@@ -57,11 +57,12 @@ async function readScanned(pdf: ExtractedPdf, data: Uint8Array, ocr: OcrReader):
     markersCorrected: pages.reduce((n, p) => n + p.ocr.markersCorrected, 0),
     pipesCorrected: pages.reduce((n, p) => n + p.ocr.pipesCorrected, 0),
   };
-  const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), SCANNED_25_V1) : null;
+  const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), SCANNED_25_V1, witnessSurname) : null;
   return { parserVersion: PARSER_VERSION, pdf: { pageCount: pdf.pageCount, pages }, validation, exchanges };
 }
 
-export async function readDeposition(data: Uint8Array, layout: LayoutProfile = ELLISON_DOJ_V1, ocr: OcrReader = ocrDocument): Promise<DepositionRead> {
+export async function readDeposition(data: Uint8Array, layout: LayoutProfile = ELLISON_DOJ_V1, ocr: OcrReader = ocrDocument, witnessName?: string): Promise<DepositionRead> {
+  const witnessSurname = witnessName ? surnameOf(witnessName) : undefined;
   let pdf: ExtractedPdf;
   try {
     pdf = await timed("ingest.pdf_parse", () => extractPdf(data, layout));
@@ -85,7 +86,7 @@ export async function readDeposition(data: Uint8Array, layout: LayoutProfile = E
     };
   }
   if (pdf.pages.length > 0 && pdf.pages.every((p) => !p.hasText)) {
-    const scanned = await readScanned(pdf, data, ocr);
+    const scanned = await readScanned(pdf, data, ocr, witnessSurname);
     if (!("unavailable" in scanned)) return scanned;
     const validation = timedSync("ingest.validate", () => validateDeposition(pdf.pages, layout));
     validation.reasons.push(scanned.unavailable);
@@ -95,20 +96,20 @@ export async function readDeposition(data: Uint8Array, layout: LayoutProfile = E
   // A text layer no page of which fits is often a scanner's own OCR: read the scan itself instead, and
   // keep the result only if it does better. A file that fits in part stays as it was.
   if (validation.counts.text === 0 && validation.counts.failed > 0) {
-    const scanned = await readScanned(pdf, data, ocr);
+    const scanned = await readScanned(pdf, data, ocr, witnessSurname);
     if (!("unavailable" in scanned) && scanned.validation.counts.text > 0) return scanned;
   }
-  const exchanges = validation.status === "ready" ? timedSync("ingest.build_exchanges", () => buildExchangeParts(pdf.pages.flatMap((p) => p.lines), layout)) : null;
+  const exchanges = validation.status === "ready" ? timedSync("ingest.build_exchanges", () => buildExchangeParts(pdf.pages.flatMap((p) => p.lines), layout, witnessSurname)) : null;
   return { parserVersion: PARSER_VERSION, pdf, validation, exchanges };
 }
 
-export type IngestTarget = { caseId: number; witnessId: number; takenOn: string | null };
+export type IngestTarget = { caseId: number; witnessId: number; takenOn: string | null; witnessName?: string };
 
 // Stores the file, reads it and saves the result. Every file is saved, whatever its status, so a
 // PDF that can't be used still appears with the reasons; only a ready one gets lines and exchanges.
 // A file already stored as ready keeps its evidence if this attempt fails (see store.ts).
-export async function ingestFile(db: Database, data: Uint8Array, target: IngestTarget, uploadsDir = UPLOADS_DIR): Promise<SaveResult> {
+export async function ingestFile(db: Database, data: Uint8Array, { witnessName, ...target }: IngestTarget, uploadsDir = UPLOADS_DIR): Promise<SaveResult> {
   const { fileSha256, storageKey } = await storeUpload(data, uploadsDir);
-  const read = await readDeposition(data);
+  const read = await readDeposition(data, undefined, undefined, witnessName);
   return saveDeposition(db, { ...target, fileSha256, storageKey, read });
 }

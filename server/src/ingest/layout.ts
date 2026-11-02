@@ -33,5 +33,5 @@ export const ELLISON_DOJ_V1: LayoutProfile = {
 // Stored on every deposition and used to detect duplicate ingestion. Bump PARSER_REVISION whenever
 // extraction, validation, speaker attribution or exchange building changes what a file produces
 // (including a pdfjs-dist upgrade), so re-ingesting the same file is a new parse, not a duplicate.
-const PARSER_REVISION = 1;
+const PARSER_REVISION = 2;
 export const PARSER_VERSION = `pdfjs-${ELLISON_DOJ_V1.name}-r${PARSER_REVISION}`;

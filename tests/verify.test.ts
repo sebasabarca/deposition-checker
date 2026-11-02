@@ -1,3 +1,4 @@
+import { normalize, quoteMatchScore } from "../server/src/verify";
 import { describe, it, expect } from "vitest";
 import { verifyQuote } from "../server/src/verify";
 import type { QAPair } from "../server/src/transcript";
@@ -31,5 +32,14 @@ describe("verifyQuote", () => {
     const score = verifyQuote("I was home all night.", "T1-1", pairs);
     expect(score).toBeGreaterThan(0.5);
     expect(score).toBeLessThan(1);
+  });
+});
+
+
+describe("OCR bars in matching", () => {
+  it("reads a bar joined to a word as I, in matching only", () => {
+    expect(normalize("I believe |saw him")).toBe("i believe i saw him");
+    expect(normalize("And| recall Mr. Meadows")).toBe("and i recall mr meadows");
+    expect(quoteMatchScore("I believe I saw him", "When I was there, I believe |saw him.")).toBe(1);
   });
 });

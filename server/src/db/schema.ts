@@ -188,6 +188,7 @@ export const lines = pgTable(
     speakerRole: speakerRole("speaker_role").notNull(),
     speakerName: text("speaker_name"),
     rawText: text("raw_text").notNull(), // as extracted, without the line-number gutter; the evidence
+    ocrText: text("ocr_text"), // what OCR read, when a correction made raw_text differ from it
     normText: text("norm_text").notNull(), // lowercased, punctuation removed; for matching only
     ocrConfidence: integer("ocr_confidence"), // 0-100 for a line read by OCR, whose text may differ from the scan; null for a text layer
   },
@@ -316,7 +317,7 @@ export const exchangeLines = pgTable(
   ],
 );
 
-export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication", "statement_cards", "topic_mapping"]);
+export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication", "statement_cards", "topic_mapping", "discovery"]);
 
 // One row per successful model call (DESIGN.md, "Cost model"). Cost is computed when the call is
 // recorded, with the price version it used, so a later price change never rewrites it. A model
@@ -593,6 +594,45 @@ export const verdicts = pgTable(
   ],
 );
 
+// One paid direct-discovery attempt: the primary model, then at most one fallback after a confirmed
+// refusal. The row is written before the provider is called and the provider's batch ID right after,
+// so a restarted worker polls the batch it already has and never submits a second one.
+export const discoveryRuns = pgTable(
+  "discovery_runs",
+  {
+    id: id(),
+    analysisId: ref("analysis_id")
+      .notNull()
+      .references(() => analyses.id, { onDelete: "cascade" }),
+    attempt: integer("attempt").notNull(), // 1 primary, 2 fallback
+    role: text("role").notNull(),
+    model: text("model").notNull(), // the model asked; the answering model is on its llm_calls row and verdicts
+    promptVersion: text("prompt_version").notNull(),
+    effort: text("effort").notNull(),
+    maxOutputTokens: integer("max_output_tokens").notNull(),
+    status: text("status").notNull(),
+    batchId: text("batch_id"),
+    customId: text("custom_id").notNull(),
+    reservationId: ref("reservation_id").references(() => budgetReservations.id),
+    maxCostUsd: numeric("max_cost_usd", { precision: 14, scale: 8, mode: "number" }).notNull(),
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    stopReason: text("stop_reason"),
+    refusalCategory: text("refusal_category"),
+    error: text("error"),
+    output: jsonb("output"), // the parsed model output, as received
+    audit: jsonb("audit"), // what verification made of every proposed finding, including those with no row
+    sourceHashes: jsonb("source_hashes").notNull(), // PDF SHA-256 per deposition, and the prompt's hash
+    latencyMs: integer("latency_ms"), // from the provider's creation of the batch to its end
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    unique("discovery_runs_attempt_unique").on(t.analysisId, t.attempt),
+    check("discovery_runs_attempt_check", sql`${t.attempt} in (1, 2)`),
+    check("discovery_runs_status_check", sql`${t.status} in ('submitting', 'submitted', 'succeeded', 'refused', 'invalid_output', 'incomplete', 'provider_failed', 'expired', 'cancelled', 'submission_unknown')`),
+  ],
+);
+
 // The scored result of a valid verdict (DESIGN.md `findings`): code's evidence status and attribution
 // levels, the rubric's assessment, and the review priority. A verdict whose evidence fails the gate,
 // or that Claude calls insufficient_evidence, is still a finding, unscored with its reason.
@@ -712,8 +752,9 @@ export const analyses = pgTable(
     budgetId: ref("budget_id").references(() => budgets.id),
     // How adjudication runs (adjudicate/strategies.ts). A is one candidate per call, one at a time.
     strategy: text("strategy").notNull().default("A"),
-    // Which pool found the candidates: `hybrid` (statement cards, topics and Path B). `pair`, the removed
-    // earlier pool, remains only on past analyses, whose stored results stay readable.
+    // How findings were discovered: `direct_fable` (one model reads both sessions whole), or `hybrid`
+    // (statement cards, topics and Path B). `pair`, the removed earlier pool, remains only on past
+    // analyses, whose stored results stay readable.
     retrieval: text("retrieval").notNull().default("hybrid"),
     candidatesPerRequest: integer("candidates_per_request").notNull().default(1),
     maxConcurrency: integer("max_concurrency").notNull().default(1),
@@ -736,7 +777,7 @@ export const analyses = pgTable(
     index("analyses_case_idx").on(t.caseId, t.id),
     check("analyses_mode_check", sql`${t.mode} in ('live', 'demo')`),
     check("analyses_pair_check", sql`${t.depositionA} <> ${t.depositionB}`),
-    check("analyses_retrieval_check", sql`${t.retrieval} in ('pair', 'hybrid')`),
+    check("analyses_retrieval_check", sql`${t.retrieval} in ('pair', 'hybrid', 'direct_fable')`),
     check("analyses_budget_check", sql`${t.budgetUsd} >= 0 and ${t.maxCandidates} > 0`),
   ],
 );

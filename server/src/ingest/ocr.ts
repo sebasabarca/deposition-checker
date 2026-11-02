@@ -146,6 +146,7 @@ export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: b
       continue;
     }
     const start = points(row[0].left) - edge + GUTTER_EDGE;
+    const asRead = row.map((w) => w.text).join(" ");
     const marker = start >= MARKER_COLUMN.min && start <= MARKER_COLUMN.max && row.length > 1 ? MISREAD_MARKER.find(([read]) => read.test(row[0].text))?.[1] : undefined;
     if (marker && !/^[QA]\.?$/.test(row[0].text)) { // "A" and "A." are both as printed
       stats.markersCorrected++;
@@ -165,6 +166,7 @@ export function readOcrPage(pdfPage: number, words: readonly OcrWord[], first: b
       lineFromPosition: slot,
       indentX: start < CONTINUATION_INDENT ? null : start,
       rawText: row.map((w) => w.text).join(" "),
+      ...(row.map((w) => w.text).join(" ") === asRead ? {} : { ocrText: asRead }),
       ocrConfidence: Math.round(row.reduce((n, w) => n + w.confidence, 0) / row.length),
     };
     page.lines.push(line);
