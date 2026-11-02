@@ -1,12 +1,13 @@
-// A case's report: the findings the reviewer kept, as a document to print or save as PDF. Each one
+// A case's report: the findings the reviewer kept, from the analyses they choose, previewed here and
+// downloaded as a PDF the server builds (server/src/api/report.ts). Each one
 // carries its citation, the cited testimony verbatim, Veridict's analysis (labelled), and the
 // reviewer's note. A finding checked more than once appears once, from its latest analysis.
 
 import { useEffect, useMemo, useState } from "react";
-import { Printer } from "lucide-react";
+import { Download } from "lucide-react";
 import { TranscriptRows } from "../components/FindingView";
 import { Mark } from "../components/Shell";
-import { Alert, Button, cx, Loading } from "../components/ui";
+import { Alert, Button, buttonClass, cx, Loading } from "../components/ui";
 import { api } from "../lib/api";
 import { displayRef, pinpointCitation } from "../lib/insights";
 import { findingHeadline, formatDate } from "../lib/labels";
@@ -18,7 +19,9 @@ type Entry = { summary: FindingSummary; detail: FindingDetail };
 
 export function ReportPage({ id }: { id: number }) {
   const [detail, setDetail] = useState<CaseDetail | null>(null);
-  const [summaries, setSummaries] = useState<FindingSummary[] | null>(null);
+  // Each finished analysis, newest first, with its findings.
+  const [checks, setChecks] = useState<{ id: number; label: string; findings: FindingSummary[] }[] | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const [entries, setEntries] = useState<Map<number, FindingDetail>>(new Map());
   const [withContext, setWithContext] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,17 +30,25 @@ export function ReportPage({ id }: { id: number }) {
     api.case(id).then(async (d) => {
       setDetail(d);
       const done = d.analyses.filter((a) => a.status === "completed").sort((a, b) => b.id - a.id);
-      const all = (await Promise.all(done.map((a) => api.findings(a.id)))).flatMap((g) => g.groups.flatMap((x) => x.findings));
-      // Newest analysis first, so the first copy of a re-checked finding is its latest.
-      const seen = new Set<string>();
-      setSummaries(all.filter((f) => {
-        const key = f.direct?.evidenceKey ?? `id:${f.id}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      }));
+      const found = await Promise.all(done.map((a) => api.findings(a.id)));
+      const witness = (wid: number) => d.witnesses.find((w) => w.id === wid)?.name ?? "Witness";
+      const taken = (did: number) => formatDate(d.depositions.find((x) => x.id === did)?.takenOn ?? null);
+      setChecks(done.map((a, i) => ({ id: a.id, label: `${witness(a.witnessId)}: ${taken(a.depositionA)} and ${taken(a.depositionB)}`, findings: found[i].groups.flatMap((g) => g.findings) })));
+      setPicked(new Set(done.map((a) => a.id)));
     }).catch((e: Error) => setError(e.message));
   }, [id]);
+
+  // Newest analysis first, so the first copy of a re-checked finding is its latest.
+  const summaries = useMemo(() => {
+    if (!checks) return null;
+    const seen = new Set<string>();
+    return checks.filter((c) => picked.has(c.id)).flatMap((c) => c.findings).filter((f) => {
+      const key = f.direct?.evidenceKey ?? `id:${f.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [checks, picked]);
 
   const chosen = useMemo(() => (summaries ?? []).filter((f) => decisionOf(f.reviewState) === "confirmed" || (withContext && decisionOf(f.reviewState) === "needs_context")), [summaries, withContext]);
   useEffect(() => {
@@ -49,24 +60,61 @@ export function ReportPage({ id }: { id: number }) {
   }, [chosen, entries]);
 
   if (error) return <Alert title="This report couldn't be prepared">{error}</Alert>;
-  if (!detail || !summaries) return <Loading />;
+  if (!detail || !checks || !summaries) return <Loading />;
   const ready: Entry[] = chosen.flatMap((s) => (entries.has(s.id) ? [{ summary: s, detail: entries.get(s.id)! }] : []));
   const loading = ready.length < chosen.length;
   const kept = summaries.filter((f) => decisionOf(f.reviewState) === "confirmed").length;
   const context = summaries.filter((f) => decisionOf(f.reviewState) === "needs_context").length;
+  const keptIn = (fs: FindingSummary[]) => fs.filter((f) => decisionOf(f.reviewState) === "confirmed").length;
+  const toggle = (aid: number) => setPicked((s) => {
+    const next = new Set(s);
+    if (!next.delete(aid)) next.add(aid);
+    return next;
+  });
+  const all = picked.size === checks.length;
+  const pdf = api.reportPdf(id, all ? undefined : checks.filter((c) => picked.has(c.id)).map((c) => c.id), withContext);
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <a href={href.case(id)} className="text-sm text-muted hover:text-ink">{detail.case.name}</a>
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={withContext} onChange={(e) => setWithContext(e.target.checked)} className="size-4 accent-navy" />
-            Include findings marked Needs context ({context})
-          </label>
-          <Button onClick={() => window.print()} disabled={loading || ready.length === 0}><Printer aria-hidden className="size-4" />Print or save as PDF</Button>
+      <a href={href.case(id)} className="text-sm text-muted hover:text-ink print:hidden">{detail.case.name}</a>
+
+      <section className="rounded-lg border border-line bg-sheet print:hidden" aria-labelledby="report-scope">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-rule px-5 py-4">
+          <div>
+            <h2 id="report-scope" className="text-md font-semibold">Export report</h2>
+            <p className="text-sm text-muted">A PDF of the findings you kept, with citations, the testimony and your notes. Choose which analyses it covers.</p>
+          </div>
+          {picked.size === 0 || chosen.length === 0
+            ? <Button disabled><Download aria-hidden className="size-4" />Download PDF</Button>
+            : <a href={pdf} download className={buttonClass("primary")}><Download aria-hidden className="size-4" />Download PDF</a>}
         </div>
-      </div>
+        <div className="space-y-2.5 px-5 py-4 text-sm">
+          {checks.length > 1 && (
+            <>
+              <label className="flex items-center gap-2.5 font-medium">
+                <input type="checkbox" checked={all} ref={(el) => { if (el) el.indeterminate = picked.size > 0 && !all; }} onChange={() => setPicked(all ? new Set() : new Set(checks.map((c) => c.id)))} className="size-4 accent-navy" />
+                All analyses ({checks.length})
+              </label>
+              <div className="ml-6.5 space-y-2 border-l border-rule pl-4">
+                {checks.map((c) => (
+                  <label key={c.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                    <input type="checkbox" checked={picked.has(c.id)} onChange={() => toggle(c.id)} className="size-4 accent-navy" />
+                    {c.label}
+                    <span className="text-faint">· {keptIn(c.findings)} kept</span>
+                    <a href={href.analysis(c.id)} className="text-faint hover:text-ink hover:underline">Open</a>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+          {checks.length === 1 && <p className="text-muted">Covers the one finished analysis: {checks[0].label}.</p>}
+          {checks.length === 0 && <p className="text-muted">No analysis of this case has finished yet.</p>}
+          <label className="flex items-center gap-2.5 pt-1">
+            <input type="checkbox" checked={withContext} onChange={(e) => setWithContext(e.target.checked)} className="size-4 accent-navy" />
+            Also include findings marked Needs context ({context})
+          </label>
+        </div>
+      </section>
 
       <article className="mx-auto max-w-[52rem] rounded-lg border border-line bg-sheet px-10 py-12 print:max-w-none print:border-0 print:p-0">
         <header className="border-b-2 border-navy pb-6">
@@ -87,7 +135,7 @@ export function ReportPage({ id }: { id: number }) {
         <p className="mt-6 text-sm leading-6 text-muted">Each finding below is a lead for review, not a conclusion that the witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. The explanations were written by Veridict's analysis, an AI system, and are labelled as such. Decisions and notes are the reviewer's.</p>
 
         {chosen.length === 0 ? (
-          <p className="mt-10 rounded-md border border-dashed border-control px-6 py-10 text-center text-sm text-muted print:hidden">No findings are marked Keep yet. Open an analysis and choose <strong>Keep</strong> on the findings to include them here.</p>
+          <p className="mt-10 rounded-md border border-dashed border-control px-6 py-10 text-center text-sm text-muted print:hidden">{picked.size === 0 && checks.length > 0 ? "Choose at least one analysis above." : <>No findings are marked Keep in {picked.size === 1 ? "this analysis" : "these analyses"} yet. Open an analysis and choose <strong>Keep</strong> on the findings to include them here.</>}</p>
         ) : loading ? (
           <div className="mt-8"><Loading rows={3} label="Preparing the report" /></div>
         ) : (

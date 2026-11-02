@@ -11,7 +11,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { analysisRoutes, caseRoutes, depositionRoutes } from "../../server/src/api";
+import { analysisRoutes, caseRoutes, depositionRoutes, reportData, reportRoutes } from "../../server/src/api";
 import type { Database } from "../../server/src/db/client";
 import { analyses, candidates, cases, depositions, lines, llmCalls } from "../../server/src/db/schema";
 import { WEBB_SUITE } from "../../server/src/eval/synthetic";
@@ -42,6 +42,7 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     app.use("/api", caseRoutes({ db }));
     app.use("/api", analysisRoutes({ db, pool, boss }));
     app.use("/api", depositionRoutes({ db, pool, boss, uploadsDir: uploads }));
+    app.use("/api", reportRoutes({ db }));
     api = await listen(app);
   });
 
@@ -242,6 +243,33 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     expect((await call("GET", "/cases")).body.cases[0].needsReview).toBe(needed - 1);
     await call("PATCH", `/findings/${open.id}/review`, { decision: null });
     expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "unreviewed", reviewNote: null, reviewedAt: null });
+  });
+
+  it("downloads the kept findings as a PDF, for one analysis or the whole case", async () => {
+    await storeSynthetic(db, WEBB_SUITE);
+    const docs = await db.select().from(depositions).orderBy(depositions.id);
+    const caseId = docs[0].caseId;
+    const started = await call("POST", `/cases/${caseId}/analyses`, { depositionA: docs[0].id, depositionB: docs[1].id, mode: "demo" });
+    const id = started.body.analysis.id;
+    await until(() => call("GET", `/analyses/${id}`), (r) => r.body.analysis.status === "completed");
+    const [f] = (await call("GET", `/analyses/${id}/findings`)).body.groups.flatMap((g: { findings: { id: number }[] }) => g.findings);
+    await call("PATCH", `/findings/${f.id}/review`, { decision: "confirmed", note: "Ask about the date" });
+
+    const data = await reportData(db, caseId, [id], false);
+    expect(data).toMatchObject({ kept: 1, entries: [expect.objectContaining({ id: f.id, reviewNote: "Ask about the date" })] });
+    expect(data!.covered).toHaveLength(1);
+    expect((await reportData(db, caseId, null, true))!.entries.length).toBeGreaterThanOrEqual(1);
+
+    for (const q of [`?analyses=${id}`, "", "?context=1"]) {
+      const res = await fetch(`${api.url}/api/cases/${caseId}/report.pdf${q}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/pdf");
+      expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="Veridict report - /);
+      expect(Buffer.from(await res.arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
+    }
+    // An analysis of another case, or one that isn't finished, isn't reported.
+    expect((await fetch(`${api.url}/api/cases/${caseId}/report.pdf?analyses=999999`)).status).toBe(404);
+    expect((await fetch(`${api.url}/api/cases/${caseId}/report.pdf?analyses=x`)).status).toBe(400);
   });
 
   it("deletes a deposition with its analyses and findings, refuses while it is being checked, and deletes a case", async () => {

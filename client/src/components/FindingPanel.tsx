@@ -51,7 +51,7 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
       {f.direct && closerLook.length > 0 && <Alert tone="warn" title="Why this needs a closer look"><ul className="list-disc pl-5">{closerLook.map((r) => <li key={r}>{r}</li>)}</ul></Alert>}
       {!f.direct && f.unscoredExplanation && <Alert tone="warn">{f.unscoredExplanation}</Alert>}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-tour="finding-passages">
         <Passage label="Earlier session" side={f.a} />
         <Passage label="Later session" side={f.b} />
       </div>
@@ -133,7 +133,7 @@ function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analys
     }
   };
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5">
+    <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5" data-tour="finding-decision">
       <h2 className="text-md font-semibold">Your decision</h2>
       <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Decision">
         {OPTIONS.map((o) => (

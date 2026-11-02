@@ -2,6 +2,7 @@
 // stopped, why; when it's done, the findings bar and the open finding at full width below it.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { CheckAgain } from "../components/CheckAgain";
 import { FindingPanel } from "../components/FindingPanel";
 import { EMPTY, FindingBar, GROUPS } from "../components/FindingRegister";
@@ -12,6 +13,9 @@ import { ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL 
 import { href, usePoll } from "../lib/router";
 import type { AnalysisView, CaseDetail, DiscoveryView, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
 import { CheckProgress } from "../components/CheckProgress";
+import { ANALYSIS_TOUR, Tour } from "../components/Tour";
+
+const GUIDE_KEY = "veridict.reviewGuideSeen";
 
 export function AnalysisPage({ id, findingId }: { id: number; findingId: number | null }) {
   const [analysis, setAnalysis] = useState<AnalysisView | null>(null);
@@ -49,6 +53,30 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
     const first = findings.find((f) => f.group === g);
     window.location.hash = href.analysis(id, first?.id);
   };
+  // The review guide starts by itself the first time a finished analysis with findings opens.
+  // shortcut: remembered per browser, so it shows once more on a new device; store it on the account if that matters.
+  const [guiding, setGuiding] = useState(false);
+  const reviewable = analysis?.status === "completed" && findings.length > 0;
+  useEffect(() => {
+    if (!reviewable) return;
+    let seen = true;
+    try {
+      seen = localStorage.getItem(GUIDE_KEY) !== null;
+    } catch {
+      // storage blocked: don't start a guide that can't be marked as seen
+    }
+    if (seen) return;
+    const t = window.setTimeout(() => setGuiding(true), 700);
+    return () => window.clearTimeout(t);
+  }, [reviewable]);
+  const endGuide = () => {
+    setGuiding(false);
+    try {
+      localStorage.setItem(GUIDE_KEY, "1");
+    } catch {
+      // nothing to remember it in
+    }
+  };
   const onDecided = useCallback((fid: number, state: string) => {
     setGroups((g) => g && { ...g, groups: g.groups.map((x) => ({ ...x, findings: x.findings.map((f) => (f.id === fid ? { ...f, reviewState: state } : f)) })) });
   }, []);
@@ -70,7 +98,12 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
             {!done && <> · {active ? "check running" : ANALYSIS_STATUS[analysis.status].label}</>}
           </>
         }
-        actions={done ? <CheckAgain caseId={analysis.caseId} a={a.id} b={b.id} /> : undefined}
+        actions={done ? (
+          <>
+            <a href={api.reportPdf(analysis.caseId, [analysis.id])} download data-tour="finding-export" className={buttonClass("secondary")} title="The findings you kept in this analysis, with citations and your notes"><Download aria-hidden className="size-4" />Download report</a>
+            <CheckAgain caseId={analysis.caseId} a={a.id} b={b.id} />
+          </>
+        ) : undefined}
       />
       {analysis.mode === "demo" && <Alert tone="info">This is an example analysis. No model was called for it.</Alert>}
       {active && <CheckProgress analysis={analysis} pages={pagesOf(caseDetail, analysis)} lines={null} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
@@ -79,7 +112,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
 
       {groups && (done || findings.length > 0) && (
         <div>
-          <FindingBar findings={findings} analysisId={id} selected={shownId} group={group} onGroup={chooseGroup} />
+          <FindingBar findings={findings} analysisId={id} selected={shownId} group={group} onGroup={chooseGroup} onHelp={() => setGuiding(true)} />
           {shownId !== null ? (
             <FindingPanel key={shownId} id={shownId} analysisId={id} next={next} onDecided={onDecided} />
           ) : (
@@ -90,6 +123,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
       {done && !groups && <Loading label="Loading findings" />}
       {(groups?.notStored?.length ?? 0) > 0 && <NotStored items={groups!.notStored!} />}
       {!active && analysis.discovery && analysis.discovery.attempts.length > 0 && <HowItRan discovery={analysis.discovery} cost={analysis.cost.actualUsd} />}
+      {guiding && reviewable && <Tour steps={ANALYSIS_TOUR} onDone={endGuide} />}
     </>
   );
 }

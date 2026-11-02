@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import { sql } from "drizzle-orm";
-import { analysisRoutes, caseRoutes, depositionRoutes } from "./api";
+import { analysisRoutes, caseRoutes, depositionRoutes, reportRoutes } from "./api";
 import { accountGates, authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
 import { connect } from "./db/client";
 import { createAnalysisQueues, createIngestQueues, startBoss } from "./jobs";
@@ -49,6 +49,7 @@ async function mountDepositionRoutes() {
     app.use("/api", caseRoutes({ db }));
     app.use("/api", analysisRoutes({ db, pool, boss }));
     app.use("/api", depositionRoutes({ db, pool, boss }));
+    app.use("/api", reportRoutes({ db }));
   } catch (error) {
     console.warn(
       `Deposition endpoints are off: ${error instanceof Error ? error.message : error}`,

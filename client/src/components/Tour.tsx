@@ -2,7 +2,7 @@
 // it's for, with an arrow pointing at it. Next, Back, Skip, and the arrow keys or Escape. A step whose
 // target isn't on screen (a phone, where the sidebar is folded away) shows its note in the middle.
 
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { Button, cx } from "./ui";
 
@@ -20,6 +20,17 @@ export const TOUR: TourStep[] = [
   { target: "account", title: "Your account", text: "Your profile, password and sign-out." },
 ];
 
+// The first time someone opens a finished analysis: how to move through its findings and decide.
+export const ANALYSIS_TOUR: TourStep[] = [
+  { title: "Reviewing an analysis", text: "Each finding is a pair of passages from the two sessions that may conflict. Here's how to move through them and decide." },
+  { target: "finding-tabs", title: "Four categories", text: "Findings are sorted into Potential contradictions, Needs context, Compatible or dismissed, and Unverified. The number is how many each holds. Start with the first." },
+  { target: "finding-chips", title: "Every finding in the category", text: "Each number is one finding, and the outlined one is open. Its colour shows your decision: white not decided, green Kept, amber Needs context, grey Dismissed. Click a number to jump to it." },
+  { target: "finding-steps", title: "Previous and Next", text: "Go through them one at a time, or press j and k. After the last finding of a category, Next takes you to the next category." },
+  { target: "finding-passages", title: "Both passages, side by side", text: "The testimony from each session, word for word, at its page and line. The lines the finding cites are highlighted." },
+  { target: "finding-decision", title: "Your decision", text: "Keep it for follow-up, mark it Needs context, or Dismiss it, and add a note if you like. It saves at once, and the number above changes colour." },
+  { target: "finding-export", title: "Download the report", text: "A PDF of the findings you kept in this analysis, with citations and your notes. Replay this guide from “How to review” in the bar." },
+];
+
 const PAD = 6;
 
 export function Tour({ steps, onDone }: { steps: TourStep[]; onDone: () => void }) {
@@ -28,19 +39,27 @@ export function Tour({ steps, onDone }: { steps: TourStep[]; onDone: () => void 
   const step = steps[i];
   const last = i === steps.length - 1;
 
-  const measure = useCallback(() => {
+  const measure = useCallback((scroll = false) => {
     const el = step.target ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`) : null;
-    const r = el?.getBoundingClientRect();
+    let r = el?.getBoundingClientRect();
+    // A target below or above the window is scrolled to first.
+    if (el && r && scroll && (r.top < 0 || r.bottom > window.innerHeight)) {
+      el.scrollIntoView({ block: r.height > window.innerHeight * 0.6 ? "start" : "center" });
+      r = el.getBoundingClientRect();
+    }
     setRect(r && r.width > 0 && r.height > 0 ? r : null);
   }, [step.target]);
   // The sidebar widens when the tour starts, so measure again once it has.
   useLayoutEffect(() => {
-    measure();
-    const t = window.setTimeout(measure, 260);
-    window.addEventListener("resize", measure);
+    measure(true);
+    const again = () => measure();
+    const t = window.setTimeout(again, 260);
+    window.addEventListener("resize", again);
+    window.addEventListener("scroll", again);
     return () => {
       window.clearTimeout(t);
-      window.removeEventListener("resize", measure);
+      window.removeEventListener("resize", again);
+      window.removeEventListener("scroll", again);
     };
   }, [measure]);
   useEffect(() => {
@@ -53,11 +72,31 @@ export function Tour({ steps, onDone }: { steps: TourStep[]; onDone: () => void 
     return () => window.removeEventListener("keydown", key);
   }, [last, onDone]);
 
-  // The note sits to the right of its target, level with it, kept on screen.
-  const noteWidth = 320;
-  const note = rect
-    ? { left: Math.min(rect.right + 22, window.innerWidth - noteWidth - 16), top: Math.max(16, Math.min(rect.top + rect.height / 2 - 70, window.innerHeight - 220)) }
-    : null;
+  // The note sits to the right of its target, level with it; for a wide target, below it, else above
+  // it; for a target as big as the window, in its lower corner. Always on screen.
+  const noteWidth = Math.min(320, window.innerWidth - 32);
+  const noteHeight = 230; // shortcut: the tallest note's height, estimated; measure the note if steps get longer
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const clampX = (x: number) => Math.max(16, Math.min(x, vw - noteWidth - 16));
+  const placed: { style: CSSProperties; arrow?: CSSProperties } | null = !rect
+    ? null
+    : rect.right + 22 + noteWidth <= vw - 16
+      ? (() => {
+          const top = Math.max(16, Math.min(rect.top + rect.height / 2 - 70, vh - noteHeight));
+          return { style: { left: rect.right + 22, top }, arrow: { left: -7, top: Math.max(14, Math.min(rect.top + rect.height / 2 - top - 7, 180)) } };
+        })()
+      : rect.bottom + 18 + noteHeight <= vh
+        ? (() => {
+            const left = clampX(rect.left + 24);
+            return { style: { left, top: rect.bottom + 18 }, arrow: { top: -7, left: Math.max(14, Math.min(rect.left + 40 - left, noteWidth - 28)) } };
+          })()
+        : rect.top - 18 - noteHeight >= 0
+          ? (() => {
+              const left = clampX(rect.left + 24);
+              return { style: { left, bottom: vh - rect.top + 18 }, arrow: { bottom: -7, left: Math.max(14, Math.min(rect.left + 40 - left, noteWidth - 28)) } };
+            })()
+          : { style: { right: 16, bottom: 16 } };
 
   return (
     <div className="fixed inset-0 z-[60]" role="dialog" aria-modal aria-labelledby="tour-title">
@@ -68,10 +107,10 @@ export function Tour({ steps, onDone }: { steps: TourStep[]; onDone: () => void 
         <div aria-hidden className="fixed inset-0 bg-[rgb(10_18_32/0.62)]" />
       )}
       <div
-        className={cx("fixed w-[min(320px,calc(100vw-32px))] rounded-xl bg-sheet p-5 text-ink shadow-[0_24px_60px_-16px_rgb(0_0_0/0.5)] transition-all duration-300 ease-out", !note && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2")}
-        style={note ?? undefined}
+        className={cx("fixed w-[min(320px,calc(100vw-32px))] rounded-xl bg-sheet p-5 text-ink shadow-[0_24px_60px_-16px_rgb(0_0_0/0.5)] transition-all duration-300 ease-out", !placed && "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2")}
+        style={placed?.style}
       >
-        {note && rect && <span aria-hidden className="absolute -left-[7px] size-3.5 rotate-45 bg-sheet" style={{ top: Math.max(14, Math.min(rect.top + rect.height / 2 - note.top - 7, 180)) }} />}
+        {placed?.arrow && <span aria-hidden className="absolute size-3.5 rotate-45 bg-sheet" style={placed.arrow} />}
         <div className="flex items-start justify-between gap-3">
           <h2 id="tour-title" className="font-serif text-lg font-semibold">{step.title}</h2>
           <button type="button" onClick={onDone} aria-label="Close the tour" className="-mt-1 -mr-1.5 rounded-md p-1 text-faint hover:bg-rule hover:text-ink"><X aria-hidden className="size-4" /></button>

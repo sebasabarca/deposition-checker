@@ -3,7 +3,7 @@
 // what is waiting for a decision; a caught-up one is told so, with where to go.
 
 import type { ReactNode } from "react";
-import { ArrowLeftRight, ArrowRight, Check, CircleCheck, FileText, FileUp, Highlighter, ListChecks, Printer } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Check, CircleCheck, FileText, FileUp, Highlighter, ListChecks, Download } from "lucide-react";
 import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, buttonClass, Card, CardHeader, cx, Loading, rowClass, Strength, tdClass, thClass } from "../components/ui";
 import { shortRef } from "../components/FindingRegister";
@@ -123,7 +123,7 @@ function NextStepCard({ step }: { step: NextStep }) {
       case "check": return { icon: <ListChecks className="size-5" />, title: `Check ${step.witness}'s sessions`, text: "Two sessions are ready to compare. You'll see the estimated cost before anything starts.", action: go(href.case(step.caseId), "Open the case") };
       case "running": return { icon: <ListChecks className="size-5" />, title: "A check is running", text: "It usually takes 4 to 10 minutes. You can keep working.", action: go(href.analysis(step.analysisId), "View progress") };
       case "decide": return { icon: <Highlighter className="size-5" />, title: `Review ${plural(step.count, "finding")}`, text: "Read both passages side by side and decide: Keep, Needs context or Dismiss.", action: go(href.analysis(step.analysisId, step.findingId), "Start reviewing") };
-      case "export": return { icon: <Printer className="size-5" />, title: `Export the ${step.caseName} report`, text: "Every finding you kept, with citations and your notes, ready to print or save as PDF.", action: go(href.report(step.caseId), "Open the report") };
+      case "export": return { icon: <Download className="size-5" />, title: `Export the ${step.caseName} report`, text: "Every finding you kept, with citations and your notes, ready to download as a PDF.", action: go(href.report(step.caseId), "Open the report") };
       case "more": return { icon: <FileUp className="size-5" />, title: "Add more testimony", text: "Add another session or witness to keep checking.", action: upload("Add deposition") };
     }
   })();

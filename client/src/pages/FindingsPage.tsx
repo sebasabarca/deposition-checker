@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
-import { Alert, Badge, Card, cx, Empty, Loading, PageHeader, rowClass, Search, selectClass, Strength, tdClass, thClass } from "../components/ui";
+import { Alert, Badge, Button, Card, cx, Empty, Loading, PageHeader, rowClass, Search, selectClass, Strength, tdClass, thClass } from "../components/ui";
 import { findingHeadline, GROUP_LABEL } from "../lib/labels";
 import { decisionOf, REVIEW_LABEL } from "../lib/review";
 import { href } from "../lib/router";
@@ -17,8 +17,8 @@ export function FindingsPage() {
   const { data, error } = useWorkspace();
   const { findings, error: findingsError } = useWorkspaceFindings(data);
   const [caseId, setCaseId] = useState("");
-  const [group, setGroup] = useState<FindingGroup | "">("contradictions");
-  const [decision, setDecision] = useState("unreviewed");
+  const [group, setGroup] = useState<FindingGroup | "">("");
+  const [decision, setDecision] = useState("");
   const [q, setQ] = useState("");
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -27,6 +27,14 @@ export function FindingsPage() {
       .filter((f) => !term || [f.subject, f.explanation, f.a.ref, f.b.ref, f.analysis.depositions[0].witness].some((s) => s?.toLowerCase().includes(term)))
       .sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || RANK[a.priority] - RANK[b.priority] || b.analysis.id - a.analysis.id || a.rank - b.rank);
   }, [findings, caseId, group, decision, q]);
+
+  const filtered = !!(caseId || group || decision || q.trim());
+  const clear = () => {
+    setCaseId("");
+    setGroup("");
+    setDecision("");
+    setQ("");
+  };
 
   const failure = error ?? findingsError;
   if (failure) return <Alert title="Findings couldn't be loaded">{failure}</Alert>;
@@ -42,9 +50,14 @@ export function FindingsPage() {
             <Filter label="Category" value={group} onChange={(v) => setGroup(v as FindingGroup | "")} options={[["", "All categories"], ...GROUP_ORDER.map((g) => [g, GROUP_LABEL[g]] as [string, string])]} />
             <Filter label="Decision" value={decision} onChange={setDecision} options={[["", "Any decision"], ...(["unreviewed", "confirmed", "needs_context", "dismissed"] as const).map((d) => [d, REVIEW_LABEL[d]] as [string, string])]} />
             <Search value={q} onChange={setQ} label="Search wording, witness or page:line" className="w-72 max-w-full" />
-            <span className="ml-auto text-sm text-muted tabular-nums">{rows.length} shown</span>
+            <span className="ml-auto flex items-center gap-3 text-sm text-muted tabular-nums">{filtered && rows.length > 0 && <button type="button" onClick={clear} className="font-medium text-ink hover:underline">Clear filters</button>}{rows.length} of {findings.length} shown</span>
           </div>
-          {rows.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No finding matches these filters.</p> : (
+          {rows.length === 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-6 text-sm">
+              <p className="text-muted">No finding matches these filters. They hide all {findings.length} {findings.length === 1 ? "finding" : "findings"}.</p>
+              <Button variant="secondary" onClick={clear}>Clear filters</Button>
+            </div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[58rem] text-sm">
                 <thead><tr><th className={thClass}>Finding</th><th className={thClass}>Witness</th><th className={thClass}>Testimony</th><th className={thClass}>Category</th><th className={cx(thClass, "text-right")}>Strength</th><th className={thClass}>Decision</th></tr></thead>

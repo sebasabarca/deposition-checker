@@ -261,7 +261,7 @@ const STEPS: { title: string; text: string; picture: ReactNode }[] = [
   { title: "Add the depositions", text: "Upload a PDF, a text file, or paste the transcript. Scans are read by OCR, and every line keeps its page and line.", picture: <img src="/landing/add-deposition.png" width={2000} height={1400} loading="lazy" alt="The Add deposition dialog with a pasted transcript and the note: Page and line numbers found." className="w-full rounded-lg ring-1 ring-line" /> },
   { title: "Check two sessions", text: "Pick two sessions of one witness. You see the estimated cost before anything is sent, and a check never spends more than its budget.", picture: <EstimateCard /> },
   { title: "Review each finding", text: "Work through the findings with the testimony on screen, one keystroke apart. Your decisions stay with the case.", picture: <img src="/landing/hero-analysis.png" width={2880} height={1800} loading="lazy" alt="" className="w-full rounded-lg ring-1 ring-line" /> },
-  { title: "Export what you kept", text: "Print the findings you kept, with pinpoint citations, the testimony and your notes, or save them as a PDF for the trial team.", picture: <ReportTray /> },
+  { title: "Export what you kept", text: "Download the findings you kept as a PDF, with pinpoint citations, the testimony and your notes, for one analysis or several at once.", picture: <ReportTray /> },
 ];
 
 // The case screen at the moment of starting a check, drawn from the app's own parts.
@@ -368,7 +368,7 @@ function Close() {
               <a href={href.signin()} className="flex h-12 items-center rounded-md px-5 text-[15px] font-semibold text-ink ring-1 ring-control ring-inset hover:bg-hover">Sign in</a>
             </div>
           </div>
-          <img src="/landing/report-page.png" width={1700} height={2200} loading="lazy" alt="Page one of a Veridict report of kept findings, ready to print." className="mx-auto w-[min(380px,80%)] rotate-[2deg] rounded-sm shadow-[0_30px_60px_-24px_rgb(19_33_58/0.45)] ring-1 ring-line" />
+          <img src="/landing/report-page.png" width={1700} height={2200} loading="lazy" alt="Page one of a Veridict report of kept findings." className="mx-auto w-[min(380px,80%)] rotate-[2deg] rounded-sm shadow-[0_30px_60px_-24px_rgb(19_33_58/0.45)] ring-1 ring-line" />
         </div>
         <p aria-hidden className="mt-24 font-serif text-[clamp(72px,19vw,260px)] leading-[0.8] font-semibold tracking-[-0.04em] text-navy select-none">Veridict</p>
         <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-6 text-sm text-muted">
