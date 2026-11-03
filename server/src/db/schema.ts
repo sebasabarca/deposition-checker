@@ -221,9 +221,15 @@ export const depositions = pgTable(
     // Filled by the trigger when omitted (NOT NULL is checked after it runs).
     sessionId: ref("session_id").notNull().default(sql`NULL`),
     sessionPart: integer("session_part").notNull().default(1),
+    // Kept, with every analysis and finding on it, but left out of new analyses and the case's evidence
+    // index: legacy_parse (read by a parser too old to correct without losing findings) or duplicate (the
+    // same file stored again in the case; duplicate_of names the copy that counts). Null: active.
+    excludedReason: text("excluded_reason"),
+    duplicateOf: ref("duplicate_of").references((): AnyPgColumn => depositions.id),
     createdAt: createdAt(),
   },
   (t) => [
+    check("depositions_excluded_check", sql`(${t.excludedReason} is null or ${t.excludedReason} in ('legacy_parse', 'duplicate')) and (${t.excludedReason} is not distinct from 'duplicate') = (${t.duplicateOf} is not null) and ${t.duplicateOf} is distinct from ${t.id}`),
     foreignKey({ name: "depositions_session_witness_fk", columns: [t.sessionId, t.witnessId], foreignColumns: [depositionSessions.id, depositionSessions.witnessId] }),
     unique("depositions_session_part_unique").on(t.sessionId, t.sessionPart),
     check("depositions_session_part_check", sql`${t.sessionPart} >= 1`),

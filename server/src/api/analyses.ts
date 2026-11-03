@@ -350,12 +350,20 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
 
   // What checking two sessions is expected to cost, before anything is sent: the prompt the check
   // would send, sized from measured rates. Nothing is reserved or sent.
+  // Excluded copies keep their analyses and findings but are never compared again.
+  const excludedMessage = (d: { id: number; excludedReason: string | null; duplicateOf: number | null }) =>
+    d.excludedReason === "duplicate"
+      ? `Deposition ${d.id} is a duplicate copy of deposition ${d.duplicateOf}; check that one instead.`
+      : `Deposition ${d.id} was read by an older parser and is kept for its earlier findings only; it can't be checked again.`;
+
   router.get("/cases/:id/estimate", async (req, res) => {
     const caseId = Id.safeParse(req.params.id);
     const q = z.object({ a: Id, b: Id }).safeParse(req.query);
     if (!caseId.success || !q.success) return res.status(400).json({ error: "The case ID and both deposition IDs (a, b) must be positive numbers." });
     const docs = await db.select().from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, [q.data.a, q.data.b])));
     if (docs.length !== 2) return res.status(404).json({ error: "Both depositions must belong to this case." });
+    const excluded = docs.find((d) => d.excludedReason !== null);
+    if (excluded) return res.status(409).json({ error: excludedMessage(excluded), code: "deposition_excluded" });
     // Sessions of two different witnesses are a cross-witness check: witness A's is the earlier session.
     if (docs[0].witnessId !== docs[1].witnessId) {
       const [x, y] = [...docs].sort((p, q) => (p.takenOn ?? "9999").localeCompare(q.takenOn ?? "9999") || p.id - q.id);
@@ -379,6 +387,8 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const maxConcurrency = strategy.id === "A" ? 1 : (b.maxConcurrency ?? strategy.maxConcurrency);
     const docs = await db.select().from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, [b.depositionA, b.depositionB])));
     if (docs.length !== 2) return res.status(404).json({ error: "Both depositions must belong to this case." });
+    const excluded = docs.find((d) => d.excludedReason !== null);
+    if (excluded) return res.status(409).json({ error: excludedMessage(excluded), code: "deposition_excluded" });
     // Sessions of two different witnesses: a cross-witness check, read by Opus. Direct discovery only.
     const cross = docs[0].witnessId !== docs[1].witnessId;
     if (cross && method !== DIRECT_FABLE) return res.status(400).json({ error: "Comparing two witnesses runs as a live check only: it has no example or hybrid mode." });

@@ -1,0 +1,4 @@
+ALTER TABLE "depositions" ADD COLUMN "excluded_reason" text;--> statement-breakpoint
+ALTER TABLE "depositions" ADD COLUMN "duplicate_of" bigint;--> statement-breakpoint
+ALTER TABLE "depositions" ADD CONSTRAINT "depositions_duplicate_of_depositions_id_fk" FOREIGN KEY ("duplicate_of") REFERENCES "public"."depositions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "depositions" ADD CONSTRAINT "depositions_excluded_check" CHECK (("depositions"."excluded_reason" is null or "depositions"."excluded_reason" in ('legacy_parse', 'duplicate')) and ("depositions"."excluded_reason" is not distinct from 'duplicate') = ("depositions"."duplicate_of" is not null) and "depositions"."duplicate_of" is distinct from "depositions"."id");

@@ -40,6 +40,12 @@ export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analys
   // Exchanges point at lines, so they go first, as in a re-ingestion (ingest/store.ts).
   await tx.delete(exchanges).where(inArray(exchanges.depositionId, ids));
   await tx.delete(lines).where(inArray(lines.depositionId, ids));
+  // Copies kept as duplicates of a removed one: the earliest becomes the copy that counts, the rest its duplicates.
+  const list = sql.join(ids.map((x) => sql`${x}`), sql`, `);
+  await tx.execute(sql`
+    with o as (select id, min(id) over (partition by duplicate_of) as first from depositions where duplicate_of in (${list}) and id not in (${list}))
+    update depositions d set excluded_reason = case when o.id = o.first then null else 'duplicate' end, duplicate_of = case when o.id = o.first then null else o.first end
+    from o where d.id = o.id`);
   await tx.delete(depositions).where(inArray(depositions.id, ids));
   // A witness left with no session and no analysis goes too, so it stops being offered for uploads.
   const witnessIds = [...new Set(rows.map((r) => r.witnessId))];

@@ -12,7 +12,7 @@
 // 2. Scoring (score.ts): one symmetric score per part pair, from the two exchanges' own terms.
 // 3. Deduplication and ranking (rank.ts): one candidate per pair of logical exchanges.
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { depositions, exchanges } from "../db/schema";
 import { COURTROOM_WORDS, MIN_CONTENT_TERMS, proceduralReason } from "./procedural";
@@ -84,7 +84,7 @@ export async function findPathB(
     })
     .from(exchanges)
     .innerJoin(depositions, eq(depositions.id, exchanges.depositionId))
-    .where(and(eq(exchanges.witnessId, witnessId), eq(depositions.status, "ready")));
+    .where(and(eq(exchanges.witnessId, witnessId), eq(depositions.status, "ready"), isNull(depositions.excludedReason))); // legacy and duplicate copies never count
 
   // Testimony can be found by any query; only parts with at least MIN_CONTENT_TERMS run queries of
   // their own (see procedural.ts for why two-term parts don't).

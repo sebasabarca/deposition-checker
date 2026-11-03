@@ -93,7 +93,7 @@ export async function storedAttribution(db: Database, documentId: number) {
 // What a document needs before its evidence can be trusted under the current parser: artifacts found in
 // its stored rows (no file is read), and what re-reading it would touch.
 export async function parserAudit(db: Database, scope: { caseId?: number } = {}) {
-  const docs = await db.select({ id: depositions.id, caseId: depositions.caseId, parserVersion: depositions.parserVersion, validation: depositions.validation, status: depositions.status, storageKey: depositions.storageKey, witness: witnesses.name }).from(depositions).innerJoin(witnesses, eq(witnesses.id, depositions.witnessId)).where(scope.caseId === undefined ? undefined : eq(depositions.caseId, scope.caseId)).orderBy(asc(depositions.id));
+  const docs = await db.select({ id: depositions.id, caseId: depositions.caseId, parserVersion: depositions.parserVersion, validation: depositions.validation, status: depositions.status, storageKey: depositions.storageKey, excludedReason: depositions.excludedReason, duplicateOf: depositions.duplicateOf, witness: witnesses.name }).from(depositions).innerJoin(witnesses, eq(witnesses.id, depositions.witnessId)).where(scope.caseId === undefined ? undefined : eq(depositions.caseId, scope.caseId)).orderBy(asc(depositions.id));
   const out = [];
   for (const d of docs) {
     const layout = (d.validation as Validation | null)?.layout ?? null;
@@ -119,7 +119,8 @@ export async function parserAudit(db: Database, scope: { caseId?: number } = {})
     out.push({
       documentId: d.id, caseId: d.caseId, witness: d.witness, layout, status: d.status, parserVersion: d.parserVersion, current: d.parserVersion === PARSER_VERSION, storedFile: !d.storageKey.startsWith("fixtures/"),
       artifacts, impact,
-      action: d.parserVersion === PARSER_VERSION ? "current" : found === 0 ? "older parser, no known artifact in its stored rows" : impact.findings > 0 ? "re-read needed; it would remove findings: needs approval" : "re-read needed; no findings affected",
+      excluded: d.excludedReason, duplicateOf: d.duplicateOf,
+      action: d.excludedReason === "legacy_parse" ? "excluded: legacy parse, kept unchanged with its findings" : d.excludedReason === "duplicate" ? `excluded: duplicate of document ${d.duplicateOf}` : d.parserVersion === PARSER_VERSION ? "current" : found === 0 ? "older parser, no known artifact in its stored rows" : impact.findings > 0 ? "re-read needed; it would remove findings: needs approval" : "re-read needed; no findings affected",
     });
   }
   return out;

@@ -123,7 +123,8 @@ async function hydrate(db: Database, rowIds: readonly number[]): Promise<Evidenc
 // One exchange by its stable ID. The same file in two cases has the same IDs, so give the case when it
 // could be in more than one; an ambiguous ID without one is an error, never a guess.
 export async function getEvidence(db: Database, id: string, caseId?: number): Promise<EvidenceExchange | null> {
-  const rows = await db.select({ id: exchanges.id }).from(exchanges).innerJoin(depositions, eq(depositions.id, exchanges.depositionId)).where(and(eq(exchanges.evidenceKey, id), caseId === undefined ? undefined : eq(depositions.caseId, caseId)));
+  // Excluded copies (legacy parses, duplicates) share keys with the copy that counts; only active ones answer.
+  const rows = await db.select({ id: exchanges.id }).from(exchanges).innerJoin(depositions, eq(depositions.id, exchanges.depositionId)).where(and(eq(exchanges.evidenceKey, id), isNull(depositions.excludedReason), caseId === undefined ? undefined : eq(depositions.caseId, caseId)));
   if (rows.length > 1) throw new Error(`Exchange ${id} is in ${rows.length} cases: give the case.`);
   return rows.length ? (await hydrate(db, [rows[0].id]))[0] : null;
 }
@@ -136,7 +137,7 @@ export type SearchFilters = { caseId: number; witnessId?: number; sessionId?: nu
 export async function searchEvidence(db: Database, query: string, f: SearchFilters) {
   const kinds = f.kinds ?? ["qa"];
   const limit = Math.min(Math.max(f.limit ?? 20, 1), 200);
-  const where: SQL[] = [sql`e.tsv @@ q`, sql`d.case_id = ${f.caseId}`, sql`e.kind::text in (${sql.join(kinds.map((k) => sql`${k}`), sql`, `)})`];
+  const where: SQL[] = [sql`e.tsv @@ q`, sql`d.case_id = ${f.caseId}`, sql`d.excluded_reason is null`, sql`e.kind::text in (${sql.join(kinds.map((k) => sql`${k}`), sql`, `)})`];
   if (f.witnessId !== undefined) where.push(sql`d.witness_id = ${f.witnessId}`);
   if (f.sessionId !== undefined) where.push(sql`d.session_id = ${f.sessionId}`);
   if (f.documentId !== undefined) where.push(sql`d.id = ${f.documentId}`);
@@ -196,7 +197,12 @@ export async function sourceContext(db: Database, id: string, opts: { caseId?: n
 // What the index holds for each file of a case, and what it doesn't: files not read, pages with no text
 // or never read, missing printed pages, witness lines in no exchange, and exchanges not yet indexed.
 export async function evidenceCoverage(db: Database, caseId: number) {
-  const docs = await db.select({ ...docColumns, status: depositions.status, filename: depositions.originalFilename, label: depositionSessions.label }).from(depositions).innerJoin(witnesses, eq(witnesses.id, depositions.witnessId)).innerJoin(depositionSessions, eq(depositionSessions.id, depositions.sessionId)).where(eq(depositions.caseId, caseId)).orderBy(asc(depositions.sessionId), asc(depositions.sessionPart));
+  const all = await db.select({ ...docColumns, status: depositions.status, filename: depositions.originalFilename, label: depositionSessions.label, excludedReason: depositions.excludedReason, duplicateOf: depositions.duplicateOf }).from(depositions).innerJoin(witnesses, eq(witnesses.id, depositions.witnessId)).innerJoin(depositionSessions, eq(depositionSessions.id, depositions.sessionId)).where(eq(depositions.caseId, caseId)).orderBy(asc(depositions.sessionId), asc(depositions.sessionPart));
+  // Only active copies are the case's evidence; excluded ones are listed, never counted.
+  const docs = all.filter((d) => d.excludedReason === null);
+  const excluded = all.filter((d) => d.excludedReason !== null).map((d) => ({ documentId: d.id, witness: d.witness, reason: d.excludedReason!, duplicateOf: d.duplicateOf }));
+  // The same file active twice would be counted as two depositions: reported until one is marked a duplicate.
+  const unmarkedDuplicates = [...new Set(docs.map((d) => d.sha))].map((sha) => docs.filter((d) => d.sha === sha).map((d) => d.id)).filter((ids) => ids.length > 1);
   const documents = await Promise.all(docs.map(async (d) => {
     const stored = await db.select({ page: lines.printedPage, line: lines.lineNo }).from(lines).where(eq(lines.depositionId, d.id)).orderBy(asc(lines.printedPage), asc(lines.lineNo));
     const counts = await db.execute<{ kind: string; status: string | null; n: number }>(sql`select kind::text, speaker_status as status, count(*)::int as n from exchanges where deposition_id = ${d.id} group by 1, 2`);
@@ -225,7 +231,7 @@ export async function evidenceCoverage(db: Database, caseId: number) {
     return { sessionId, witness: parts[0].witness, files: parts.length, dates, notes: dates.length > 1 ? ["its files have different dates"] : [] };
   });
   const sum = (k: "lines" | "exchanges" | "qaExchanges" | "notIndexed" | "witnessLinesInNoExchange") => documents.reduce((n, d) => n + d[k], 0);
-  return { caseId, documents, sessions, totals: { documents: documents.length, notRead: documents.filter((d) => d.status !== "ready").length, lines: sum("lines"), exchanges: sum("exchanges"), qaExchanges: sum("qaExchanges"), notIndexed: sum("notIndexed"), witnessLinesInNoExchange: sum("witnessLinesInNoExchange") } };
+  return { caseId, documents, sessions, excluded, unmarkedDuplicates, totals: { documents: documents.length, notRead: documents.filter((d) => d.status !== "ready").length, lines: sum("lines"), exchanges: sum("exchanges"), qaExchanges: sum("qaExchanges"), notIndexed: sum("notIndexed"), witnessLinesInNoExchange: sum("witnessLinesInNoExchange") } };
 }
 
 // Fills (or, with refresh, recomputes) the evidence fields of stored exchanges, from their lines, with the
@@ -266,4 +272,18 @@ export async function createSession(db: Database, s: { caseId: number; witnessId
 export async function nextSessionPart(db: Database, sessionId: number) {
   const [r] = (await db.execute<{ n: number }>(sql`select coalesce(max(session_part), 0)::int + 1 as n from depositions where session_id = ${sessionId}`)).rows;
   return r.n;
+}
+
+// Leaves a stored copy out of new analyses and the evidence index, keeping it and everything on it.
+// A duplicate must be the same file in the same case as an active copy, which then counts for both.
+export async function excludeDocument(db: Database, documentId: number, x: { reason: "legacy_parse" } | { reason: "duplicate"; duplicateOf: number }) {
+  const [d] = await db.select().from(depositions).where(eq(depositions.id, documentId));
+  if (!d) throw new Error(`No document ${documentId}.`);
+  if (d.excludedReason !== null) throw new Error(`Document ${documentId} is already excluded (${d.excludedReason}).`);
+  if (x.reason === "duplicate") {
+    const [k] = await db.select().from(depositions).where(eq(depositions.id, x.duplicateOf));
+    if (!k || k.caseId !== d.caseId || k.fileSha256 !== d.fileSha256) throw new Error(`Document ${x.duplicateOf} isn't the same file in the same case as ${documentId}.`);
+    if (k.excludedReason !== null) throw new Error(`Document ${x.duplicateOf} is itself excluded; name the active copy.`);
+  }
+  await db.update(depositions).set({ excludedReason: x.reason, duplicateOf: x.reason === "duplicate" ? x.duplicateOf : null }).where(eq(depositions.id, documentId));
 }

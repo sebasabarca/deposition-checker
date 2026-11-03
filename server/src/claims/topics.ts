@@ -4,7 +4,7 @@
 // parts the same way, each part seeing the topics so far. A failed map stores nothing: Path A still
 // has its entity links and Path B doesn't need topics.
 
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { cardTopics, depositions, statementCards, topics } from "../db/schema";
@@ -43,7 +43,7 @@ export async function buildTopicMap(db: Database, witnessId: number, model: Clai
       .select({ id: statementCards.id, event: statementCards.event, depositionId: statementCards.depositionId })
       .from(statementCards)
       .innerJoin(depositions, eq(depositions.id, statementCards.depositionId))
-      .where(and(eq(statementCards.witnessId, witnessId), eq(statementCards.status, "usable"), eq(statementCards.extractorVersion, CARD_EXTRACTOR_VERSION), eq(depositions.status, "ready")))
+      .where(and(eq(statementCards.witnessId, witnessId), eq(statementCards.status, "usable"), eq(statementCards.extractorVersion, CARD_EXTRACTOR_VERSION), eq(depositions.status, "ready"), isNull(depositions.excludedReason)))
       .orderBy(asc(statementCards.id))
   ).map((c) => ({ ...c, event: c.event! }));
   if (cards.length === 0) return { ...result, status: "no_cards" };

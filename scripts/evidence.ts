@@ -31,6 +31,10 @@
 //     them is removed. A dry run unless --execute; executing first writes a backup under data/raw/backups/.
 //     Refuses, changing nothing, when text would change or a referenced exchange would change its lines,
 //     and then maps each such exchange to the corrected ones and lists the findings that need review.
+//   npx tsx scripts/evidence.ts exclude --document-id <id> --reason legacy_parse|duplicate [--duplicate-of <id>]
+//     Leaves a stored copy out of new analyses and the evidence index (search, lookup, coverage totals),
+//     keeping it and every analysis, finding and review on it. A duplicate names the active copy of the
+//     same file in the same case.
 //
 // Prints testimony: run it against data you may read.
 
@@ -42,11 +46,11 @@ import { asc, eq } from "drizzle-orm";
 import { connect } from "../server/src/db/client";
 import { loadEvidenceFixtures, missingFixtureFiles, openEvaluationDatabase, readEvidenceFixture, runEvidenceChecks } from "../server/src/eval/evidenceFixtures";
 import { depositions, exchangeLines, exchanges, lines, witnesses } from "../server/src/db/schema";
-import { correctInPlace, evidenceCoverage, getEvidence, indexEvidence, parserAudit, reprocessDocument, searchEvidence, sourceContext, storedAttribution, type EvidenceExchange, type SourceRef } from "../server/src/evidence";
+import { correctInPlace, evidenceCoverage, excludeDocument, getEvidence, indexEvidence, parserAudit, reprocessDocument, searchEvidence, sourceContext, storedAttribution, type EvidenceExchange, type SourceRef } from "../server/src/evidence";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { execute: { type: "boolean" }, "accept-impact": { type: "boolean" }, "case-id": { type: "string" }, "witness-id": { type: "string" }, "session-id": { type: "string" }, "document-id": { type: "string" }, limit: { type: "string" }, lines: { type: "string" }, refresh: { type: "boolean" }, json: { type: "boolean" }, deposition: { type: "string" }, out: { type: "string" } },
+  options: { execute: { type: "boolean" }, "accept-impact": { type: "boolean" }, "case-id": { type: "string" }, "witness-id": { type: "string" }, "session-id": { type: "string" }, "document-id": { type: "string" }, limit: { type: "string" }, lines: { type: "string" }, refresh: { type: "boolean" }, json: { type: "boolean" }, deposition: { type: "string" }, out: { type: "string" }, reason: { type: "string" }, "duplicate-of": { type: "string" } },
 });
 const num = (v: string | undefined) => (v === undefined ? undefined : Number(v));
 const [command, ...rest] = positionals;
@@ -149,6 +153,14 @@ async function main() {
       const brief = "changes" in r ? { ...r, changes: Object.fromEntries(Object.entries(r.changes).map(([k, v]) => [k, v.length])), attribution: { before: { counts: r.attribution.before.counts, causes: r.attribution.before.causes }, after: { counts: r.attribution.after.counts, causes: r.attribution.after.causes } }, ...("exchangeIds" in r ? { exchangeIds: { removed: r.exchangeIds.removed.length, added: r.exchangeIds.added.length, kept: r.exchangeIds.kept } } : {}) } : r;
       console.log(JSON.stringify(brief, null, 2));
       if (r.outcome === "refused") process.exitCode = 2;
+    } else if (command === "exclude") {
+      const id = num(values["document-id"]);
+      const reason = values.reason;
+      if (!id || (reason !== "legacy_parse" && reason !== "duplicate")) throw new Error("exclude needs --document-id and --reason legacy_parse|duplicate");
+      const of = num(values["duplicate-of"]);
+      if (reason === "duplicate" && !of) throw new Error("a duplicate needs --duplicate-of <active copy>");
+      await excludeDocument(db, id, reason === "duplicate" ? { reason, duplicateOf: of! } : { reason });
+      console.log(`Document ${id} excluded (${reason}${of ? ` of ${of}` : ""}); its rows, analyses and findings are kept.`);
     } else if (command === "correct") {
       const id = num(values["document-id"]);
       if (!id) throw new Error("correct needs --document-id");
@@ -177,7 +189,7 @@ async function main() {
       writeFileSync(values.out, JSON.stringify({ fileSha256: d.sha, witness: d.witness, takenOn: d.takenOn, parserVersion: d.parserVersion, validation: d.validation, lines: rows.map(({ id: _id, ...r }) => r), parts: exported }));
       console.log(`${rows.length} lines of deposition ${id} written to ${values.out}`);
     } else {
-      throw new Error("Usage: index | coverage | search | get | context | attribution | parser-audit | reprocess | correct | eval-real | export-lines (see the comment at the top of scripts/evidence.ts)");
+      throw new Error("Usage: index | coverage | search | get | context | attribution | parser-audit | reprocess | correct | exclude | eval-real | export-lines (see the comment at the top of scripts/evidence.ts)");
     }
   } finally {
     await pool.end();
