@@ -162,6 +162,29 @@ export const witnesses = pgTable(
   ],
 );
 
+// One sitting of one witness (DESIGN.md, "Stage 1 evidence foundation"). A session can span several
+// uploaded files (depositions, its parts); files are never merged into one session by witness or date,
+// only by an explicit association. A database trigger gives a deposition stored without a session its
+// own (so every existing insert path keeps one file per session), and removes a session left empty.
+export const depositionSessions = pgTable(
+  "deposition_sessions",
+  {
+    id: id(),
+    caseId: ref("case_id")
+      .notNull()
+      .references(() => cases.id),
+    witnessId: ref("witness_id").notNull(),
+    label: text("label"), // how the user names it, e.g. "Day 2, afternoon"; optional
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({ name: "deposition_sessions_witness_case_fk", columns: [t.witnessId, t.caseId], foreignColumns: [witnesses.id, witnesses.caseId] }),
+    // Target for depositions' (session, witness) foreign key: a session's files are one witness's.
+    unique("deposition_sessions_id_witness_unique").on(t.id, t.witnessId),
+    index("deposition_sessions_case_idx").on(t.caseId),
+  ],
+);
+
 export const depositions = pgTable(
   "depositions",
   {
@@ -194,9 +217,16 @@ export const depositions = pgTable(
     // job carries the run it was queued for, and acts only while that run is still current, so a
     // late or redelivered message from an earlier run can't affect a newer one.
     ingestRun: integer("ingest_run").notNull().default(1),
+    // The session this file belongs to, and its place in it (1 for the first or only file).
+    // Filled by the trigger when omitted (NOT NULL is checked after it runs).
+    sessionId: ref("session_id").notNull().default(sql`NULL`),
+    sessionPart: integer("session_part").notNull().default(1),
     createdAt: createdAt(),
   },
   (t) => [
+    foreignKey({ name: "depositions_session_witness_fk", columns: [t.sessionId, t.witnessId], foreignColumns: [depositionSessions.id, depositionSessions.witnessId] }),
+    unique("depositions_session_part_unique").on(t.sessionId, t.sessionPart),
+    check("depositions_session_part_check", sql`${t.sessionPart} >= 1`),
     // Duplicate protection: the same file parsed by the same parser version is ingested once per case.
     unique("depositions_file_unique").on(
       t.caseId,
@@ -259,6 +289,29 @@ export const lines = pgTable(
   ],
 );
 
+// Speaker changes inside one stored line (ingest/segments.ts): an archive statement that runs two
+// turns together, "Q: … drove up in? A.Yes, I do.". Each segment is a character range of the line's
+// raw_text, which stays untouched, with the speaker its label names; the line keeps its own reference.
+// Only lines with more than one segment have rows. Added in parser revision 9.
+export const lineSegments = pgTable(
+  "line_segments",
+  {
+    lineId: ref("line_id").notNull(),
+    depositionId: ref("deposition_id").notNull(),
+    seq: integer("seq").notNull(),
+    startOffset: integer("start_offset").notNull(),
+    endOffset: integer("end_offset").notNull(),
+    speakerRole: speakerRole("speaker_role").notNull(),
+    speakerName: text("speaker_name"),
+  },
+  (t) => [
+    primaryKey({ name: "line_segments_pk", columns: [t.lineId, t.seq] }),
+    foreignKey({ name: "line_segments_line_fk", columns: [t.lineId, t.depositionId], foreignColumns: [lines.id, lines.depositionId] }).onDelete("cascade"),
+    index("line_segments_deposition_idx").on(t.depositionId),
+    check("line_segments_range_check", sql`${t.startOffset} >= 0 and ${t.endOffset} > ${t.startOffset}`),
+  ],
+);
+
 // A reference from an exchange to one of its lines. The foreign key covers the pair
 // (line, deposition), so an exchange can only point at lines from its own deposition.
 const lineInSameDeposition = (
@@ -309,6 +362,14 @@ export const exchanges = pgTable(
     tsv: tsvector("tsv")
       .notNull()
       .generatedAlwaysAs(sql`to_tsvector('english'::regconfig, question_text || ' ' || answer_text)`),
+    // Stage 1 evidence fields (server/src/evidence/exchange.ts). Null until indexed: set at ingestion,
+    // and by `scripts/evidence.ts index` for exchanges stored before them, so a missing one is reported.
+    // evidence_key: stable across re-ingestion of the same file (from its SHA-256 and the exchange's
+    // first and last page:line); text_hash: of its stored source lines; speaker_status: verified,
+    // uncertain or invalid, from the line roles alone.
+    evidenceKey: text("evidence_key"),
+    textHash: text("text_hash"),
+    speakerStatus: text("speaker_status"),
   },
   (t) => [
     unique("exchanges_part_unique").on(t.depositionId, t.groupId, t.partNo),
@@ -321,6 +382,10 @@ export const exchanges = pgTable(
     }).onDelete("cascade"),
     index("exchanges_witness_deposition_idx").on(t.witnessId, t.depositionId),
     index("exchanges_tsv_idx").using("gin", t.tsv),
+    unique("exchanges_evidence_key_unique").on(t.depositionId, t.evidenceKey),
+    index("exchanges_evidence_key_idx").on(t.evidenceKey),
+    check("exchanges_speaker_status_check", sql`${t.speakerStatus} is null or ${t.speakerStatus} in ('verified', 'uncertain', 'invalid')`),
+    check("exchanges_evidence_fields_check", sql`(${t.evidenceKey} is null) = (${t.textHash} is null) and (${t.evidenceKey} is null) = (${t.speakerStatus} is null)`),
     // Null question or answer endpoints skip their check (Postgres MATCH SIMPLE).
     lineInSameDeposition("exchanges_first_line_fk", t.firstLineId, t.depositionId),
     lineInSameDeposition("exchanges_last_line_fk", t.lastLineId, t.depositionId),
@@ -355,8 +420,14 @@ export const exchangeLines = pgTable(
     // Stored so both foreign keys below can require the exchange and the line to share it.
     depositionId: ref("deposition_id").notNull(),
     role: lineRole("role").notNull(),
+    // A line holding several turns (line_segments) can belong to two exchanges: "A: Yes. Q. Where?" ends
+    // one and starts the next. These are the seq range (inclusive) of its segments that belong to this
+    // exchange; null means all of them (or a line without segments). Added in parser revision 10.
+    segmentFrom: integer("segment_from"),
+    segmentTo: integer("segment_to"),
   },
   (t) => [
+    check("exchange_lines_segments_check", sql`(${t.segmentFrom} is null) = (${t.segmentTo} is null) and (${t.segmentFrom} is null or ${t.segmentFrom} between 0 and ${t.segmentTo})`),
     primaryKey({
       name: "exchange_lines_pk",
       columns: [t.exchangeId, t.lineId],

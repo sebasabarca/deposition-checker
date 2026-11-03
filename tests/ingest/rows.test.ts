@@ -102,11 +102,11 @@ describe("toExchangeLineRows", () => {
   it("lists every member line of each part with its role, matched to stored parts by group and part number", () => {
     const storedParts = parts.map((p, i) => ({ id: 50 + i, groupId: p.groupNo, partNo: p.partNo })).reverse();
     expect(toExchangeLineRows(7, parts, storedParts, ids)).toEqual([
-      { exchangeId: 50, lineId: 1000, depositionId: 7, role: "question" },
-      { exchangeId: 50, lineId: 1010, depositionId: 7, role: "answer" },
-      { exchangeId: 51, lineId: 1020, depositionId: 7, role: "question" },
-      { exchangeId: 51, lineId: 1030, depositionId: 7, role: "context" },
-      { exchangeId: 51, lineId: 1040, depositionId: 7, role: "answer" },
+      { exchangeId: 50, lineId: 1000, depositionId: 7, role: "question", segmentFrom: null, segmentTo: null },
+      { exchangeId: 50, lineId: 1010, depositionId: 7, role: "answer", segmentFrom: null, segmentTo: null },
+      { exchangeId: 51, lineId: 1020, depositionId: 7, role: "question", segmentFrom: null, segmentTo: null },
+      { exchangeId: 51, lineId: 1030, depositionId: 7, role: "context", segmentFrom: null, segmentTo: null },
+      { exchangeId: 51, lineId: 1040, depositionId: 7, role: "answer", segmentFrom: null, segmentTo: null },
     ]);
   });
 

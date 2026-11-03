@@ -67,6 +67,18 @@ describe("archives that number each statement", () => {
     expect(read.pages[0].footer).toEqual(["ARCHIVE-DERIVED TRANSCRIPT EXPORT", "Source URL: https://example.org/"]);
   });
 
+  it("leaves out a numbered statement with no text instead of adding its number to the one before", () => {
+    // Simpson, January 23, 1996 has rows like "302" alone between 301 and 303.
+    const read = readArchiveRecords([...run(1, 40), "41", "42", ...run(43, 60)])!;
+    const lines = read.pages[0].lines;
+    expect(lines.find((l) => l.lineNo === 40)!.rawText).toBe("A: statement 40");
+    expect(lines.map((l) => l.lineNo)).not.toContain(41);
+    expect(lines.find((l) => l.lineNo === 43)!.rawText).toBe("Q: statement 43");
+    expect(read.warnings.join(" ")).toMatch(/2 numbered statements have no text/);
+    // A number out of sequence is still words of the statement before it, as printed.
+    expect(readArchiveRecords([...run(1, 40), "7", ...run(41, 60)])!.pages[0].lines.find((l) => l.lineNo === 40)!.rawText).toBe("A: statement 40 7");
+  });
+
   it("stores a count that starts again as parts, so each number names one statement in its part", () => {
     const read = readArchiveRecords([...run(1, 50), ...run(1, 32), ...run(1, 45)])!;
     expect(read.pages.map((p) => [p.printedPage, p.lines.length])).toEqual([[1, 50], [2, 32], [3, 45]]);

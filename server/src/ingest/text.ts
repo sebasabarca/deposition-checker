@@ -8,6 +8,7 @@
 // beside the line numbers are removed and counted, and every oddity is a warning on the deposition.
 
 import { buildExchangeParts } from "./exchanges";
+import { speakerSegments } from "./segments";
 import type { LayoutProfile } from "./layout";
 import type { PageExtraction, SourceLine } from "./pdf";
 import type { Validation } from "./validate";
@@ -34,7 +35,7 @@ export const UNNUMBERED_PAGE = 0;
 // other text without pages, so it is cited as "Line N" and never as an official page:line. An archive
 // whose count starts again (a page in sections) is stored in parts, one per run of the count, each part
 // in the page field (1, 2, ...), so "Part 3, Line 233" names one statement; still never official.
-export const TEXT_ARCHIVE_V1: LayoutProfile = { ...TEXT_UNNUMBERED_V1, name: "text-archive-lines-v1" };
+export const TEXT_ARCHIVE_V1: LayoutProfile = { ...TEXT_UNNUMBERED_V1, name: "text-archive-lines-v1", namedSpeakers: true };
 
 const MAX_LINE_NO = 30; // a gutter number above this is a page number standing alone
 const NUMBERED = /^(\s*)(\d{1,2})(?:\s+(.*?))?\s*$/;
@@ -127,6 +128,8 @@ function gutterEnd(rows: string[]): number | null {
 const listed = (ns: number[]) => (ns.length > 8 ? `${ns.slice(0, 8).join(", ")} and ${ns.length - 8} more` : ns.join(", "));
 
 const RECORD = /^\s*(\d{1,6})\s+(\S.*?)\s*$/;
+// A number alone on its row: an empty statement in the count, never text of the statement before it.
+const EMPTY_RECORD = /^\s*(\d{1,6})\s*$/;
 const ARCHIVE_SHARE = 0.9;
 
 const RESTART_FROM = 5; // a new run of the count starts at 1 or close to it
@@ -144,9 +147,19 @@ export function readArchiveRecords(rows: string[]): TextPages | null {
   const records: { part: number; id: number; text: string }[] = [];
   const header: string[] = [];
   let continued = 0;
+  let empty = 0;
+  let lastNo = -1; // the last number seen, empty statements included, so several in a row are caught
   for (const row of content) {
     const m = row.match(RECORD);
     const last = records.at(-1);
+    const bare = row.match(EMPTY_RECORD);
+    if (!m && bare && last && Number(bare[1]) === lastNo + 1) {
+      // Kept out of the testimony, and counted: the export numbered a statement with nothing in it.
+      empty++;
+      lastNo++;
+      continue;
+    }
+    if (m) lastNo = Number(m[1]);
     if (m) records.push({ part: last && Number(m[1]) <= last.id ? last.part + 1 : (last?.part ?? 1), id: Number(m[1]), text: m[2] });
     else if (records.length) {
       records[records.length - 1].text += ` ${row.trim()}`;
@@ -160,6 +173,7 @@ export function readArchiveRecords(rows: string[]): TextPages | null {
     ? [`This text numbers each statement in one continuous count, with no pages (as public archives do), so references are cited as "Line N" using that number. They are not official page:line citations: check them against the certified transcript.`]
     : [`This text numbers each statement in a count that starts again ${parts - 1} ${parts === 2 ? "time" : "times"} (as some public archives do), so each run of the count is a part, and references are cited as "Part P, Line N". They are not official page:line citations: check them against the certified transcript.`];
   if (header.length) warnings.push(`${header.length} ${header.length === 1 ? "row" : "rows"} before the first numbered statement (a title or source note) ${header.length === 1 ? "is" : "are"} kept out of the testimony.`);
+  if (empty) warnings.push(`${empty} numbered ${empty === 1 ? "statement has" : "statements have"} no text and ${empty === 1 ? "is" : "are"} left out; the numbers around ${empty === 1 ? "it" : "them"} are kept as printed.`);
   if (continued) warnings.push(`${continued} ${continued === 1 ? "row without a number was" : "rows without a number were"} joined to the statement above ${continued === 1 ? "it" : "them"}.`);
   return { layout: TEXT_ARCHIVE_V1, pages, inferredPages: [], warnings };
 }
@@ -255,7 +269,9 @@ export function transcriptFromPages({ layout, pages, inferredPages, warnings }: 
     warnings: [...notes, ...warnings],
     inferredPages,
   };
-  const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), layout, witnessSurname) : null;
+  // An archive statement can run two turns together: its speaker changes are found (text untouched)
+  // before exchanges are built, so each turn joins the right exchange.
+  const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), layout, witnessSurname, layout.namedSpeakers ? speakerSegments : undefined) : null;
   return { pdf: { pageCount: pages.length, pages }, validation, exchanges };
 }
 

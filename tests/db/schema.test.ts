@@ -95,11 +95,13 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
       "cases",
       "claim_tagging",
       "claims",
+      "deposition_sessions",
       "depositions",
       "discovery_runs",
       "exchange_lines",
       "exchanges",
       "findings",
+      "line_segments",
       "lines",
       "llm_calls",
       "orgs",
@@ -154,7 +156,8 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
     it("rejects a deposition whose witness belongs to another case", async () => {
       const { org, witness } = await seed();
       const [otherCase] = await db.insert(cases).values({ orgId: org.id, name: "Another case" }).returning();
-      expect(await violation(db.insert(depositions).values(deposition(otherCase.id, witness.id)))).toBe("depositions_witness_case_fk");
+      // The session the trigger makes for it carries the same rule, and is checked first.
+      expect(await violation(db.insert(depositions).values(deposition(otherCase.id, witness.id)))).toMatch(/^depositions?(_sessions)?_witness_case_fk$/);
     });
 
     it("rejects a malformed file hash and an unknown status", async () => {

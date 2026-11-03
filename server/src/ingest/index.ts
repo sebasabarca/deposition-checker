@@ -163,7 +163,7 @@ async function readFile(data: Uint8Array, layout: LayoutProfile, ocr: OcrReader,
   return { parserVersion: PARSER_VERSION, pdf, validation, exchanges };
 }
 
-export type IngestTarget = { caseId: number; witnessId: number; takenOn: string | null; witnessName?: string };
+export type IngestTarget = { caseId: number; witnessId: number; takenOn: string | null; witnessName?: string; session?: { id: number; part: number } };
 
 // Stores the file, reads it and saves the result. Every file is saved, whatever its status, so a
 // PDF that can't be used still appears with the reasons; only a ready one gets lines and exchanges.

@@ -197,6 +197,27 @@
       "when": 1793732732024,
       "tag": "0027_cross_witness_analyses",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793734630341,
+      "tag": "0028_deposition_sessions_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793736224594,
+      "tag": "0029_line_segments",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793738608865,
+      "tag": "0030_exchange_line_segments",
+      "breakpoints": true
     }
   ]
 }

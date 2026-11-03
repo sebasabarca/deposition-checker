@@ -7,6 +7,7 @@
 
 import type { LayoutProfile } from "./layout";
 import type { SourceLine } from "./pdf";
+import type { SpeakerSegment } from "./segments";
 
 export const MAX_ANSWER_LINES = 40;
 export const ANSWER_OVERLAP_LINES = 5;
@@ -27,12 +28,15 @@ export type AttributedLine = SourceLine & {
   turn: TurnMarker;
   role: SpeakerRole;
   speakerName: string | null; // when the transcript names the speaker: "MR. RILL", "MR. SCOTT"
+  segments?: SpeakerSegment[]; // speaker changes inside the line (archive statements only; segments.ts)
 };
 
 // A line's role inside an exchange. `unknown` text (after a redaction gap, before any speaker
 // marker) is kept but is never treated as the witness's answer.
 export type LineRole = "question" | "answer" | "context" | "unknown";
-export type ExchangeLine = { index: number; role: LineRole };
+// segments: for a line holding several turns, the range (inclusive) of its segments in this exchange.
+// Its role is then the most telling of theirs: answer, then question, then the first segment's.
+export type ExchangeLine = { index: number; role: LineRole; segments?: { from: number; to: number } };
 
 export type ExchangeKind = "qa" | "colloquy" | "objection" | "exhibit";
 export type ExchangeFlag = "starts_mid_turn" | "ends_at_gap" | "no_answer" | "no_question";
@@ -76,6 +80,8 @@ const HEARING_LABEL = /^((?:Mr|Ms|Mrs|Dr)\. [A-Z][A-Za-z'-]+)[.,](?:\s|$)/;
 // A blacked-out speaker's name reads as stray marks at the start of a turn ("P| Can I ask ..."), or as
 // a line of only a character or two ("a" where "BY [redacted]:" stood).
 const REDACTED_LABEL = /^(?:[A-Za-z]{0,3}[|\]=~_]+(?:\s|$)|.{1,2}$)/;
+// A note closed on its own line, "[2:05 p.m.]" or "(Recess.)": the record's, at whatever indent it sits.
+const WHOLE_NOTE = /^(?:\[[^\]]*\]|\([^)]*\))$/;
 const OBJECTION = /\bobject(?:ion)?\b/i;
 const EXHIBIT = /\bexhibit\b|\bmarked\b/i;
 
@@ -115,6 +121,8 @@ export function markLine(text: string, indentX: number | null, layout: LayoutPro
   const t = text.trim();
   const examiner = t.match(EXAMINER);
   if (examiner) return { turn: "examiner", name: examiner[1] };
+  // Before the indent: a centred note ("[2:05 p.m.]") has no turn indent at all.
+  if (WHOLE_NOTE.test(t)) return { turn: "parenthetical", name: null };
   if (indentX === null) return { turn: null, name: null };
   const hearing = t.match(HEARING_LABEL);
   const clean = hearing !== null && t.charAt(hearing[1].length) === ".";
@@ -137,6 +145,11 @@ export function markLine(text: string, indentX: number | null, layout: LayoutPro
   // record's notes, not anyone's words.
   if (t.startsWith("(") || t.startsWith("[") || PAGE_MARKER.test(t) || CONTINUED_HEADING.test(t)) return { turn: "parenthetical", name: null };
   const label = t.match(ANY_LABEL);
+  // An archive names every speaker: a name that isn't the witness's, nor one or two letters from it, is someone else.
+  if (label && layout.namedSpeakers && witnessSurname) {
+    const surname = surnameOf(label[1]);
+    if (surname !== witnessSurname && misread(surname, witnessSurname) > 2) return { turn: "colloquy", name: label[1] };
+  }
   if (label) return { turn: "unrecognized", name: label[1] };
   return { turn: null, name: null };
 }
@@ -164,7 +177,10 @@ export const surnameOf = (name: string) => name.trim().replace(/,?\s+(?:jr|sr|ii
 // An unmarked line continues the previous speaker. After a note that has closed ("[Pause.]", "(Exhibit
 // marked.)", "END PAGE"), it continues the speaker from before the note, so the rest of an answer stays
 // the witness's; a note still open ("(Whereupon, the" ...) keeps its own continuation lines.
-export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, witnessSurname?: string): AttributedLine[] {
+// segment: finds speaker changes inside a line (archive statements; segments.ts); an unmarked line after
+// one continues its last segment's speaker.
+export type Segmenter = (text: string, witnessSurname?: string) => SpeakerSegment[];
+export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, witnessSurname?: string, segment?: Segmenter): AttributedLine[] {
   const result: AttributedLine[] = [];
   let noteOpen = false;
   let speaker: AttributedLine | null = null; // the last line that wasn't a note, with nothing redacted since
@@ -173,7 +189,9 @@ export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, wi
     const previous = result[index - 1];
     const continuesTurn = previous !== undefined && isContiguous(lines[index - 1], line, layout);
     if (!continuesTurn) speaker = null;
-    const from = previous?.role === "parenthetical" && !noteOpen && speaker ? speaker : previous;
+    const before = previous?.role === "parenthetical" && !noteOpen && speaker ? speaker : previous;
+    const tail = before?.segments?.at(-1);
+    const from = tail ? { role: tail.role, speakerName: tail.name } : before;
     let attributed: AttributedLine;
     if (turn !== null) {
       attributed = { ...line, index, turn, role: ROLE_OF_TURN[turn], speakerName: name };
@@ -183,6 +201,8 @@ export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, wi
       // First line, or the first line after a redaction gap, with no speaker marker.
       attributed = { ...line, index, turn, role: "unknown", speakerName: null };
     }
+    const segments = segment?.(line.rawText, witnessSurname);
+    if (segments?.length) attributed.segments = segments;
     result.push(attributed);
     const text = line.rawText.trim();
     if (attributed.role !== "parenthetical") {
@@ -201,6 +221,14 @@ const LINE_ROLE: Record<SpeakerRole, LineRole> = {
   unknown: "unknown",
 };
 
+// Every role a member plays: its segments' roles for a line holding several turns, else its own.
+export function rolesOf(lines: readonly AttributedLine[], m: ExchangeLine): LineRole[] {
+  const segs = lines[m.index].segments;
+  return segs && m.segments ? segs.slice(m.segments.from, m.segments.to + 1).map((s) => LINE_ROLE[s.role]) : [m.role];
+}
+const primaryRole = (roles: LineRole[]): LineRole => (roles.includes("answer") ? "answer" : roles.includes("question") ? "question" : roles[0]);
+const isExaminerHeading = (text: string) => /^BY\s/.test(text);
+
 export function buildExchanges(lines: AttributedLine[], layout: LayoutProfile): Exchange[] {
   const exchanges: Exchange[] = [];
   let current: { members: ExchangeLine[]; startsAfterGap: boolean } | null = null;
@@ -208,7 +236,7 @@ export function buildExchanges(lines: AttributedLine[], layout: LayoutProfile): 
   const close = (endsAtGap: boolean) => {
     if (!current) return;
     const members = current.members;
-    const has = (role: LineRole) => members.some((m) => m.role === role);
+    const has = (role: LineRole) => members.some((m) => rolesOf(lines, m).includes(role));
     const contextText = members
       .filter((m) => m.role === "context")
       .map((m) => lines[m.index].rawText)
@@ -245,7 +273,31 @@ export function buildExchanges(lines: AttributedLine[], layout: LayoutProfile): 
       close(false);
       current = { members: [], startsAfterGap: gap || i === 0 };
     }
-    current!.members.push({ index: line.index, role: LINE_ROLE[line.role] });
+    const segs = line.segments;
+    if (!segs?.length) {
+      current!.members.push({ index: line.index, role: LINE_ROLE[line.role] });
+      return;
+    }
+    // A line holding several turns: a new question (or examiner) inside it starts a new exchange, the
+    // same rule as between lines, so "A: Yes. Q. Where?" ends one exchange and starts the next. The
+    // line belongs to both, each with only its own segments; its text and reference stay one line.
+    const push = (from: number, to: number) => {
+      const window = { from, to };
+      current!.members.push({ index: line.index, role: primaryRole(rolesOf(lines, { index: line.index, role: "unknown", segments: window })), segments: window });
+    };
+    let qa = current!.members.some((m) => rolesOf(lines, m).some((r) => r === "question" || r === "answer"));
+    let from = 0;
+    segs.forEach((s, k) => {
+      if (k > 0 && (isExaminerHeading(line.rawText.slice(s.start, s.end)) || (s.role === "attorney" && qa))) {
+        push(from, k - 1);
+        close(false);
+        current = { members: [], startsAfterGap: false };
+        from = k;
+        qa = false;
+      }
+      if (s.role === "attorney" || s.role === "witness") qa = true;
+    });
+    push(from, segs.length - 1);
   });
   close(true);
 
@@ -284,19 +336,35 @@ function turnText(line: AttributedLine): string {
 // Groups a part's lines into speaker turns, in source order. A new turn starts at every speaker
 // marker, at a change of speaker, and after a jump in line numbers (a later part of a split answer
 // resuming after the question), which is shown as "[…]".
+const TURN_OF_ROLE: Record<SpeakerRole, TurnMarker> = { attorney: "Q", witness: "A", colloquy: "colloquy", parenthetical: "parenthetical", unknown: "unrecognized" };
+
+// A member as the lines its turns are read from: a line holding several turns gives one per segment
+// in this exchange, each read as if it were a line of its own.
+function turnLines(lines: AttributedLine[], m: ExchangeLine): AttributedLine[] {
+  const line = lines[m.index];
+  if (!line.segments || !m.segments) return [line];
+  return line.segments.slice(m.segments.from, m.segments.to + 1).map((s) => {
+    const rawText = line.rawText.slice(s.start, s.end);
+    return { ...line, rawText, role: s.role, speakerName: s.name, turn: isExaminerHeading(rawText) ? "examiner" : TURN_OF_ROLE[s.role], segments: undefined };
+  });
+}
+
 function turnsOf(lines: AttributedLine[], members: ExchangeLine[]): (DerivedTurn | "gap")[] {
   const turns: (DerivedTurn | "gap")[] = [];
   let current: DerivedTurn | null = null;
+  let currentName: string | null = null;
   members.forEach((m, i) => {
-    const line = lines[m.index];
     const jump = i > 0 && m.index !== members[i - 1].index + 1;
     if (jump) turns.push("gap");
-    if (!current || jump || line.turn !== null || line.role !== current.role || line.speakerName !== lines[members[i - 1].index].speakerName) {
-      current = { role: line.role, label: labelOf(line), text: turnText(line) };
-      turns.push(current);
-    } else {
-      // A turn whose first line was only a label ("THE WITNESS:") starts with empty text.
-      current.text = current.text ? `${current.text} ${line.rawText.trim()}` : line.rawText.trim();
+    for (const line of turnLines(lines, m)) {
+      if (!current || jump || line.turn !== null || line.role !== current.role || line.speakerName !== currentName) {
+        current = { role: line.role, label: labelOf(line), text: turnText(line) };
+        currentName = line.speakerName;
+        turns.push(current);
+      } else {
+        // A turn whose first line was only a label ("THE WITNESS:") starts with empty text.
+        current.text = current.text ? `${current.text} ${line.rawText.trim()}` : line.rawText.trim();
+      }
     }
   });
   return turns;
@@ -329,7 +397,7 @@ const range = (members: ExchangeLine[]): LineRange | null =>
 export function splitExchange(exchange: Exchange, lines: AttributedLine[]): ExchangePart[] {
   const members = exchange.lines;
   const answerPositions = members.flatMap((m, position) => (m.role === "answer" ? [position] : []));
-  const questionMembers = members.filter((m) => m.role === "question");
+  const questionMembers = members.filter((m) => rolesOf(lines, m).includes("question"));
 
   const windows: [number, number][] = []; // inclusive ranges into answerPositions
   if (answerPositions.length <= MAX_ANSWER_LINES) {
@@ -351,7 +419,7 @@ export function splitExchange(exchange: Exchange, lines: AttributedLine[]): Exch
     const partMembers = isFirst ? slice : [...questionMembers.filter((q) => !slice.includes(q)), ...slice];
     partMembers.sort((a, b) => a.index - b.index);
 
-    const answerMembers = partMembers.filter((m) => m.role === "answer");
+    const answerMembers = partMembers.filter((m) => rolesOf(lines, m).includes("answer"));
     return {
       groupNo: exchange.groupNo,
       partNo: k + 1,
@@ -370,8 +438,8 @@ export function splitExchange(exchange: Exchange, lines: AttributedLine[]): Exch
 
 export type ExchangeResult = { lines: AttributedLine[]; exchanges: Exchange[]; parts: ExchangePart[] };
 
-export function buildExchangeParts(sourceLines: SourceLine[], layout: LayoutProfile, witnessSurname?: string): ExchangeResult {
-  const lines = attributeSpeakers(sourceLines, layout, witnessSurname);
+export function buildExchangeParts(sourceLines: SourceLine[], layout: LayoutProfile, witnessSurname?: string, segment?: Segmenter): ExchangeResult {
+  const lines = attributeSpeakers(sourceLines, layout, witnessSurname, segment);
   const exchanges = buildExchanges(lines, layout);
   return { lines, exchanges, parts: exchanges.flatMap((e) => splitExchange(e, lines)) };
 }

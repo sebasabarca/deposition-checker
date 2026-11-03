@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "set": "evidence-fixtures-v1",
+  "synthetic": false,
+  "about": "Stage 1 evidence-foundation fixtures from real public testimony: each item names passages that must be stored, indexed, retrievable and findable by their original words, with their references in the transcript's own scheme. References and short notes only, never transcript text. The files themselves are local and git-ignored: the Simpson-Resnick archive exports under data/raw/simpson/ (read by the production reader), and Hutchinson's stored lines and exchanges under data/raw/fixtures/ (exported with scripts/evidence.ts export-lines from the copy read by parser revision 9, because reading the scans again takes OCR). Categories and notes come from the human-reviewed labels named in each item; nothing here is a verdict. Positions are stored page:line: for the archive exports the page is the statement run (1, 2, 3 when the count restarts; 0 for a single run) and the line is the statement number.",
+  "documents": {
+    "hutchinson-2022-06-20": {
+      "sha256": "37364b20cae72e21d18cf4c0b6ab4c32fa5bffc932b46217318fa89a1959e1a9",
+      "witness": "Cassidy Hutchinson",
+      "takenOn": "2022-06-20",
+      "scheme": "page_line",
+      "local": "data/raw/fixtures/hutchinson-2022-06-20.lines.json",
+      "loader": "stored-export",
+      "session": "hutchinson-june",
+      "part": 1
+    },
+    "hutchinson-2022-09-15": {
+      "sha256": "90271daa5bb50791f889b4c763fd964814eb0c7eac5a6918b2fb5ee81b0ddb8d",
+      "witness": "Cassidy Hutchinson",
+      "takenOn": "2022-09-15",
+      "scheme": "page_line",
+      "local": "data/raw/fixtures/hutchinson-2022-09-15.lines.json",
+      "loader": "stored-export",
+      "session": "hutchinson-september",
+      "part": 1
+    },
+    "simpson-1996-01-23": {
+      "sha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+      "witness": "O.J. Simpson",
+      "takenOn": "1996-01-23",
+      "scheme": "archive_statement",
+      "local": "data/raw/simpson/o_j_simpson_january_23_1996_day_2.txt",
+      "loader": "text",
+      "session": "simpson-day-2",
+      "part": 1
+    },
+    "simpson-1996-02-27": {
+      "sha256": "a3ac0014816b3ae716664027b8086881ab61a25a718c92418a818062cc99ba2b",
+      "witness": "O.J. Simpson",
+      "takenOn": "1996-02-27",
+      "scheme": "archive_statement",
+      "local": "data/raw/simpson/o_j_simpson_february_27_1996_day_9.txt",
+      "loader": "text",
+      "session": "simpson-day-9",
+      "part": 1
+    },
+    "resnick-1996-02-11-direct": {
+      "sha256": "3b1508dae47393eebdb6e7923bd2f6a69d23cd2c0b02fe2ae3df655ffc0290fb",
+      "witness": "Faye Resnick",
+      "takenOn": "1996-02-11",
+      "scheme": "archive_statement",
+      "local": "data/raw/simpson/faye_resnick_february_11_1996_day_9_direct_examination.txt",
+      "loader": "text",
+      "session": "resnick-day-9",
+      "part": 1
+    },
+    "resnick-1996-02-11-cross": {
+      "sha256": "57bcf1d4db527b92d4981f7138e394e7c2211654dbe2728a03ee3bb184decae5",
+      "witness": "Faye Resnick",
+      "takenOn": "1996-02-11",
+      "scheme": "archive_statement",
+      "local": "data/raw/simpson/faye_resnick_february_11_1996_day_9_cross_examination.txt",
+      "loader": "text",
+      "session": "resnick-day-9",
+      "part": 2
+    }
+  },
+  "items": [
+    {
+      "id": "limo-suv",
+      "category": "review_worthy",
+      "label": "hutchinson-discrepancies-v1#limo-suv",
+      "topic": "The vehicle in the January 6 incident Ornato described: the Presidential limo (June) or the Presidential SUV (September)",
+      "note": "Known review-worthy discrepancy, not a verified direct contradiction: both accounts are second-hand (Ornato's retelling), June's is hedged, and September's may be a correction; its classification label is still provisional.",
+      "sides": [
+        {
+          "document": "hutchinson-2022-06-20",
+          "from": "6:4",
+          "to": "6:8",
+          "search": "limo"
+        },
+        {
+          "document": "hutchinson-2022-09-15",
+          "from": "33:7",
+          "to": "33:12",
+          "search": "SUV"
+        }
+      ]
+    },
+    {
+      "id": "C01",
+      "category": "review_worthy",
+      "label": "simpson-resnick-cross-v2#C01",
+      "topic": "June 5, 1994 dog incident at Bundy: how Kato got out (the front gate, Simpson; the garage door, Resnick)",
+      "note": "Simpson's side is a bare \"Yes\" to a question naming the gate, so the question must stay with the answer.",
+      "sides": [
+        {
+          "document": "simpson-1996-01-23",
+          "from": "1:561",
+          "to": "1:563",
+          "search": "gate"
+        },
+        {
+          "document": "resnick-1996-02-11-direct",
+          "from": "0:782",
+          "to": "0:782",
+          "search": "garage"
+        }
+      ]
+    },
+    {
+      "id": "C02",
+      "category": "review_worthy",
+      "label": "simpson-resnick-cross-v2#C02",
+      "topic": "June 5, 1994: whether Simpson went down Nicole's side alleyway",
+      "note": "Resnick denies he entered the alleyway; what she could see from where she was is not established.",
+      "sides": [
+        {
+          "document": "simpson-1996-01-23",
+          "from": "1:587",
+          "to": "1:590",
+          "search": "alleyway"
+        },
+        {
+          "document": "resnick-1996-02-11-direct",
+          "from": "0:802",
+          "to": "0:803",
+          "search": "alleyway"
+        }
+      ]
+    },
+    {
+      "id": "C03",
+      "category": "control",
+      "controlType": "non_recollection",
+      "label": "simpson-resnick-cross-v2#C03",
+      "topic": "Funeral: the 'I loved her too much' remark to Faye Resnick",
+      "note": "Simpson doesn't recall; Resnick recalls the remark. A lack of recollection is not a conflict.",
+      "sides": [
+        {
+          "document": "simpson-1996-02-27",
+          "from": "0:3019",
+          "to": "0:3020",
+          "search": "\"loved her too much\""
+        },
+        {
+          "document": "resnick-1996-02-11-direct",
+          "from": "0:1215",
+          "to": "0:1215",
+          "search": "\"loved her too much\""
+        }
+      ]
+    },
+    {
+      "id": "NC-002",
+      "category": "control",
+      "controlType": "chronologically_compatible",
+      "label": "simpson-resnick-cross-v2#NC-002",
+      "topic": "Drug use in different periods: January to June 1994 (Simpson) and October and December 1993 (Resnick)",
+      "note": "Non-overlapping periods: no conflict may be inferred across them.",
+      "sides": [
+        {
+          "document": "simpson-1996-01-23",
+          "from": "1:224",
+          "to": "1:225",
+          "search": "cocaine"
+        },
+        {
+          "document": "resnick-1996-02-11-direct",
+          "from": "0:139",
+          "to": "0:139",
+          "search": "cocaine"
+        }
+      ]
+    },
+    {
+      "id": "C06",
+      "category": "control",
+      "controlType": "different_occasions",
+      "label": "simpson-resnick-cross-v2#C06",
+      "topic": "May 1994 breakup: similar accounts that may describe conversations on different dates",
+      "note": "Resnick's account is about May 2-3, Simpson's about May 7-9: similar descriptions of possibly different events.",
+      "sides": [
+        {
+          "document": "simpson-1996-02-27",
+          "from": "0:2070",
+          "to": "0:2070",
+          "search": "officially"
+        },
+        {
+          "document": "resnick-1996-02-11-direct",
+          "from": "0:532",
+          "to": "0:532",
+          "search": "relationship"
+        }
+      ]
+    }
+  ]
+}

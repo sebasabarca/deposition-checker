@@ -3,13 +3,22 @@
 // database gives lines their own IDs, so parts are written in two steps: lines first, then parts
 // with each position translated to the stored line's ID through its page:line.
 
-import type { exchangeLines, exchanges, lines } from "../db/schema";
+import type { exchangeLines, exchanges, lineSegments, lines } from "../db/schema";
+import { evidenceFieldsOf } from "../evidence/exchange";
 import { normalize } from "../verify";
 import type { AttributedLine, ExchangePart, LineRange } from "./exchanges";
 
 export type LineRow = Omit<typeof lines.$inferInsert, "id">;
 export type ExchangeRow = Omit<typeof exchanges.$inferInsert, "id">;
 export type ExchangeLineRow = typeof exchangeLines.$inferInsert;
+export type LineSegmentRow = typeof lineSegments.$inferInsert;
+
+// The speaker segments of lines that have them, by the stored line's ID.
+export function toSegmentRows(depositionId: number, attributed: readonly AttributedLine[], lineIds: number[]): LineSegmentRow[] {
+  return attributed.flatMap((line, i) => (line.segments ?? []).map((s, seq) => ({ lineId: lineIds[i], depositionId, seq, startOffset: s.start, endOffset: s.end, speakerRole: s.role, speakerName: s.name })));
+}
+// The segments of a line that belong to one exchange: those in its window, or all when it has none.
+export const inWindow = <T>(segments: readonly T[], window?: { from: number; to: number } | null): T[] => (window ? segments.slice(window.from, window.to + 1) : [...segments]);
 export type StoredLine = { id: number; printedPage: number; lineNo: number };
 
 const pageLine = (printedPage: number, lineNo: number) => `${printedPage}:${lineNo}`;
@@ -47,11 +56,14 @@ export function lineIdsByPosition(attributed: AttributedLine[], stored: StoredLi
   });
 }
 
+// evidence: the file's SHA-256 and its attributed lines, to give each exchange its Stage 1 evidence key,
+// text hash and speaker status (evidence/exchange.ts). Without it they stay null: not yet indexed.
 export function toExchangeRows(
   depositionId: number,
   witnessId: number,
   parts: ExchangePart[],
   lineIds: number[],
+  evidence?: { fileSha256: string; lines: readonly AttributedLine[] },
 ): ExchangeRow[] {
   const idOf = (index: number) => {
     const id = lineIds[index];
@@ -80,6 +92,11 @@ export function toExchangeRows(
       questionText: part.questionText,
       answerText: part.answerText,
       dialogueText: part.dialogueText,
+      ...(evidence ? evidenceFieldsOf(evidence.fileSha256, part.kind, part.lines.map((m) => {
+        const l = evidence.lines[m.index];
+        if (!l || l.printedPage === null) throw new Error(`exchange part refers to line position ${m.index}, which has no stored position`);
+        return { page: l.printedPage, line: l.lineNo, text: l.rawText, lineRole: m.role, speakerRole: l.role, segments: inWindow(l.segments ?? [], m.segments).map((s) => ({ role: s.role, start: s.start, end: s.end })) };
+      })) : {}),
     };
   });
 }
@@ -99,7 +116,7 @@ export function toExchangeLineRows(
     return part.lines.map((member) => {
       const lineId = lineIds[member.index];
       if (lineId === undefined) throw new Error(`exchange part refers to line position ${member.index}, which doesn't exist`);
-      return { exchangeId, lineId, depositionId, role: member.role };
+      return { exchangeId, lineId, depositionId, role: member.role, segmentFrom: member.segments?.from ?? null, segmentTo: member.segments?.to ?? null };
     });
   });
 }

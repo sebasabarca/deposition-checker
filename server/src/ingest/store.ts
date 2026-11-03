@@ -13,10 +13,10 @@
 
 import { and, countDistinct, eq, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { depositions, exchangeLines, exchanges, lines } from "../db/schema";
+import { depositionSessions, depositions, exchangeLines, exchanges, lineSegments, lines } from "../db/schema";
 import type { DepositionRead } from "./index";
 import type { DepositionStatus, Validation } from "./validate";
-import { lineIdsByPosition, toExchangeLineRows, toExchangeRows, toLineRows } from "./rows";
+import { lineIdsByPosition, toExchangeLineRows, toExchangeRows, toLineRows, toSegmentRows } from "./rows";
 import { recordTiming, timed } from "../timing";
 
 // Rows per INSERT, keeping each statement well under Postgres's 65,535 parameter limit.
@@ -29,6 +29,12 @@ export type SaveInput = {
   fileSha256: string;
   storageKey: string;
   read: DepositionRead;
+  // The session this file is a part of, when the caller says so; otherwise it gets a session of its own.
+  // Files are never put in one session because their witness or date match.
+  session?: { id: number; part: number };
+  // Re-read an already stored document in place under the current parser (evidence/audit.ts): its row,
+  // case, witness and session are kept; its lines and exchanges are replaced.
+  reprocessOf?: number;
 };
 
 export type SaveOutcome =
@@ -77,6 +83,12 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
   );
 
   return db.transaction(async (tx) => {
+    if (input.reprocessOf !== undefined) {
+      const [taken] = await tx.select({ id: depositions.id }).from(depositions).where(key);
+      if (taken && taken.id !== input.reprocessOf) throw new Error(`Deposition ${taken.id} already holds this file under parser ${read.parserVersion}; nothing was changed.`);
+      const moved = await tx.update(depositions).set({ parserVersion: read.parserVersion }).where(and(eq(depositions.id, input.reprocessOf), eq(depositions.caseId, input.caseId), eq(depositions.fileSha256, input.fileSha256))).returning({ id: depositions.id });
+      if (!moved.length) throw new Error(`Deposition ${input.reprocessOf} is not this file in this case; nothing was changed.`);
+    }
     // Held until this transaction ends; a concurrent save of the same key waits here, then sees
     // this one's committed rows and replaces them.
     const lockKey = depositionLockKey(input.caseId, input.fileSha256, read.parserVersion);
@@ -94,13 +106,14 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
       }
     }
 
-    const [previous] = await tx.select({ id: depositions.id, status: depositions.status }).from(depositions).where(key);
+    const [previous] = await tx.select({ id: depositions.id, status: depositions.status, witnessId: depositions.witnessId }).from(depositions).where(key);
     // The worker's result must land on the deposition it was queued for, never on another one.
     if (onlyIf && previous?.id !== onlyIf.depositionId) {
       throw new Error(
         `deposition ${onlyIf.depositionId} is not the one stored under parser ${read.parserVersion} (${previous ? `that is deposition ${previous.id}` : "none is"})`,
       );
     }
+    if (previous?.status === "ready" && validation.status !== "ready" && input.reprocessOf !== undefined) throw new Error(`The re-read of deposition ${input.reprocessOf} is ${validation.status}; nothing was changed.`);
     if (previous?.status === "ready" && validation.status !== "ready") {
       const [stored] = await tx
         .select({ parts: sql<number>`count(*)::int`, exchanges: countDistinct(exchanges.groupId) })
@@ -139,10 +152,17 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
       status: validation.status,
       ingestError: null,
     };
+    // A re-read keeps its session, unless the caller names another, or the file now belongs to another
+    // witness (a session is one witness's), when it gets a session of its own.
+    const session = input.session
+      ? { sessionId: input.session.id, sessionPart: input.session.part }
+      : previous && previous.witnessId !== input.witnessId
+        ? { sessionId: (await tx.insert(depositionSessions).values({ caseId: input.caseId, witnessId: input.witnessId }).returning({ id: depositionSessions.id }))[0].id, sessionPart: 1 }
+        : {};
     const [deposition] = await tx
       .insert(depositions)
-      .values(values)
-      .onConflictDoUpdate({ target: [depositions.caseId, depositions.fileSha256, depositions.parserVersion], set: values })
+      .values({ ...values, ...session })
+      .onConflictDoUpdate({ target: [depositions.caseId, depositions.fileSha256, depositions.parserVersion], set: { ...values, ...session } })
       .returning({ id: depositions.id });
     const depositionId = deposition.id;
     const result: SaveResult = {
@@ -169,9 +189,10 @@ export async function saveDeposition(db: Database, input: SaveInput, onlyIf?: Cu
       .from(lines)
       .where(eq(lines.depositionId, depositionId));
     const lineIds = lineIdsByPosition(attributed, storedLines);
+    for (const batch of batches(toSegmentRows(depositionId, attributed, lineIds))) await tx.insert(lineSegments).values(batch);
 
     const storedParts: { id: number; groupId: number; partNo: number }[] = [];
-    for (const batch of batches(toExchangeRows(depositionId, input.witnessId, parts, lineIds))) {
+    for (const batch of batches(toExchangeRows(depositionId, input.witnessId, parts, lineIds, { fileSha256: input.fileSha256, lines: attributed }))) {
       storedParts.push(
         ...(await tx
           .insert(exchanges)

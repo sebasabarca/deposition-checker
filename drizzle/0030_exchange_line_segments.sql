@@ -1,0 +1,3 @@
+ALTER TABLE "exchange_lines" ADD COLUMN "segment_from" integer;--> statement-breakpoint
+ALTER TABLE "exchange_lines" ADD COLUMN "segment_to" integer;--> statement-breakpoint
+ALTER TABLE "exchange_lines" ADD CONSTRAINT "exchange_lines_segments_check" CHECK (("exchange_lines"."segment_from" is null) = ("exchange_lines"."segment_to" is null) and ("exchange_lines"."segment_from" is null or "exchange_lines"."segment_from" between 0 and "exchange_lines"."segment_to"));
