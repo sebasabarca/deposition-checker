@@ -52,8 +52,8 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
       {!f.direct && f.unscoredExplanation && <Alert tone="warn">{f.unscoredExplanation}</Alert>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-tour="finding-passages">
-        <Passage label="Earlier session" side={f.a} />
-        <Passage label="Later session" side={f.b} />
+        <Passage label={f.cross ? f.cross.witnessA : "Earlier session"} side={f.a} />
+        <Passage label={f.cross ? f.cross.witnessB : "Later session"} side={f.b} />
       </div>
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">

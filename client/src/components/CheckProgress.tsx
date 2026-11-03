@@ -33,18 +33,20 @@ export function CheckProgress({ analysis, pages, lines, onCancel }: { analysis: 
   const backup = attempt?.role === "fallback";
   // Where the check is, from its status and its model request.
   const stage = analysis.status === "queued" ? 0 : analysis.status === "parsing" ? 1 : !sent ? 1 : !answered ? 2 : 3;
-  const [a, b] = analysis.depositions;
+  const [a] = analysis.depositions;
+  const cross = analysis.kind === "cross_witness" && analysis.witnesses.b;
+  const who = cross ? `${analysis.witnesses.a.name} and ${analysis.witnesses.b!.name}` : a.witness;
   const stages = [
-    { title: "Check started", detail: `${a.witness}: two sessions, queued at ${time(analysis.createdAt)}.` },
+    { title: "Check started", detail: `${who}: ${cross ? "one session each" : "two sessions"}, queued at ${time(analysis.createdAt)}.` },
     { title: "Preparing both transcripts", detail: pages ? `${pages.toLocaleString()} pages${lines ? `, ${lines.toLocaleString()} lines` : ""} with their page and line numbers.` : "Gathering every line with its page and line number." },
-    { title: "Reading both sessions", detail: backup ? "The first reading couldn't finish, so a second one is running." : "Every answer in one session is compared with the other. This is the long part, usually 4 to 10 minutes." },
+    { title: "Reading both sessions", detail: backup ? "The first reading couldn't finish, so a second one is running." : cross ? "Each witness's account is compared with the other's. This is the long part, usually 4 to 10 minutes." : "Every answer in one session is compared with the other. This is the long part, usually 4 to 10 minutes." },
     { title: "Checking every citation", detail: "Each quotation is matched against the stored transcript at its page and line before you see it." },
   ];
   return (
     <section className="overflow-hidden rounded-lg border border-line bg-sheet" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-rule px-5 py-4">
         <div>
-          <h2 className="text-md font-semibold">Checking {a.witness}'s sessions</h2>
+          <h2 className="text-md font-semibold">{cross ? `Comparing ${who}` : `Checking ${a.witness}'s sessions`}</h2>
           <p className="text-sm text-muted">{stages[stage].title}…</p>
         </div>
         <div className="flex items-center gap-2 font-mono text-[15px] tabular-nums" title="Time since the check started">
@@ -77,7 +79,7 @@ export function CheckProgress({ analysis, pages, lines, onCancel }: { analysis: 
           <p className="text-muted">The check keeps running on the server if you leave this page or close the browser. The sidebar shows when it's done, and this page fills in by itself.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             <a href={href.case(analysis.caseId)} className={buttonClass("secondary")}>Back to the case</a>
-            <a href={href.deposition(a.id)} className={buttonClass("ghost")}>Read the {b ? "first " : ""}transcript</a>
+            <a href={href.deposition(a.id)} className={buttonClass("ghost")}>Read the {analysis.depositions.length > 1 ? "first " : ""}transcript</a>
           </div>
           <p className="border-t border-line pt-3 text-xs text-faint">This check can spend at most {formatUsd(analysis.cost.budgetUsd)}. Its measured cost appears when it finishes.</p>
         </aside>

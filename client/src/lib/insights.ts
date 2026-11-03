@@ -34,7 +34,7 @@ export function recentActivity(details: CaseDetail[], links: { case: (id: number
   const items = details.flatMap((d): Activity[] => [
     { key: `c${d.case.id}`, kind: "case", title: "Case created", subject: d.case.name, at: d.case.createdAt, link: links.case(d.case.id) },
     ...d.depositions.map((s): Activity => ({ key: `d${s.id}`, kind: "deposition", title: "Deposition uploaded", subject: `${witness(d, s.witnessId)}${s.pageCount ? ` (${s.pageCount} pages)` : ""}`, at: s.createdAt, link: links.case(d.case.id) })),
-    ...d.analyses.map((a: AnalysisRow): Activity => ({ key: `a${a.id}`, kind: "analysis", title: a.finishedAt ? "Analysis finished" : "Analysis started", subject: `${d.case.name} / ${witness(d, a.witnessId)}`, at: a.finishedAt ?? a.createdAt, link: links.analysis(a.id) })),
+    ...d.analyses.map((a: AnalysisRow): Activity => ({ key: `a${a.id}`, kind: "analysis", title: a.finishedAt ? "Analysis finished" : "Analysis started", subject: `${d.case.name} / ${witness(d, a.witnessId)}${a.kind === "cross_witness" && a.witnessBId ? ` and ${witness(d, a.witnessBId)}` : ""}`, at: a.finishedAt ?? a.createdAt, link: links.analysis(a.id) })),
   ]);
   return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
 }
@@ -80,26 +80,27 @@ export function relativeTime(iso: string, now: number) {
 }
 
 export type CheckState =
-  | { kind: "pick" | "too_many" | "different_witness" | "not_ready" | "no_date" }
-  | { kind: "new"; a: number; b: number }
-  | { kind: "running" | "done"; a: number; b: number; report: Pick<AnalysisRow, "id" | "createdAt">; };
+  | { kind: "pick" | "too_many" | "not_ready" | "no_date" }
+  | { kind: "new"; a: number; b: number; cross: boolean }
+  | { kind: "running" | "done"; a: number; b: number; cross: boolean; report: Pick<AnalysisRow, "id" | "createdAt">; };
 
 // What the New check panel offers for the ticked depositions. Pure. The same two files, in either
 // order, are one comparison: a file uploaded twice to a case is one deposition, so IDs identify it.
+// Sessions of two different witnesses are a cross-witness comparison (cross).
 export function checkState(selected: readonly number[], depositions: readonly Pick<DepositionRow, "id" | "witnessId" | "status" | "takenOn">[], reports: readonly Pick<AnalysisRow, "id" | "depositionA" | "depositionB" | "status" | "createdAt">[]): CheckState {
   if (selected.length < 2) return { kind: "pick" };
   if (selected.length > 2) return { kind: "too_many" };
   const [a, b] = selected.map((id) => depositions.find((d) => d.id === id));
   if (!a || !b) return { kind: "pick" };
-  if (a.witnessId !== b.witnessId) return { kind: "different_witness" };
+  const cross = a.witnessId !== b.witnessId;
   if (a.status !== "ready" || b.status !== "ready") return { kind: "not_ready" };
   // The dates decide which testimony came first, so a check waits for both (the server insists too).
   if (!a.takenOn || !b.takenOn) return { kind: "no_date" };
   const same = reports.filter((r) => [r.depositionA, r.depositionB].includes(a.id) && [r.depositionA, r.depositionB].includes(b.id));
   const running = same.find((r) => isActive(r.status));
-  if (running) return { kind: "running", a: a.id, b: b.id, report: running };
+  if (running) return { kind: "running", a: a.id, b: b.id, cross, report: running };
   const done = same.filter((r) => r.status === "completed").sort((x, y) => y.id - x.id)[0];
-  return done ? { kind: "done", a: a.id, b: b.id, report: done } : { kind: "new", a: a.id, b: b.id };
+  return done ? { kind: "done", a: a.id, b: b.id, cross, report: done } : { kind: "new", a: a.id, b: b.id, cross };
 }
 
 // How many of a witness's possible session pairs have a finished report. Pure.
@@ -154,4 +155,3 @@ export function nextStep(details: CaseDetail[], running: { id: number }[], waiti
   if (lone.length) return { kind: "second_session", ...lone[0] };
   return { kind: "more" };
 }
-

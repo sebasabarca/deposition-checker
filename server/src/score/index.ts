@@ -5,3 +5,4 @@ export { anchorsOf, contextCheck, corroborate, timeCheckOf, type ContextCheck, t
 export { RUBRIC_V1, type Rubric } from "./rubric";
 export { prioritize, score, toBand, type Assessment, type Band, type Cap, type Factor, type Origin, type Priority, type ScoringInput } from "./score";
 export { EVIDENCE_STRENGTH_VERSION, evidenceStrength, HIGH_FROM, MEDIUM_FROM, priorityOf, unscoredReasonOf, type EvidenceStrength, type StrengthCheck } from "./evidenceStrength";
+export { crossPriorityOf, EVIDENCE_STRENGTH_CROSS_VERSION, evidenceStrengthCross, type CrossStrengthInput } from "./evidenceStrengthCross";

@@ -42,8 +42,9 @@ export function HelpPage() {
             <ol className="space-y-4">
               <Step n={1} title="Add the depositions">Use <strong>Add deposition</strong> in the sidebar. Upload a PDF, a .txt file, or paste the transcript. Each one is a single session of one witness, in a case. Veridict reads it into page and line references; you can read and search it from the Depositions screen.</Step>
               <Step n={2} title="Check two sessions">In the case, select two sessions of the same witness and choose <strong>Check these sessions</strong>. Veridict's analysis reads every line stored from both, and proposes places where the testimony may conflict. It takes about ten minutes. Before you start, Veridict shows an estimate of the cost from the length of the two sessions; each check has a budget it can never exceed. You can close the page while it runs.</Step>
-              <Step n={3} title="Review each finding">Open the analysis. Each finding shows the two passages side by side with the cited lines highlighted. Read them, then decide: <strong>Keep</strong>, <strong>Needs context</strong> or <strong>Dismiss</strong>, with a note for the file.</Step>
-              <Step n={4} title="Use what you kept">Copy the pinpoint citation from any finding. Your decisions stay with the case and carry over if the same sessions are checked again.</Step>
+              <Step n={3} title="Or compare two witnesses">Select one session of one witness and one of another, and choose <strong>Compare these witnesses</strong>. Each finding shows whose testimony each passage is. A difference in what each witness saw, heard or recalls is not treated as a conflict.</Step>
+              <Step n={4} title="Review each finding">Open the analysis. Each finding shows the two passages side by side with the cited lines highlighted. Read them, then decide: <strong>Keep</strong>, <strong>Needs context</strong> or <strong>Dismiss</strong>, with a note for the file.</Step>
+              <Step n={5} title="Use what you kept">Copy the pinpoint citation from any finding. Your decisions stay with the case and carry over if the same sessions are checked again.</Step>
             </ol>
           </Section>
 

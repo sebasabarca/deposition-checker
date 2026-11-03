@@ -77,9 +77,13 @@ export type AnalysisProgress = {
   findings?: number;
   parsingChecks?: number;
 };
+export type AnalysisKind = "same_witness" | "cross_witness";
+
 export type AnalysisRow = {
   id: number;
+  kind: AnalysisKind;
   witnessId: number;
+  witnessBId: number | null; // witness B of a cross-witness check
   depositionA: number;
   depositionB: number;
   mode: "demo" | "live";
@@ -132,6 +136,8 @@ export type AnalysisView = {
   id: number;
   caseId: number;
   witnessId: number;
+  kind: AnalysisKind;
+  witnesses: { a: { id: number; name: string }; b: { id: number; name: string } | null };
   mode: "demo" | "live";
   retrieval: "direct_fable" | "hybrid" | "pair";
   discovery: DiscoveryView | null;
@@ -147,7 +153,8 @@ export type AnalysisView = {
   cancelRequested: boolean;
   effort: string;
   maxCandidates: number;
-  depositions: { id: number; takenOn: string | null; status: DepositionStatus; originalFilename: string | null; witness: string }[];
+  // Every session compared, side A's first, each side in date order.
+  depositions: { id: number; takenOn: string | null; status: DepositionStatus; originalFilename: string | null; witness: string; witnessId: number; side: "A" | "B" }[];
   findings: { total: number; groups: Record<FindingGroup, number>; decided: number };
   cost: { calls: number; actualUsd: number; budgetUsd: number; budgetSpentUsd: number; budgetReservedUsd: number };
   createdAt: string;
@@ -179,6 +186,7 @@ export type FindingSummary = {
   model: string;
   modelName: string;
   direct: { modelClassification: string; evidenceKey: string; duplicates: number; ocrRead: boolean; lowOcrLines: string[]; speakers: string[] } | null; // null on a hybrid finding
+  cross: { witnessA: string; witnessB: string } | null; // a conflict between two witnesses' accounts
   rank: number;
   a: { depositionId: number; ref: string | null };
   b: { depositionId: number; ref: string | null };
@@ -209,7 +217,11 @@ export type EvidenceSide = {
 export type Factor = { component: "A" | "C" | "S" | "K" | "U" | "E"; label: string; points: number; max: number; origin: "code" | "claude" | "code+claude"; detail?: string };
 export type Cap = { rule: string; limit: number; reason: string; binding: boolean };
 export type DirectSideCheck = { speaker: string; ocr: { read: boolean; minConfidence: number | null; lowLines: string[] }; reportedSpeech: boolean };
+// How a witness knows what they said, as the model read it (cross-witness findings).
+export type KnowledgeBasis = "personal_observation" | "told_by_someone" | "belief_or_inference" | "unclear";
+
 export type FindingDetail = {
+  cross: { witnessA: string; witnessB: string; sessionA: string | null; sessionB: string | null; basisA: KnowledgeBasis; basisB: KnowledgeBasis } | null;
   id: number;
   analysisId: number | null;
   group: FindingGroup;

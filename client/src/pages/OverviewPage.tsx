@@ -8,7 +8,7 @@ import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, buttonClass, Card, CardHeader, cx, Loading, rowClass, Strength, tdClass, thClass } from "../components/ui";
 import { shortRef } from "../components/FindingRegister";
 import { isActive, nextStep, recentActivity, relativeTime, type NextStep } from "../lib/insights";
-import { DEPOSITION_STATUS, findingHeadline, formatDate } from "../lib/labels";
+import { analysisTitle, DEPOSITION_STATUS, findingHeadline, formatDate } from "../lib/labels";
 import { href } from "../lib/router";
 import { useUser } from "../lib/session";
 import { useWorkspace, useWorkspaceFindings, type WorkspaceFinding } from "../lib/workspace";
@@ -198,7 +198,7 @@ function WaitingRow({ f }: { f: WorkspaceFinding }) {
           <Badge tone={f.group === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : "warn"}>{f.group === "contradictions" ? (f.priority === "high" ? "High priority" : findingHeadline(f)) : "Needs context"}</Badge>
         </span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted sm:col-span-2">
-          <span>{f.analysis.depositions[0].witness}</span>
+          <span>{analysisTitle(f.analysis)}</span>
           <span aria-hidden>·</span>
           <span className="truncate">{f.caseName}</span>
           <span aria-hidden>·</span>

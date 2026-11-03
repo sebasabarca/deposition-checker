@@ -21,7 +21,7 @@ export function useEstimate(caseId: number, a: number | null, b: number | null) 
 const usd = (n: number) => `$${n < 10 ? n.toFixed(2) : Math.round(n)}`;
 export function estimateText(e: CheckEstimate | null) {
   if (!e) return "Estimating the cost…";
-  if (!e.fits) return "These sessions are too long to check in one request. Nothing would be sent.";
+  if (!e.fits) return "This testimony is too long to check in one request. Nothing would be sent.";
   // One request's worst case isn't the ceiling (a backup model may run), so the budget is named instead.
   return `Estimated ${usd(e.typicalUsd)}, never more than the ${usd(e.budgetUsd)} budget · about 10 minutes`;
 }
@@ -46,7 +46,8 @@ export function useStartCheck(caseId: number) {
   return { start, error, busy };
 }
 
-export function CheckAgain({ caseId, a, b, variant = "secondary" }: { caseId: number; a: number; b: number; variant?: "primary" | "secondary" }) {
+// a, b: two sessions, of one witness or (cross) of two.
+export function CheckAgain({ caseId, a, b, cross = false, variant = "secondary" }: { caseId: number; a: number; b: number; cross?: boolean; variant?: "primary" | "secondary" }) {
   const [open, setOpen] = useState(false);
   const { start, error, busy } = useStartCheck(caseId);
   const estimate = useEstimate(caseId, open ? a : null, open ? b : null);
@@ -54,7 +55,7 @@ export function CheckAgain({ caseId, a, b, variant = "secondary" }: { caseId: nu
   return (
     <>
       <Button variant={variant} onClick={() => setOpen(true)}><RotateCcw aria-hidden className="size-3.5" />Check again</Button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="Check these sessions again?">
+      <Dialog open={open} onClose={() => setOpen(false)} title={cross ? "Compare these witnesses again?" : "Check these sessions again?"}>
         <div className="space-y-4 px-6 py-5">
           <p className="text-base leading-6">This runs a new paid check. The earlier analysis stays, and a new check may find different results. Your decisions carry over wherever a finding cites the same passages.</p>
           <p className="rounded-md bg-well px-4 py-3 text-sm tabular-nums">{estimateText(estimate)}.</p>

@@ -47,7 +47,7 @@ export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analys
     await tx.delete(witnesses).where(and(
       inArray(witnesses.id, witnessIds),
       sql`not exists (select 1 from depositions d where d.witness_id = ${witnesses.id})`,
-      sql`not exists (select 1 from analyses a where a.witness_id = ${witnesses.id})`,
+      sql`not exists (select 1 from analyses a where a.witness_id = ${witnesses.id} or a.witness_b_id = ${witnesses.id})`,
     ));
   }
   return { analyses: analysisIds.length, storageKeys: rows.map((r) => r.storageKey) };

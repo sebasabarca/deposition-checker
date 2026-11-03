@@ -93,11 +93,12 @@ describe("the new check panel", () => {
   const deps = [{ id: 1, witnessId: 1, status: "ready" as const, takenOn: "2026-01-01" }, { id: 2, witnessId: 1, status: "ready" as const, takenOn: "2026-02-01" }, { id: 3, witnessId: 2, status: "ready" as const, takenOn: "2026-01-01" }, { id: 4, witnessId: 1, status: "processing" as const, takenOn: null }, { id: 5, witnessId: 1, status: "ready" as const, takenOn: "2026-03-01" }, { id: 6, witnessId: 1, status: "ready" as const, takenOn: null }];
   const report = (id: number, depositionA: number, depositionB: number, status: "completed" | "adjudicating" | "failed") => ({ id, depositionA, depositionB, status, createdAt: "2026-11-01" });
 
-  it("asks for exactly two depositions of one witness, both read", () => {
+  it("asks for exactly two depositions, both read and dated", () => {
     expect(checkState([], deps, []).kind).toBe("pick");
     expect(checkState([1], deps, []).kind).toBe("pick");
     expect(checkState([1, 2, 5], deps, []).kind).toBe("too_many");
-    expect(checkState([1, 3], deps, []).kind).toBe("different_witness");
+    expect(checkState([1, 3], deps, [])).toEqual({ kind: "new", a: 1, b: 3, cross: true }); // two witnesses: a cross-witness check
+    expect(checkState([1, 2], deps, [])).toEqual({ kind: "new", a: 1, b: 2, cross: false });
     expect(checkState([1, 4], deps, []).kind).toBe("not_ready");
     expect(checkState([1, 6], deps, []).kind).toBe("no_date");
   });

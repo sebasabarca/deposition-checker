@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
 import { Alert, Badge, Button, Card, cx, Empty, Loading, PageHeader, rowClass, Search, selectClass, Strength, tdClass, thClass } from "../components/ui";
-import { findingHeadline, GROUP_LABEL } from "../lib/labels";
+import { analysisTitle, findingHeadline, GROUP_LABEL } from "../lib/labels";
 import { decisionOf, REVIEW_LABEL } from "../lib/review";
 import { href } from "../lib/router";
 import { DECISION_DOT, shortRef } from "../components/FindingRegister";
@@ -24,7 +24,7 @@ export function FindingsPage() {
     const term = q.trim().toLowerCase();
     return (findings ?? [])
       .filter((f) => (!caseId || String(f.analysis.caseId) === caseId) && (!group || f.group === group) && (!decision || decisionOf(f.reviewState) === decision))
-      .filter((f) => !term || [f.subject, f.explanation, f.a.ref, f.b.ref, f.analysis.depositions[0].witness].some((s) => s?.toLowerCase().includes(term)))
+      .filter((f) => !term || [f.subject, f.explanation, f.a.ref, f.b.ref, analysisTitle(f.analysis)].some((s) => s?.toLowerCase().includes(term)))
       .sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || RANK[a.priority] - RANK[b.priority] || b.analysis.id - a.analysis.id || a.rank - b.rank);
   }, [findings, caseId, group, decision, q]);
 
@@ -68,7 +68,7 @@ export function FindingsPage() {
                       <tr key={f.id} className={cx(rowClass, "cursor-pointer align-top")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.analysis(f.analysis.id, f.id))}>
                         <td className={cx(tdClass, "max-w-[28rem]")}><a href={href.analysis(f.analysis.id, f.id)} className="line-clamp-2 font-medium hover:underline">{f.subject ?? f.explanation}</a></td>
                         <td className={tdClass}>
-                          <span className="block whitespace-nowrap">{f.analysis.depositions[0].witness}</span>
+                          <span className="block whitespace-nowrap">{analysisTitle(f.analysis)}</span>
                           <span className="block text-xs text-muted">{f.caseName}</span>
                         </td>
                         <td className={cx(tdClass, "font-mono text-[12px] whitespace-nowrap text-muted")}><span className="flex items-center gap-1.5">{shortRef(f.a.ref)}<ArrowLeftRight aria-hidden className="size-3 text-faint" />{shortRef(f.b.ref)}</span></td>

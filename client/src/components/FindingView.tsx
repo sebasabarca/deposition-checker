@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 import { CircleAlert, FileSearch, ShieldCheck, TriangleAlert } from "lucide-react";
 import { api } from "../lib/api";
 import { displayRef, LOW_OCR_CONFIDENCE, ocrPassage } from "../lib/insights";
-import { ATTRIBUTION_LEVEL, COMPONENT, DISAGREEMENT, EVIDENCE_STRENGTH_NOTE, formatDate, LOCATION, ORIGIN, SAME_EVENT, SPEAKER, VERIFICATION } from "../lib/labels";
+import { ATTRIBUTION_LEVEL, COMPONENT, DISAGREEMENT, EVIDENCE_STRENGTH_NOTE, formatDate, KNOWLEDGE_BASIS, LOCATION, ORIGIN, SAME_EVENT, SPEAKER, VERIFICATION } from "../lib/labels";
 import { href } from "../lib/router";
 import type { EvidenceLine, EvidenceSide, FindingDetail } from "../types";
 import { Alert, Button, cx, Dialog, ModelMark, OcrMark, TestimonyMark } from "./ui";
@@ -130,6 +130,8 @@ function Confidence({ value }: { value: number | null }) {
 
 const Gap = () => <p className="py-1 pl-[4.6rem] font-sans text-xs text-faint italic">Pages omitted from the source transcript here.</p>;
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const Heading = ({ children }: { children: ReactNode }) => <h3 className="text-xs font-semibold text-faint">{children}</h3>;
 
 export function ModelAssessment({ f }: { f: FindingDetail }) {
@@ -138,13 +140,15 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-md font-semibold">{contradiction ? "Why the statements may conflict" : f.classification === "false_positive" ? "Why they may be compatible" : "Assessment"}</h2>
+        <h2 className="text-md font-semibold">{contradiction && f.cross ? "Why the accounts may conflict" : contradiction ? "Why the statements may conflict" : f.classification === "false_positive" ? "Why they may be compatible" : "Assessment"}</h2>
         <ModelMark />
       </div>
       <p className="font-serif text-[17px] leading-7">{a.explanation}</p>
       {f.direct ? (
-        (f.direct.conflictBasis || f.direct.reasoning || f.direct.missingContext) && (
+        (f.direct.conflictBasis || f.direct.reasoning || f.direct.missingContext || f.cross) && (
           <dl className="grid grid-cols-1 gap-3 border-t border-rule pt-4 text-sm">
+            {f.cross && <Term label={`How ${f.cross.witnessA} knows`}>{capitalize(KNOWLEDGE_BASIS[f.cross.basisA] ?? f.cross.basisA)}</Term>}
+            {f.cross && <Term label={`How ${f.cross.witnessB} knows`}>{capitalize(KNOWLEDGE_BASIS[f.cross.basisB] ?? f.cross.basisB)}</Term>}
             {f.direct.conflictBasis && <Term label="What the possible conflict rests on">{f.direct.conflictBasis}</Term>}
             {f.direct.reasoning && <Term label="What the judgement rests on">{f.direct.reasoning}</Term>}
             {f.direct.missingContext && <Term label="What's missing">{f.direct.missingContext}</Term>}
@@ -200,7 +204,7 @@ export function ChecksCard({ f }: { f: FindingDetail }) {
           const s = f[k];
           return (
             <li key={k} className="space-y-0.5">
-              <p className="font-semibold">Session {k.toUpperCase()}</p>
+              <p className="font-semibold">{f.cross ? (k === "a" ? f.cross.witnessA : f.cross.witnessB) : `Session ${k.toUpperCase()}`}</p>
               <p>
                 {VERIFICATION[s.verification.status] ?? s.verification.status}
                 {s.verification.location ? `, ${LOCATION[s.verification.location] ?? s.verification.location}` : ""}.
@@ -274,7 +278,7 @@ export function ScoreCard({ f }: { f: FindingDetail }) {
         <h3 className="font-semibold">Why this score?</h3>
         <span className="text-lg font-semibold tabular-nums">{f.score}<span className="text-sm font-normal text-faint"> / 100</span></span>
       </div>
-      <p className="text-sm text-muted">Calculated by this application with rubric {f.rubricVersion}. Each point traces to a check; caps limit the total. Not a probability that the witness contradicted themself.</p>
+      <p className="text-sm text-muted">Calculated by this application with rubric {f.rubricVersion}. Each point traces to a check; caps limit the total. {f.cross ? "Not a probability that the witnesses' accounts conflict." : "Not a probability that the witness contradicted themself."}</p>
       <div className="mt-3 space-y-3 text-sm">
         {byComponent.map(({ c, factors }) => (
           <div key={c}>

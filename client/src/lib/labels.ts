@@ -120,11 +120,26 @@ const MODEL_CLASSIFICATION: Record<string, string> = {
   compatible: "compatible",
   insufficient_evidence: "not enough evidence to judge",
   uncertain_needs_context: "dependent on context it didn't have",
+  direct_conflict: "a direct conflict between the witnesses",
+  possible_conflict_needs_context: "a possible conflict that depends on context",
+  recollection_or_knowledge_difference: "a difference in what each recalls or knew",
 };
+
+// How a witness knows what they said, as the model read it. Model interpretation, so always shown as such.
+export const KNOWLEDGE_BASIS: Record<string, string> = {
+  personal_observation: "saw or heard it themselves",
+  told_by_someone: "was told by someone else",
+  belief_or_inference: "believes or infers it",
+  unclear: "unclear how they know",
+};
+
+// An analysis's name: one witness, or the two witnesses a cross-witness check compares.
+export const analysisTitle = (a: { kind: string; witnesses: { a: { name: string }; b: { name: string } | null } }) => (a.kind === "cross_witness" && a.witnesses.b ? `${a.witnesses.a.name} and ${a.witnesses.b.name}` : a.witnesses.a.name);
 
 // The headline follows code's lane, never the model's label alone: a finding the checks hold back
 // must not read as a contradiction.
-export function findingHeadline(f: Pick<FindingSummary, "group" | "classification">) {
+export function findingHeadline(f: Pick<FindingSummary, "group" | "classification"> & { cross?: unknown }) {
+  if (f.group === "contradictions" && f.cross) return "Potential conflict between witnesses";
   if (f.group === "contradictions") return f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction";
   if (f.group === "unverified") return "Unverified finding";
   if (f.group === "needs_context") return "Needs context";
@@ -134,7 +149,7 @@ export function findingHeadline(f: Pick<FindingSummary, "group" | "classificatio
 export const modelCalledIt = (modelName: string, classification: string) => `${modelName} called this ${MODEL_CLASSIFICATION[classification] ?? classification.replaceAll("_", " ")}.`;
 
 export const evidenceStrength = (f: { score: number | null }) => (f.score === null ? "Evidence strength: not scored" : `Evidence strength: ${f.score}/100`);
-export const EVIDENCE_STRENGTH_NOTE = "Evidence strength measures how well the cited testimony supports review under a fixed checklist. It is not a probability that the witness contradicted themselves.";
+export const EVIDENCE_STRENGTH_NOTE = "Evidence strength measures how well the cited testimony supports review under a fixed checklist. It is not a probability that the testimony conflicts.";
 
 export const SPEAKER: Record<string, string> = {
   witness: "the witness's own words",

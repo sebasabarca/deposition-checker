@@ -91,7 +91,7 @@ export async function caseDetail(db: Database, id: number) {
     case: { id: kase.id, name: kase.name, createdAt: kase.createdAt, findings: counts.n },
     witnesses: ws.map((w) => ({ id: w.id, name: w.name, depositions: ds.filter((d) => d.witnessId === w.id).map((d) => d.id) })),
     depositions: ds.map((d) => ({ ...d, fileSha256: d.fileSha256.slice(0, 12) })),
-    analyses: as.map((a) => ({ id: a.id, witnessId: a.witnessId, depositionA: a.depositionA, depositionB: a.depositionB, mode: a.mode, status: a.status, progress: a.progress, error: a.error, createdAt: a.createdAt, finishedAt: a.finishedAt })),
+    analyses: as.map((a) => ({ id: a.id, kind: a.kind, witnessId: a.witnessId, witnessBId: a.witnessBId, depositionA: a.depositionA, depositionB: a.depositionB, mode: a.mode, status: a.status, progress: a.progress, error: a.error, createdAt: a.createdAt, finishedAt: a.finishedAt })),
   };
 }
 

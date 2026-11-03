@@ -16,7 +16,8 @@ import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claim
 import { hasPhysicalLines } from "../ingest";
 import { sessionCoverage } from "../verify";
 import { caseDetail, caseSummaries } from "./cases";
-import { estimateDiscovery } from "../adjudicate/estimateDiscovery";
+import { estimateCrossDiscovery, estimateDiscovery } from "../adjudicate/estimateDiscovery";
+import { CROSS_DISCOVERY_MODEL, CROSS_DISCOVERY_PROMPT_VERSION, CROSS_FALLBACK_MODEL, crossSidesOf } from "../adjudicate/discoverCross";
 import { candidateCoverage, compareFindings, coverageNotes, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
@@ -24,6 +25,9 @@ export const MAX_BUDGET_USD = 20;
 export const DEFAULT_BUDGET_USD = 3; // DESIGN.md's default per two-session analysis
 // Covers the worst case of a long pair at batch prices, and of a fallback after a refusal.
 export const DEFAULT_DIRECT_BUDGET_USD = 6;
+// Opus's worst case on both Simpson and both Resnick sessions together was $2.43, so one session of each
+// fits easily, with room for Fable after a refusal.
+export const DEFAULT_CROSS_BUDGET_USD = 6;
 export const MAX_CANDIDATES = 300;
 
 const StartAnalysis = z.object({
@@ -38,6 +42,7 @@ const StartAnalysis = z.object({
   strategy: z.enum(PRODUCTION_STRATEGY_IDS).default(DEFAULT_STRATEGY as (typeof PRODUCTION_STRATEGY_IDS)[number]),
   maxConcurrency: z.number().int().min(1).max(MAX_CONCURRENCY).optional(), // overrides the strategy's; A stays sequential
 });
+const StartCross = z.object({ kind: z.literal("cross_witness"), witnessA: z.number().int().positive(), witnessB: z.number().int().positive(), budgetUsd: z.number().min(0).max(MAX_BUDGET_USD).optional() });
 const ACTIVE = ["queued", "parsing", "retrieving", "adjudicating"] as const;
 const RESUMABLE = ["blocked_budget", "blocked_credentials", "failed", "cancelled", "interrupted"];
 
@@ -62,11 +67,14 @@ async function analysisCoverage(db: Database, a: typeof analyses.$inferSelect) {
 export async function analysisView(db: Database, id: number) {
   const [a] = await db.select().from(analyses).where(eq(analyses.id, id));
   if (!a) return null;
+  const cross = a.kind === "cross_witness" ? crossSidesOf(a) : null;
+  const sessionIds = cross ? [...cross.a, ...cross.b] : [a.depositionA, a.depositionB];
   const docs = await db
-    .select({ id: depositions.id, takenOn: depositions.takenOn, status: depositions.status, originalFilename: depositions.originalFilename, witness: witnesses.name })
+    .select({ id: depositions.id, takenOn: depositions.takenOn, status: depositions.status, originalFilename: depositions.originalFilename, witness: witnesses.name, witnessId: depositions.witnessId })
     .from(depositions)
     .innerJoin(witnesses, eq(witnesses.id, depositions.witnessId))
-    .where(inArray(depositions.id, [a.depositionA, a.depositionB]));
+    .where(inArray(depositions.id, sessionIds));
+  const witnessNames = await db.select({ id: witnesses.id, name: witnesses.name }).from(witnesses).where(inArray(witnesses.id, [a.witnessId, ...(a.witnessBId ? [a.witnessBId] : [])]));
   const rows = await db
     .select({ type: findings.type, evidenceStatus: findings.evidenceStatus, score: findings.score, unscoredReason: findings.unscoredReason, priority: findings.priority, reviewState: findings.reviewState })
     .from(findings)
@@ -80,9 +88,12 @@ export async function analysisView(db: Database, id: number) {
     id: a.id,
     caseId: a.caseId,
     witnessId: a.witnessId,
+    kind: a.kind as "same_witness" | "cross_witness",
+    // Witness A, and witness B for a cross-witness check.
+    witnesses: { a: { id: a.witnessId, name: witnessNames.find((w) => w.id === a.witnessId)?.name ?? "Witness" }, b: a.witnessBId ? { id: a.witnessBId, name: witnessNames.find((w) => w.id === a.witnessBId)?.name ?? "Witness" } : null },
     mode: a.mode,
     retrieval: a.retrieval,
-    discovery: a.retrieval === DIRECT_FABLE ? discoveryView(runs) : null,
+    discovery: a.retrieval === DIRECT_FABLE ? discoveryView(runs, a.kind === "cross_witness") : null,
     evidence: a.retrieval === DIRECT_FABLE ? await evidenceCoverage(db, a, runs) : null,
     resumable: a.retrieval === DIRECT_FABLE ? directCanResume(a.status, runs.length) : RESUMABLE.includes(a.status),
     status: a.status,
@@ -96,7 +107,8 @@ export async function analysisView(db: Database, id: number) {
     candidatesPerRequest: a.candidatesPerRequest,
     maxConcurrency: a.maxConcurrency,
     cancelRequested: a.cancelRequestedAt !== null,
-    depositions: [a.depositionA, a.depositionB].map((d) => docs.find((x) => x.id === d)!),
+    // Every session compared, side A's first, each in date order. For a same-witness check, its two sessions.
+    depositions: sessionIds.map((d, i) => ({ ...docs.find((x) => x.id === d)!, side: (cross ? (i < cross.a.length ? "A" : "B") : i === 0 ? "A" : "B") as "A" | "B" })),
     findings: { total: rows.length, groups, decided: rows.filter((r) => r.reviewState !== "unreviewed").length },
     cost: { calls: cost.calls, actualUsd: cost.actualUsd, budgetUsd: a.budgetUsd, budgetSpentUsd: cost.budget?.spentUsd ?? 0, budgetReservedUsd: cost.budget?.reservedUsd ?? 0 },
     createdAt: a.createdAt,
@@ -109,9 +121,11 @@ export async function analysisView(db: Database, id: number) {
 // What testimony a direct analysis received, from code (pages and lines stored), and what the model
 // itself said limited its review, kept apart and named as the model's. Read-only.
 export async function evidenceCoverage(db: Database, a: typeof analyses.$inferSelect, runs: Awaited<ReturnType<typeof discoveryRunsOf>>) {
-  const docs = await db.select({ id: depositions.id, validation: depositions.validation }).from(depositions).where(inArray(depositions.id, [a.depositionA, a.depositionB]));
+  const sides = a.kind === "cross_witness" ? crossSidesOf(a) : null;
+  const ids = sides ? [...sides.a, ...sides.b] : [a.depositionA, a.depositionB];
+  const docs = await db.select({ id: depositions.id, validation: depositions.validation }).from(depositions).where(inArray(depositions.id, ids));
   const sessions = await Promise.all(
-    [a.depositionA, a.depositionB].map(async (depositionId) => {
+    ids.map(async (depositionId) => {
       const rows = await db.select({ page: lines.printedPage, line: lines.lineNo }).from(lines).where(eq(lines.depositionId, depositionId)).orderBy(lines.printedPage, lines.lineNo);
       const coverage = sessionCoverage(rows, (docs.find((d) => d.id === depositionId)?.validation ?? null) as Parameters<typeof sessionCoverage>[1]);
       return { depositionId, ...coverage, notes: coverageNotes(coverage) };
@@ -123,18 +137,18 @@ export async function evidenceCoverage(db: Database, a: typeof analyses.$inferSe
 }
 
 // What each paid attempt did, and which model's results these are, in fields a lawyer can read.
-function discoveryView(runs: Awaited<ReturnType<typeof discoveryRunsOf>>) {
+function discoveryView(runs: Awaited<ReturnType<typeof discoveryRunsOf>>, cross: boolean) {
   const fallback = runs.find((r) => r.role === "fallback");
   const answered = [...runs].reverse().find((r) => r.status === "succeeded");
   return {
     resultModel: answered ? (answered.answered_by ?? answered.model) : null,
-    resultModelName: answered ? modelName(answered.answered_by ?? answered.model) : null,
+    resultModelName: answered ? modelName(answered.answered_by ?? answered.model, cross) : null,
     usedFallback: fallback !== undefined,
-    fallbackModel: DISCOVERY_FALLBACK_MODEL,
-    primaryModel: DISCOVERY_MODEL,
-    promptVersion: runs[0]?.prompt_version ?? DISCOVERY_PROMPT_VERSION,
+    fallbackModel: cross ? CROSS_FALLBACK_MODEL : DISCOVERY_FALLBACK_MODEL,
+    primaryModel: cross ? CROSS_DISCOVERY_MODEL : DISCOVERY_MODEL,
+    promptVersion: runs[0]?.prompt_version ?? (cross ? CROSS_DISCOVERY_PROMPT_VERSION : DISCOVERY_PROMPT_VERSION),
     sourceHashes: runs[0]?.source_hashes ?? null,
-    attempts: runs.map((r) => ({ attempt: r.attempt, role: r.role, model: r.model, modelName: modelName(r.model), status: r.status, batchId: r.batch_id, stopReason: r.stop_reason, refusalCategory: r.refusal_category, error: r.error, costUsd: r.cost_usd === null ? null : Number(r.cost_usd), inputTokens: r.input_tokens, outputTokens: r.output_tokens, thinkingTokens: r.thinking_tokens, latencyMs: r.latency_ms })),
+    attempts: runs.map((r) => ({ attempt: r.attempt, role: r.role, model: r.model, modelName: modelName(r.model, cross), status: r.status, batchId: r.batch_id, stopReason: r.stop_reason, refusalCategory: r.refusal_category, error: r.error, costUsd: r.cost_usd === null ? null : Number(r.cost_usd), inputTokens: r.input_tokens, outputTokens: r.output_tokens, thinkingTokens: r.thinking_tokens, latencyMs: r.latency_ms })),
   };
 }
 
@@ -158,7 +172,7 @@ export async function analysisFindings(db: Database, id: number) {
         id: f.id,
         group: findingGroup(f),
         model: v.model,
-        modelName: modelName(v.model),
+        modelName: modelName(v.model, (f.checks as { cross?: unknown }).cross !== undefined),
         direct: direct ? { modelClassification: direct.modelClassification, evidenceKey: direct.evidenceKey, duplicates: direct.duplicates.length, ocrRead: direct.a.ocr.read || direct.b.ocr.read, lowOcrLines: [...direct.a.ocr.lowLines, ...direct.b.ocr.lowLines], speakers: [direct.a.speaker, direct.b.speaker] } : null,
         classification: f.type,
         priority: f.priority,
@@ -173,6 +187,7 @@ export async function analysisFindings(db: Database, id: number) {
         source: v.origin as VerdictSource,
         rank: c.mergedRank,
         // A direct finding cites exact lines, which may start well inside the exchange.
+        cross: (f.checks as { cross?: CrossChecks }).cross ? { witnessA: (f.checks as { cross: CrossChecks }).cross.witnessA, witnessB: (f.checks as { cross: CrossChecks }).cross.witnessB } : null,
         a: direct ? { depositionId: direct.a.depositionId, ref: direct.a.citation } : { depositionId: c.depositionA, ref: firstLines.get(c.exchangeA) ?? null },
         b: direct ? { depositionId: direct.b.depositionId, ref: direct.b.citation } : { depositionId: c.depositionB, ref: firstLines.get(c.exchangeB) ?? null },
         sameEvent: parsed.sameEvent,
@@ -183,9 +198,10 @@ export async function analysisFindings(db: Database, id: number) {
   const groups = GROUP_ORDER.map((g) => ({ group: g, label: GROUP_LABELS[g], findings: items.filter((i) => i.group === g) }));
   // Proposed findings that couldn't be tied to stored lines have no finding row. They stay visible here.
   const runs = await discoveryRunsOf(db, id);
+  const isCross = (await db.select({ kind: analyses.kind }).from(analyses).where(eq(analyses.id, id)))[0]?.kind === "cross_witness";
   const notStored = runs.flatMap((r) => ((r.audit ?? []) as { shown: string; findingId: string; classification: string; explanation: string; reasons: string[]; evidenceStatus: string; a: { citation: string }; b: { citation: string } }[])
     .filter((x) => x.shown === "not_stored")
-    .map((x) => ({ findingId: x.findingId, model: r.answered_by ?? r.model, modelName: modelName(r.answered_by ?? r.model), classification: x.classification, evidenceStatus: x.evidenceStatus, reasons: x.reasons, citationA: x.a.citation, citationB: x.b.citation, explanation: x.explanation })));
+    .map((x) => ({ findingId: x.findingId, model: r.answered_by ?? r.model, modelName: modelName(r.answered_by ?? r.model, isCross), classification: x.classification, evidenceStatus: x.evidenceStatus, reasons: x.reasons, citationA: x.a.citation, citationB: x.b.citation, explanation: x.explanation })));
   return { groups, notStored };
 }
 
@@ -225,7 +241,8 @@ export async function findingDetail(db: Database, id: number) {
     consistencyIssues?: string[];
   };
   const direct = (f.checks as { direct?: DirectChecks }).direct ?? null;
-  const usedFallback = direct !== null && v.model === DISCOVERY_FALLBACK_MODEL;
+  const cross = (f.checks as { cross?: CrossChecks }).cross ?? null;
+  const usedFallback = direct !== null && v.model === (cross ? CROSS_FALLBACK_MODEL : DISCOVERY_FALLBACK_MODEL);
   const allIds = packet.sides.flatMap((s) => [...s.lineIds, ...s.contextLineIds]);
   const stored = new Map(
     (allIds.length ? await db.select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, speaker: lines.speakerRole, ocrConfidence: lines.ocrConfidence, pdfPage: lines.pdfPage }).from(lines).where(inArray(lines.id, allIds)) : []).map((l) => [l.id, l]),
@@ -303,7 +320,7 @@ export async function findingDetail(db: Database, id: number) {
     consistencyIssues: checks.consistencyIssues ?? v.consistencyIssues,
     contextCheck: checks.context?.detail ?? null,
     timeCheck: checks.timeCheck,
-    source: { kind: v.origin as VerdictSource, label: direct ? directSourceLabel(v.model, usedFallback) : SOURCE_LABELS[v.origin as VerdictSource], model: v.model, modelName: modelName(v.model), usedFallback, promptVersion: v.promptVersion, verdictId: v.id, replayOf: v.replayOf },
+    source: { kind: v.origin as VerdictSource, label: direct ? directSourceLabel(v.model, usedFallback, cross !== null) : SOURCE_LABELS[v.origin as VerdictSource], model: v.model, modelName: modelName(v.model, cross !== null), usedFallback, promptVersion: v.promptVersion, verdictId: v.id, replayOf: v.replayOf },
     direct: direct ? { modelClassification: direct.modelClassification, evidenceKey: direct.evidenceKey, duplicates: direct.duplicates, sharedSubject: (parsed as { sharedSubject?: string }).sharedSubject ?? null, missingContext: (parsed as { missingContext?: string }).missingContext ?? null, reasoning: (parsed as { confidenceRationale?: string }).confidenceRationale ?? null, conflictBasis: (parsed as { conflictBasisText?: string }).conflictBasisText ?? null, a: { speaker: direct.a.speaker, ocr: direct.a.ocr, reportedSpeech: direct.a.reportedSpeech }, b: { speaker: direct.b.speaker, ocr: direct.b.ocr, reportedSpeech: direct.b.reportedSpeech } } : null,
     assessment: {
       sameEvent: parsed.sameEvent,
@@ -317,10 +334,14 @@ export async function findingDetail(db: Database, id: number) {
       unestablishedAssumptions: parsed.unestablishedAssumptions,
       needsMoreContext: parsed.needsMoreContext,
     },
+    // A cross-witness finding: whose testimony each side is, its session label, and how each witness
+    // knows what they said, as the model read it.
+    cross: cross ? { witnessA: cross.witnessA, witnessB: cross.witnessB, sessionA: cross.sessionA, sessionB: cross.sessionB, basisA: cross.basisA, basisB: cross.basisB } : null,
     a: side("a"),
     b: side("b"),
   };
 }
+type CrossChecks = { witnessA: string; witnessB: string; sessionA: string | null; sessionB: string | null; basisA: string; basisB: string };
 type SideCheck = { status: string; reason: string | null; location: string | null; evidenceLineIds: number[]; bareAnswer?: boolean; matchScore: number };
 type AttributionCheck = { level: string; codeRule?: string; disagreement?: string | null; qualifier: string | null; noRecall: boolean; approximation: boolean };
 
@@ -335,7 +356,12 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     if (!caseId.success || !q.success) return res.status(400).json({ error: "The case ID and both deposition IDs (a, b) must be positive numbers." });
     const docs = await db.select().from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, [q.data.a, q.data.b])));
     if (docs.length !== 2) return res.status(404).json({ error: "Both depositions must belong to this case." });
-    if (docs[0].witnessId !== docs[1].witnessId) return res.status(400).json({ error: "Both depositions must be of the same witness." });
+    // Sessions of two different witnesses are a cross-witness check: witness A's is the earlier session.
+    if (docs[0].witnessId !== docs[1].witnessId) {
+      const [x, y] = [...docs].sort((p, q) => (p.takenOn ?? "9999").localeCompare(q.takenOn ?? "9999") || p.id - q.id);
+      const estimate = await estimateCrossDiscovery(db, { witnessA: x.witnessId, witnessB: y.witnessId, a: [x.id], b: [y.id] });
+      return res.json({ estimate: { ...estimate, budgetUsd: DEFAULT_CROSS_BUDGET_USD } });
+    }
     const estimate = await estimateDiscovery(db, { witnessId: docs[0].witnessId, depositionA: docs[0].id, depositionB: docs[1].id });
     return res.json({ estimate: { ...estimate, budgetUsd: DEFAULT_DIRECT_BUDGET_USD } });
   });
@@ -348,16 +374,19 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const b = body.data;
     const method = b.method ?? (b.mode === "live" ? DIRECT_FABLE : "hybrid");
     if (method === DIRECT_FABLE && b.mode === "demo") return res.status(400).json({ error: "Direct discovery has no demo mode: a demo replays stored hybrid assessments." });
-    const budgetUsd = b.budgetUsd ?? (method === DIRECT_FABLE ? DEFAULT_DIRECT_BUDGET_USD : DEFAULT_BUDGET_USD);
     if (b.depositionA === b.depositionB) return res.status(400).json({ error: "Choose two different deposition sessions." });
     const strategy = STRATEGIES[b.strategy];
     const maxConcurrency = strategy.id === "A" ? 1 : (b.maxConcurrency ?? strategy.maxConcurrency);
     const docs = await db.select().from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, [b.depositionA, b.depositionB])));
     if (docs.length !== 2) return res.status(404).json({ error: "Both depositions must belong to this case." });
-    if (docs[0].witnessId !== docs[1].witnessId) return res.status(400).json({ error: "Both depositions must be of the same witness." });
+    // Sessions of two different witnesses: a cross-witness check, read by Opus. Direct discovery only.
+    const cross = docs[0].witnessId !== docs[1].witnessId;
+    if (cross && method !== DIRECT_FABLE) return res.status(400).json({ error: "Comparing two witnesses runs as a live check only: it has no example or hybrid mode." });
+    const budgetUsd = b.budgetUsd ?? (cross ? DEFAULT_CROSS_BUDGET_USD : method === DIRECT_FABLE ? DEFAULT_DIRECT_BUDGET_USD : DEFAULT_BUDGET_USD);
     // The dates decide which session is the earlier one in every finding, so neither may be guessed.
     if (docs.some((d) => !d.takenOn)) return res.status(400).json({ error: "Add the date each session was taken before checking them. The dates decide which testimony came first.", code: "date_missing" });
-    // Session A is the earlier one (by date, then by upload order), as the findings show them.
+    // Session A is the earlier one (by date, then by upload order), as the findings show them. In a
+    // cross-witness check its witness is witness A.
     const [first, second] = [...docs].sort((x, y) => (x.takenOn ?? "9999").localeCompare(y.takenOn ?? "9999") || x.id - y.id);
 
     const outcome = await withTransaction(pool, async (tx, client) => {
@@ -369,7 +398,7 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
       if (active) return { id: active.id, created: false };
       const [a] = await tx
         .insert(analyses)
-        .values({ caseId: caseId.data, witnessId: first.witnessId, depositionA: first.id, depositionB: second.id, mode: b.mode, retrieval: method, promptVersion: method === DIRECT_FABLE ? DISCOVERY_PROMPT_VERSION : b.promptVersion, effort: method === DIRECT_FABLE ? DISCOVERY_EFFORT : b.effort, maxCandidates: b.maxCandidates, budgetUsd, strategy: strategy.id, candidatesPerRequest: strategy.candidatesPerRequest, maxConcurrency })
+        .values({ caseId: caseId.data, kind: cross ? "cross_witness" : "same_witness", witnessId: first.witnessId, witnessBId: cross ? second.witnessId : null, depositionA: first.id, depositionB: second.id, mode: b.mode, retrieval: method, promptVersion: cross ? CROSS_DISCOVERY_PROMPT_VERSION : method === DIRECT_FABLE ? DISCOVERY_PROMPT_VERSION : b.promptVersion, effort: method === DIRECT_FABLE ? DISCOVERY_EFFORT : b.effort, maxCandidates: b.maxCandidates, budgetUsd, strategy: strategy.id, candidatesPerRequest: strategy.candidatesPerRequest, maxConcurrency })
         .returning({ id: analyses.id });
       const [budget] = await tx.insert(budgets).values({ name: `analysis-${a.id}`, limitUsd: budgetUsd }).returning({ id: budgets.id });
       await tx.update(analyses).set({ budgetId: budget.id }).where(eq(analyses.id, a.id));

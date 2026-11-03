@@ -18,6 +18,7 @@ import { EVIDENCE_STRENGTH_VERSION, evidenceStrength, unscoredReasonOf } from ".
 import { evidenceKey, groupDuplicates, verifyDirectFinding, type DirectCheck, type DirectSide, type StoredLine, type StoredSession } from "../verify";
 import { DISCOVERY_PROMPT_VERSION, DISCOVERY_SYSTEM, discoveryUserPrompt, promptHash } from "./discoverPrompt";
 import { DISCOVERY_JSON_SCHEMA, readDiscoveryOutput, type DiscoveryFinding, type DiscoveryOutput } from "./discoverSchema";
+import { CROSS_DISCOVERY_MODEL, CROSS_DISCOVERY_PROMPT_VERSION, CROSS_DISCOVERY_SYSTEM, CROSS_FALLBACK_MODEL, CROSS_JSON_SCHEMA, crossPrompt, crossSidesOf, loadCrossSessions, readCrossOutput, storeCrossFindings } from "./discoverCross";
 
 export const DISCOVERY_MODEL = "claude-fable-5-1";
 export const DISCOVERY_FALLBACK_MODEL = "claude-opus-5-5";
@@ -29,7 +30,8 @@ const CONTEXT_LINES = 5;
 // 30 seconds, this rides out about five minutes of provider trouble.
 export const MAX_POLL_FAILURES = 10;
 
-export type DiscoveryRequest = { customId: string; model: string; user: string; maxOutputTokens: number };
+// system and schema: the request's own prompt and output schema, when not the provider's defaults.
+export type DiscoveryRequest = { customId: string; model: string; user: string; maxOutputTokens: number; system?: string; schema?: Record<string, unknown> };
 export type DiscoveryMessage = Pick<Anthropic.Message, "model" | "stop_reason" | "content" | "usage"> & { stop_details?: { category?: string | null; explanation?: string | null } | null };
 export type DiscoveryResult =
   | { type: "succeeded"; message: DiscoveryMessage }
@@ -54,15 +56,15 @@ export function anthropicDiscovery(client = new Anthropic({ maxRetries: 0 }), ma
   const batches = client.messages.batches;
   return {
     maxOutputTokens,
-    async submit({ customId, model, user, maxOutputTokens: limit }) {
+    async submit({ customId, model, user, maxOutputTokens: limit, system, schema }) {
       const batch = await batches.create({
         requests: [{
           custom_id: customId,
           params: {
             model,
             max_tokens: limit,
-            system: [{ type: "text", text: spec.system, cache_control: { type: "ephemeral" } }],
-            output_config: { effort: spec.effort, format: { type: "json_schema", schema: spec.schema } },
+            system: [{ type: "text", text: system ?? spec.system, cache_control: { type: "ephemeral" } }],
+            output_config: { effort: spec.effort, format: { type: "json_schema", schema: schema ?? spec.schema } },
             messages: [{ role: "user", content: user }],
           },
         }],
@@ -90,8 +92,9 @@ export function anthropicDiscovery(client = new Anthropic({ maxRetries: 0 }), ma
 }
 
 export type RunStatus = (typeof discoveryRuns.$inferSelect)["status"];
-type Classified =
-  | { status: "succeeded"; output: DiscoveryOutput; text: string }
+type AnyOutput = { summary: { completion_status: "complete" | "partial"; limitations: string[] }; findings: unknown[] };
+type Classified<T = DiscoveryOutput> =
+  | { status: "succeeded"; output: T; text: string }
   | { status: "refused"; category: string | null; detail: string | null; text: string | null }
   | { status: "invalid_output"; error: string; text: string | null }
   | { status: "incomplete"; error: string; text: string | null }
@@ -99,7 +102,7 @@ type Classified =
 
 // What came back. Pure. A valid answer with no findings is a success, never a refusal: only the
 // provider's explicit refusal can lead to a fallback.
-export function classifyDiscovery(result: DiscoveryResult): Classified {
+export function classifyDiscovery<T extends AnyOutput = DiscoveryOutput>(result: DiscoveryResult, read: (text: string | null) => { output: T | null; error: string | null } = readDiscoveryOutput as never): Classified<T> {
   if (result.type === "errored") return { status: "provider_failed", error: result.error };
   if (result.type === "expired") return { status: "expired", error: "The batch expired before the request ran." };
   if (result.type === "canceled") return { status: "cancelled", error: "The batch was cancelled before the request finished." };
@@ -109,8 +112,8 @@ export function classifyDiscovery(result: DiscoveryResult): Classified {
   const text = block?.type === "text" ? block.text : null;
   if (message.stop_reason === "refusal") return { status: "refused", category: message.stop_details?.category ?? null, detail: message.stop_details?.explanation ?? null, text };
   if (message.stop_reason !== "end_turn") return { status: "incomplete", error: `The model stopped with ${message.stop_reason ?? "no stop reason"} before finishing its answer.`, text };
-  const read = readDiscoveryOutput(text);
-  return read.output ? { status: "succeeded", output: read.output, text: text! } : { status: "invalid_output", error: read.error!, text };
+  const parsed = read(text);
+  return parsed.output ? { status: "succeeded", output: parsed.output, text: text! } : { status: "invalid_output", error: parsed.error!, text };
 }
 
 type Analysis = typeof analyses.$inferSelect;
@@ -135,16 +138,40 @@ export async function loadSessions(db: Database, a: Pick<Analysis, "witnessId" |
 
 // An upper bound on the prompt from its characters (no tokenizer produces more tokens than
 // characters), so testimony that might not fit is refused rather than cut.
-export function inputTokensBound(user: string) {
-  return DISCOVERY_SYSTEM.length + user.length + JSON.stringify(DISCOVERY_JSON_SCHEMA).length;
+export function inputTokensBound(user: string, system = DISCOVERY_SYSTEM, schema: Record<string, unknown> = DISCOVERY_JSON_SCHEMA) {
+  return system.length + user.length + JSON.stringify(schema).length;
+}
+
+// What differs between same-witness and cross-witness discovery: the models, the prompt and schema, how the
+// sessions are loaded, and how findings are checked and stored. The request's handling is shared.
+type Prepared = { user: string; hashes: Record<number, string>; empty: boolean; store: (tx: Tx, llmCallId: number, modelAnswered: string, output: AnyOutput) => Promise<unknown[]> };
+export type DiscoveryFlavor = { primary: string; fallback: string; promptVersion: string; system: string; schema: Record<string, unknown>; read: (text: string | null) => { output: AnyOutput | null; error: string | null }; prepare: (db: Database) => Promise<Prepared> };
+
+export function flavorOf(a: Analysis): DiscoveryFlavor {
+  if (a.kind === "cross_witness") {
+    return {
+      primary: CROSS_DISCOVERY_MODEL, fallback: CROSS_FALLBACK_MODEL, promptVersion: CROSS_DISCOVERY_PROMPT_VERSION, system: CROSS_DISCOVERY_SYSTEM, schema: CROSS_JSON_SCHEMA, read: readCrossOutput,
+      prepare: async (db) => {
+        const loaded = await loadCrossSessions(db, crossSidesOf(a));
+        return { user: crossPrompt(loaded), hashes: loaded.hashes, empty: loaded.sessions.length < 2 || loaded.sessions.some((s) => s.lines.length === 0), store: (tx, id, model, output) => storeCrossFindings(tx, a, id, model, output as never, loaded) };
+      },
+    };
+  }
+  return {
+    primary: DISCOVERY_MODEL, fallback: DISCOVERY_FALLBACK_MODEL, promptVersion: DISCOVERY_PROMPT_VERSION, system: DISCOVERY_SYSTEM, schema: DISCOVERY_JSON_SCHEMA, read: readDiscoveryOutput,
+    prepare: async (db) => {
+      const { witness, sessions, hashes } = await loadSessions(db, a);
+      return { user: discoveryUserPrompt(witness, sessions[0], sessions[1]), hashes, empty: sessions.some((s) => s.lines.length === 0), store: (tx, id, model, output) => storeFindings(tx, a, id, model, output as DiscoveryOutput, witness, sessions) };
+    },
+  };
 }
 export const fitsContext = (inputTokens: number, maxOutputTokens = DISCOVERY_MAX_OUTPUT_TOKENS) => inputTokens + maxOutputTokens <= DISCOVERY_CONTEXT_TOKENS;
 
 async function submitAttempt(db: Database, a: Analysis, provider: DiscoveryProvider, attempt: 1 | 2): Promise<DiscoveryStep> {
-  const { witness, sessions, hashes } = await loadSessions(db, a);
-  if (sessions.some((s) => s.lines.length === 0)) return { outcome: "failed", error: "A deposition has no stored testimony, so nothing was sent." };
-  const user = discoveryUserPrompt(witness, sessions[0], sessions[1]);
-  const inputTokens = inputTokensBound(user);
+  const flavor = flavorOf(a);
+  const { user, hashes, empty } = await flavor.prepare(db);
+  if (empty) return { outcome: "failed", error: "A deposition has no stored testimony, so nothing was sent." };
+  const inputTokens = inputTokensBound(user, flavor.system, flavor.schema);
   const maxOutputTokens = provider.maxOutputTokens ?? DISCOVERY_MAX_OUTPUT_TOKENS;
   // Applies to both attempts: a fallback can't help testimony too large for the model.
   if (!fitsContext(inputTokens, maxOutputTokens)) return { outcome: "failed", error: `Insufficient context capacity: these sessions may need up to ${inputTokens} input tokens, and the model allows ${DISCOVERY_CONTEXT_TOKENS - maxOutputTokens} with the output budget. Nothing was sent, and the testimony was not cut.` };
@@ -152,7 +179,7 @@ async function submitAttempt(db: Database, a: Analysis, provider: DiscoveryProvi
   // the last read before money is committed, for both attempts.
   const [fresh] = await db.select({ cancel: analyses.cancelRequestedAt }).from(analyses).where(eq(analyses.id, a.id));
   if (fresh.cancel !== null) return { outcome: "cancelled", error: "Cancelled before anything more was sent." };
-  const model = attempt === 1 ? DISCOVERY_MODEL : DISCOVERY_FALLBACK_MODEL;
+  const model = attempt === 1 ? flavor.primary : flavor.fallback;
   const maxCostUsd = maxBatchRequestCost(model, { inputTokens, maxOutputTokens });
   let reservationId: number;
   try {
@@ -164,10 +191,10 @@ async function submitAttempt(db: Database, a: Analysis, provider: DiscoveryProvi
   const customId = `analysis-${a.id}-attempt-${attempt}`;
   const [run] = await db
     .insert(discoveryRuns)
-    .values({ analysisId: a.id, attempt, role: attempt === 1 ? "primary" : "fallback", model, promptVersion: DISCOVERY_PROMPT_VERSION, effort: DISCOVERY_EFFORT, maxOutputTokens, status: "submitting", customId, reservationId, maxCostUsd, sourceHashes: { depositions: hashes, prompt: promptHash(DISCOVERY_SYSTEM + user) } })
+    .values({ analysisId: a.id, attempt, role: attempt === 1 ? "primary" : "fallback", model, promptVersion: flavor.promptVersion, effort: DISCOVERY_EFFORT, maxOutputTokens, status: "submitting", customId, reservationId, maxCostUsd, sourceHashes: { depositions: hashes, prompt: promptHash(flavor.system + user) } })
     .returning({ id: discoveryRuns.id });
   try {
-    const { batchId } = await provider.submit({ customId, model, user, maxOutputTokens });
+    const { batchId } = await provider.submit({ customId, model, user, maxOutputTokens, system: flavor.system, schema: flavor.schema });
     await db.update(discoveryRuns).set({ status: "submitted", batchId }).where(eq(discoveryRuns.id, run.id));
     return { outcome: "polling" };
   } catch (error) {
@@ -274,8 +301,9 @@ async function storeFindings(tx: Tx, a: Analysis, llmCallId: number, modelAnswer
 
 // Takes one result, once: a repeat finds the row already closed and does nothing.
 async function reconcile(db: Database, a: Analysis, run: typeof discoveryRuns.$inferSelect, result: DiscoveryResult, latencyMs: number | null) {
-  const classified = classifyDiscovery(result);
-  const loaded = classified.status === "succeeded" ? await loadSessions(db, a) : null;
+  const flavor = flavorOf(a);
+  const classified = classifyDiscovery(result, flavor.read);
+  const prepared = classified.status === "succeeded" ? await flavor.prepare(db) : null;
   await db.transaction(async (tx) => {
     const [current] = await tx.select().from(discoveryRuns).where(eq(discoveryRuns.id, run.id)).for("update");
     if (current.status !== "submitted") return;
@@ -287,7 +315,7 @@ async function reconcile(db: Database, a: Analysis, run: typeof discoveryRuns.$i
       changes.stopReason = result.message.stop_reason;
       if (classified.status === "succeeded") {
         changes.output = classified.output;
-        changes.audit = await storeFindings(tx, a, call.id, result.message.model, classified.output, loaded!.witness, loaded!.sessions);
+        changes.audit = await prepared!.store(tx, call.id, result.message.model, classified.output);
       }
     } else {
       // The provider ran nothing for an expired or cancelled item. An errored one is kept in full.
@@ -371,7 +399,7 @@ async function afterAttempt(db: Database, a: Analysis, provider: DiscoveryProvid
   if (run.status === "cancelled" || cancelled) return { outcome: "cancelled", error: "Cancelled. Anything the provider had finished was recorded." };
   // The only way to a second request: a confirmed refusal of the first.
   if (run.status === "refused" && run.attempt === 1) return submitAttempt(db, a, provider, 2);
-  if (run.status === "refused") return { outcome: "failed", error: `Both ${DISCOVERY_MODEL} and the fallback ${DISCOVERY_FALLBACK_MODEL} refused this request. No findings were produced.` };
+  if (run.status === "refused") return { outcome: "failed", error: `Both ${flavorOf(a).primary} and the fallback ${flavorOf(a).fallback} refused this request. No findings were produced.` };
   return { outcome: "failed", error: `${FAILURE_LABEL[run.status] ?? "The request failed"}${run.attempt === 2 ? " on the fallback" : ""}: ${run.error ?? "no detail"}`.slice(0, 2000) };
 }
 

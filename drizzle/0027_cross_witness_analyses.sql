@@ -1,0 +1,4 @@
+ALTER TABLE "analyses" ADD COLUMN "kind" text DEFAULT 'same_witness' NOT NULL;--> statement-breakpoint
+ALTER TABLE "analyses" ADD COLUMN "witness_b_id" bigint;--> statement-breakpoint
+ALTER TABLE "analyses" ADD CONSTRAINT "analyses_witness_b_id_witnesses_id_fk" FOREIGN KEY ("witness_b_id") REFERENCES "public"."witnesses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "analyses" ADD CONSTRAINT "analyses_kind_check" CHECK ("analyses"."kind" in ('same_witness', 'cross_witness') and ("analyses"."kind" = 'cross_witness') = ("analyses"."witness_b_id" is not null) and ("analyses"."kind" = 'same_witness' or ("analyses"."retrieval" = 'direct_fable' and "analyses"."witness_b_id" <> "analyses"."witness_id")));

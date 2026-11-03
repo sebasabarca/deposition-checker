@@ -23,7 +23,7 @@ const day = (iso: string | Date | null) => {
 const displayRef = (r: string | null) => r && r.replace(/\b0:0*(\d+)\s*[–-]\s*0:0*(\d+)/g, "Lines $1–$2").replace(/\b0:0*(\d+)/g, "Line $1");
 const PHYSICAL = "line counted on the page, not an official line number";
 const cite = (s: Side) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${day(s.deposition.takenOn)})${s.lines.some((l) => l.pageInferred) ? " [page number inferred; verify against the scan]" : ""}${s.deposition.physicalLines ? ` [${PHYSICAL}]` : ""}`;
-const headline = (f: Detail) => (f.group === "contradictions" ? (f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction") : f.groupLabel);
+const headline = (f: Detail) => (f.group === "contradictions" ? (f.cross ? "Potential conflict between witnesses" : f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction") : f.groupLabel);
 
 export async function reportData(db: Database, caseId: number, analysisIds: number[] | null, withContext: boolean) {
   const detail = await caseDetail(db, caseId);
@@ -45,7 +45,7 @@ export async function reportData(db: Database, caseId: number, analysisIds: numb
   const entries = (await Promise.all(chosen.map((f) => findingDetail(db, f.id)))).filter((f) => f !== null);
   const witness = new Map(detail.witnesses.map((w) => [w.id, w.name]));
   const taken = new Map(detail.depositions.map((d) => [d.id, d.takenOn]));
-  const covered = done.map((a) => `${witness.get(a.witnessId) ?? "Witness"}: ${day(taken.get(a.depositionA) ?? null)} and ${day(taken.get(a.depositionB) ?? null)}`);
+  const covered = done.map((a) => (a.kind === "cross_witness" ? `${witness.get(a.witnessId) ?? "Witness"}, ${day(taken.get(a.depositionA) ?? null)}, and ${witness.get(a.witnessBId ?? 0) ?? "Witness"}, ${day(taken.get(a.depositionB) ?? null)}` : `${witness.get(a.witnessId) ?? "Witness"}: ${day(taken.get(a.depositionA) ?? null)} and ${day(taken.get(a.depositionB) ?? null)}`));
   // Testimony a check never received, so the report doesn't read as covering it.
   const views = await Promise.all(done.map((a) => analysisView(db, a.id)));
   const gaps = views.flatMap((v) => (v?.evidence?.sessions ?? []).flatMap((s) => s.notes.map((n) => `${witness.get(v!.witnessId) ?? "Witness"}, session of ${day(taken.get(s.depositionId) ?? null)}: ${n}`)));
@@ -96,7 +96,7 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
   doc.moveDown(0.8);
   doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(2).strokeColor(NAVY).stroke();
   doc.moveDown(1);
-  doc.font("Helvetica").fontSize(9).fillColor(MUTED).text("Each finding below is a lead for review, not a conclusion that the witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. The explanations were written by Veridict's analysis, an AI system, and are labelled as such. Decisions and notes are the reviewer's.", { width, lineGap: 2 });
+  doc.font("Helvetica").fontSize(9).fillColor(MUTED).text("Each finding below is a lead for review, not a conclusion that any witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. The explanations were written by Veridict's analysis, an AI system, and are labelled as such. Decisions and notes are the reviewer's.", { width, lineGap: 2 });
 
   if (r.entries.length === 0) {
     doc.moveDown(2);
@@ -114,7 +114,7 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
     doc.font("Times-Roman").fontSize(15).fillColor(FAINT).text(`${i + 1}.`, left, top, { width: 24 });
     doc.font("Times-Bold").fontSize(15).fillColor(INK).text(f.direct?.sharedSubject ?? headline(f), left + 26, top, { width: width - 26 });
     const decision = f.reviewState === "confirmed" ? "Kept" : "Needs more context";
-    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(`${headline(f)} · ${f.a.deposition.witness} · ${decision}${f.reviewedAt ? `, ${day(f.reviewedAt)}` : ""}`, left + 26, doc.y + 2, { width: width - 26 });
+    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(`${headline(f)} · ${f.cross ? `${f.a.deposition.witness} and ${f.b.deposition.witness}` : f.a.deposition.witness} · ${decision}${f.reviewedAt ? `, ${day(f.reviewedAt)}` : ""}`, left + 26, doc.y + 2, { width: width - 26 });
     doc.moveDown(0.7);
     doc.font("Courier").fontSize(9).fillColor(INK).text(`${cite(f.a)}; compare ${cite(f.b)}.`, left, doc.y, { width });
 

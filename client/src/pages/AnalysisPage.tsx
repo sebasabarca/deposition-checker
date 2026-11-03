@@ -1,4 +1,4 @@
-// One analysis: a check of two sessions of one witness. While it runs, what is happening; if it
+// One analysis: a check of two sessions of one witness, or of one session of each of two witnesses. While it runs, what is happening; if it
 // stopped, why; when it's done, the findings bar and the open finding at full width below it.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,7 +9,7 @@ import { EMPTY, FindingBar, GROUPS } from "../components/FindingRegister";
 import { Alert, Badge, Button, buttonClass, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { isActive } from "../lib/insights";
-import { ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL } from "../lib/labels";
+import { analysisTitle, ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import type { AnalysisView, CaseDetail, DiscoveryView, EvidenceCoverage, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
 import { CheckProgress } from "../components/CheckProgress";
@@ -84,13 +84,14 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   if (error) return <Alert title="This analysis couldn't be loaded">{error}</Alert>;
   if (!analysis) return <Loading />;
   const [a, b] = analysis.depositions;
+  const cross = analysis.kind === "cross_witness";
   const done = analysis.status === "completed";
   const decided = findings.filter((f) => f.reviewState !== "unreviewed").length;
 
   return (
     <>
       <PageHeader
-        title={<>{a.witness}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></>}
+        title={cross ? <>{analysisTitle(analysis)}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></> : <>{a.witness}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></>}
         description={
           <>
             {caseName && <a href={href.case(analysis.caseId)} className="font-medium text-ink hover:underline">{caseName}</a>}
@@ -101,7 +102,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
         actions={done ? (
           <>
             <a href={api.reportPdf(analysis.caseId, [analysis.id])} download data-tour="finding-export" className={buttonClass("secondary")} title="The findings you kept in this analysis, with citations and your notes"><Download aria-hidden className="size-4" />Download report</a>
-            <CheckAgain caseId={analysis.caseId} a={a.id} b={b.id} />
+            <CheckAgain caseId={analysis.caseId} a={a.id} b={b.id} cross={cross} />
           </>
         ) : undefined}
       />
@@ -151,7 +152,8 @@ function HowItRan({ discovery, cost }: { discovery: DiscoveryView; cost: number 
 type Sessions = AnalysisView["depositions"];
 const sessionName = (depositions: Sessions, id: number) => {
   const d = depositions.find((x) => x.id === id);
-  return d ? `Session of ${formatDate(d.takenOn)}` : `Deposition #${id}`;
+  // Both sessions of a same-witness check are one witness's; a cross-witness check names whose each is.
+  return d ? (depositions.some((x) => x.witnessId !== d.witnessId) ? `${d.witness}, session of ${formatDate(d.takenOn)}` : `Session of ${formatDate(d.takenOn)}`) : `Deposition #${id}`;
 };
 
 // Shown above the findings whenever this check didn't receive all of the testimony, or the model said

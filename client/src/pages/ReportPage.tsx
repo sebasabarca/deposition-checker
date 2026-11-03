@@ -33,7 +33,7 @@ export function ReportPage({ id }: { id: number }) {
       const found = await Promise.all(done.map((a) => api.findings(a.id)));
       const witness = (wid: number) => d.witnesses.find((w) => w.id === wid)?.name ?? "Witness";
       const taken = (did: number) => formatDate(d.depositions.find((x) => x.id === did)?.takenOn ?? null);
-      setChecks(done.map((a, i) => ({ id: a.id, label: `${witness(a.witnessId)}: ${taken(a.depositionA)} and ${taken(a.depositionB)}`, findings: found[i].groups.flatMap((g) => g.findings) })));
+      setChecks(done.map((a, i) => ({ id: a.id, label: a.kind === "cross_witness" ? `${witness(a.witnessId)}, ${taken(a.depositionA)}, and ${witness(a.witnessBId ?? 0)}, ${taken(a.depositionB)}` : `${witness(a.witnessId)}: ${taken(a.depositionA)} and ${taken(a.depositionB)}`, findings: found[i].groups.flatMap((g) => g.findings) })));
       setPicked(new Set(done.map((a) => a.id)));
     }).catch((e: Error) => setError(e.message));
   }, [id]);

@@ -1,4 +1,5 @@
-// One case: its depositions by witness, a check of two sessions of one witness, and its analyses.
+// One case: its depositions by witness, a check of two sessions (of one witness, or one session each of
+// two witnesses), and its analyses.
 
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, FileText, FileUp, X } from "lucide-react";
@@ -9,7 +10,7 @@ import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Empty, Loading, PageHeader, rowClass, tdClass, thClass } from "../components/ui";
 import { api } from "../lib/api";
 import { checkState, isActive, pairsChecked } from "../lib/insights";
-import { ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
+import { analysisTitle, ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import type { AnalysisView, CaseDetail, DepositionRow } from "../types";
 
@@ -61,7 +62,7 @@ export function CasePage({ id }: { id: number }) {
               <CardHeader
                 title={w.name}
                 count={sessions.length}
-                description={sessions.length < 2 ? "Add another session of this witness to check them against each other." : "Select two sessions to check them against each other."}
+                description={sessions.length < 2 ? "Select one session here and one of another witness to compare their accounts, or add another session of this witness." : "Select two sessions to check them against each other, or one here and one of another witness."}
                 action={pairs.total > 0 ? <span className="text-sm text-muted tabular-nums">{pairs.checked} of {pairs.total} {pairs.total === 1 ? "pair" : "pairs"} checked</span> : undefined}
               />
               <div className="overflow-x-auto">
@@ -89,7 +90,7 @@ export function CasePage({ id }: { id: number }) {
       <Card className="overflow-hidden">
         <CardHeader title="Analyses" count={analyses.length} />
         {analyses.length === 0 ? (
-          <p className="px-5 py-5 text-sm text-muted">No analyses yet. Select two sessions of one witness above to start one.</p>
+          <p className="px-5 py-5 text-sm text-muted">No analyses yet. Select two sessions above to start one: two of one witness, or one each of two witnesses.</p>
         ) : (
           <AnalysesTable analyses={analyses} />
         )}
@@ -182,10 +183,12 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
   const estimate = useEstimate(detail.case.id, state.kind === "new" ? state.a : null, state.kind === "new" ? state.b : null);
   const user = useUser();
   const blocked = !user?.emailVerified ? "Verify your email before running checks." : !user.analysisAccess ? NO_ACCESS : null;
-  const message = { pick: "Select one more session of the same witness.", too_many: "Select exactly two sessions. An analysis compares two.", different_witness: "These are different witnesses. An analysis compares two sessions of one witness.", not_ready: "Both sessions must finish reading first.", no_date: "Add the date of both sessions first. The dates decide which testimony came first." };
+  const message = { pick: "Select one more session: of the same witness, or of another witness to compare their accounts.", too_many: "Select exactly two sessions. An analysis compares two.", not_ready: "Both sessions must finish reading first.", no_date: "Add the date of both sessions first. The dates decide which testimony came first." };
+  const cross = "cross" in state && state.cross;
   const pair = () => {
     const [a, b] = selected.map((s) => detail.depositions.find((d) => d.id === s)!).sort((x, y) => (x.takenOn ?? "").localeCompare(y.takenOn ?? ""));
-    return `${detail.witnesses.find((w) => w.id === a.witnessId)?.name}: ${formatDate(a.takenOn)} and ${formatDate(b.takenOn)}`;
+    const name = (d: DepositionRow) => detail.witnesses.find((w) => w.id === d.witnessId)?.name;
+    return cross ? `${name(a)}, ${formatDate(a.takenOn)}, and ${name(b)}, ${formatDate(b.takenOn)}` : `${name(a)}: ${formatDate(a.takenOn)} and ${formatDate(b.takenOn)}`;
   };
   return (
     <div className="sticky bottom-4 z-20">
@@ -198,7 +201,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
               <p className="font-semibold">{pair()}</p>
               <p className="text-sm text-navy-ink">
                 {state.kind === "new" && (blocked ?? `${estimateText(estimate)}. Nothing is charged until you start.`)}
-                {state.kind === "running" && "These sessions are being checked now."}
+                {state.kind === "running" && (cross ? "These witnesses' accounts are being compared now." : "These sessions are being checked now.")}
                 {state.kind === "done" && `Already checked on ${formatDate(state.report.createdAt)}.`}
               </p>
             </>
@@ -207,11 +210,11 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
         </div>
         <div className="flex flex-none flex-wrap items-center gap-2">
           <button type="button" onClick={onClear} className="flex h-8 items-center gap-1 rounded-md px-2.5 text-sm text-navy-ink hover:bg-navy-2 hover:text-white"><X aria-hidden className="size-4" />Clear</button>
-          {state.kind === "new" && !blocked && <button type="button" disabled={busy || estimate?.fits === false} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : "Check these sessions"}</button>}
+          {state.kind === "new" && !blocked && <button type="button" disabled={busy || estimate?.fits === false} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : cross ? "Compare these witnesses" : "Check these sessions"}</button>}
           {state.kind === "running" && <a href={href.analysis(state.report.id)} className={buttonClass("secondary", "ring-0!")}>View progress</a>}
           {state.kind === "done" && (
             <>
-              <CheckAgain caseId={detail.case.id} a={state.a} b={state.b} />
+              <CheckAgain caseId={detail.case.id} a={state.a} b={state.b} cross={cross} />
               <a href={href.analysis(state.report.id)} className={buttonClass("secondary", "ring-0!")}>Open analysis<ArrowRight aria-hidden className="size-4" /></a>
             </>
           )}
@@ -227,7 +230,7 @@ export function AnalysesTable({ analyses, caseNames }: { analyses: AnalysisView[
       <table className="w-full min-w-[52rem] text-sm">
         <thead>
           <tr>
-            <th className={thClass}>Sessions compared</th>
+            <th className={thClass}>Compared</th>
             {caseNames && <th className={thClass}>Case</th>}
             <th className={thClass}>Status</th>
             <th className={cx(thClass, "text-right")}>Contradictions</th>
@@ -245,7 +248,7 @@ export function AnalysesTable({ analyses, caseNames }: { analyses: AnalysisView[
             return (
               <tr key={r.id} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.analysis(r.id))}>
                 <td className={tdClass}>
-                  <a href={href.analysis(r.id)} className="font-semibold hover:underline">{a.witness}</a>
+                  <a href={href.analysis(r.id)} className="font-semibold hover:underline">{analysisTitle(r)}</a>
                   <span className="block text-xs text-muted tabular-nums">{formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span>
                 </td>
                 {caseNames && <td className={cx(tdClass, "text-muted")}>{caseNames.get(r.caseId) ?? "–"}</td>}

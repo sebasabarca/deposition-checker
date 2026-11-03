@@ -813,6 +813,10 @@ export const analyses = pgTable(
     // (statement cards, topics and Path B). `pair`, the removed earlier pool, remains only on past
     // analyses, whose stored results stay readable.
     retrieval: text("retrieval").notNull().default("hybrid"),
+    // same_witness: two sessions of one witness. cross_witness: one session of witness A (witnessId,
+    // depositionA) against one of witness B (witnessBId, depositionB). Cross-witness runs only by direct discovery.
+    kind: text("kind").notNull().default("same_witness"),
+    witnessBId: ref("witness_b_id").references(() => witnesses.id),
     candidatesPerRequest: integer("candidates_per_request").notNull().default(1),
     maxConcurrency: integer("max_concurrency").notNull().default(1),
     cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
@@ -836,6 +840,7 @@ export const analyses = pgTable(
     check("analyses_pair_check", sql`${t.depositionA} <> ${t.depositionB}`),
     check("analyses_retrieval_check", sql`${t.retrieval} in ('pair', 'hybrid', 'direct_fable')`),
     check("analyses_budget_check", sql`${t.budgetUsd} >= 0 and ${t.maxCandidates} > 0`),
+    check("analyses_kind_check", sql`${t.kind} in ('same_witness', 'cross_witness') and (${t.kind} = 'cross_witness') = (${t.witnessBId} is not null) and (${t.kind} = 'same_witness' or (${t.retrieval} = 'direct_fable' and ${t.witnessBId} <> ${t.witnessId}))`),
   ],
 );
 

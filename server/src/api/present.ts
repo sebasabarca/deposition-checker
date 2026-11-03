@@ -96,9 +96,10 @@ export function candidateCoverage(rows: readonly CandidateRow[]): CandidateCover
 export type VerdictSource = "model" | "replayed" | "fixture";
 // The product never names the model or its provider to users: the primary model is "Veridict's
 // analysis" and the fallback its "second reading". Stored rows keep the real model IDs.
-const FALLBACK_MODELS = new Set(["claude-opus-5-5"]);
-export const modelName = (model: string) => (FALLBACK_MODELS.has(model) ? "Veridict's second reading" : "Veridict's analysis");
-export const directSourceLabel = (model: string, fallback: boolean) => `Proposed by ${modelName(model)}${fallback ? ", after the first reading declined" : ""}, reading every stored line of both sessions. Citations checked by Veridict against the transcript.`;
+// The model that answers only after a refusal: Opus for same-witness checks, Fable for cross-witness ones.
+const FALLBACK_MODEL = { same: "claude-opus-5-5", cross: "claude-fable-5-1" };
+export const modelName = (model: string, cross = false) => (model === FALLBACK_MODEL[cross ? "cross" : "same"] ? "Veridict's second reading" : "Veridict's analysis");
+export const directSourceLabel = (model: string, fallback: boolean, cross = false) => `Proposed by ${modelName(model, cross)}${fallback ? ", after the first reading declined" : ""}, reading every stored line of ${cross ? "both witnesses' sessions" : "both sessions"}. Citations checked by Veridict against the transcript.`;
 export const SOURCE_LABELS: Record<VerdictSource, string> = {
   model: "Veridict's analysis, verified and scored against the transcript",
   replayed: "Example: a stored assessment from an earlier run, replayed without a new analysis",
