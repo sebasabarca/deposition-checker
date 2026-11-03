@@ -449,7 +449,7 @@ export const exchangeLines = pgTable(
   ],
 );
 
-export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication", "statement_cards", "topic_mapping", "discovery"]);
+export const llmStage = pgEnum("llm_stage", ["claim_tagging", "adjudication", "statement_cards", "topic_mapping", "discovery", "fact_extraction"]);
 
 // One row per successful model call (DESIGN.md, "Cost model"). Cost is computed when the call is
 // recorded, with the price version it used, so a later price change never rewrites it. A model
@@ -1059,4 +1059,106 @@ export const candidateTopics = pgTable(
       .references(() => topics.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ name: "candidate_topics_pk", columns: [t.candidateId, t.topicId] }), index("candidate_topics_topic_idx").on(t.topicId)],
+);
+
+// Stage 2: source-grounded facts (server/src/claims/facts). A unit is one logical answer group (every
+// part of an exchange group, overlap read once), or a window of one too long for a single request. Each
+// unit has one row per extractor version from the start, so coverage counts what was never processed:
+// pending until a response says otherwise. source_hash is of the unit's own source spans (text, speaker,
+// role); a change makes its facts stale, never silently current.
+export const factUnits = pgTable(
+  "fact_units",
+  {
+    unitKey: text("unit_key").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    caseId: ref("case_id").notNull(),
+    witnessId: ref("witness_id").notNull(),
+    depositionId: ref("deposition_id")
+      .notNull()
+      .references(() => depositions.id, { onDelete: "cascade" }),
+    groupId: integer("group_id").notNull(),
+    windowNo: integer("window_no").notNull(), // 1-based; window_count > 1 only for an oversized answer group
+    windowCount: integer("window_count").notNull(),
+    exchangeIds: bigint("exchange_ids", { mode: "number" }).array().notNull(),
+    sourceHash: text("source_hash").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    status: text("status").notNull().default("pending"),
+    facts: integer("facts").notNull().default(0), // indexed facts from this unit
+    rejected: integer("rejected").notNull().default(0),
+    duplicates: integer("duplicates").notNull().default(0), // facts already found in an overlapping window
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: "fact_units_pk", columns: [t.unitKey, t.extractorVersion] }),
+    index("fact_units_deposition_idx").on(t.depositionId, t.extractorVersion),
+    // suspected_omission: the model returned no facts for an answer that looks substantive or speaks of memory
+    // (added with fact-schema-v2); kept apart from empty so it is never read as "nothing to extract".
+    check("fact_units_status_check", sql`${t.status} in ('pending', 'extracted', 'empty', 'suspected_omission', 'no_testimony', 'omitted', 'failed', 'incomplete')`),
+  ],
+);
+
+// One fact the model proposed, as code checked it. Only status 'indexed' is in the verified index: its
+// evidence phrase was found in the cited source spans and its attribution isn't invalid. Rejected facts
+// are kept for diagnosis; stale ones came from source spans that have changed since.
+export const facts = pgTable(
+  "facts",
+  {
+    id: id(),
+    factKey: text("fact_key").notNull().unique(), // stable for the same unit, version and content: a retry can't duplicate it
+    unitKey: text("unit_key").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    caseId: ref("case_id").notNull(),
+    witnessId: ref("witness_id").notNull(),
+    depositionId: ref("deposition_id")
+      .notNull()
+      .references(() => depositions.id, { onDelete: "cascade" }),
+    exchangeId: ref("exchange_id"), // the exchange part holding its first cited span; null when no span resolved
+    sourceSpanIds: text("source_span_ids").array().notNull(), // Stage 1 source IDs, with "#<seq>" for a segment
+    lineIds: bigint("line_ids", { mode: "number" }).array().notNull(),
+    kind: text("kind"), // action | attribute | memory_or_knowledge (fact-schema-v2)
+    subject: text("subject"),
+    entities: text("entities").array().notNull().default(sql`'{}'::text[]`),
+    predicate: text("predicate"),
+    attribute: text("attribute"), // the property described, without its value
+    object: text("object"), // the asserted value
+    valuePhrase: text("value_phrase"), // the cited words stating the value
+    contextSpanIds: text("context_span_ids").array().notNull().default(sql`'{}'::text[]`), // earlier lines the reading depends on
+    factualQuestion: text("factual_question"),
+    factualDimension: text("factual_dimension"),
+    polarity: text("polarity"),
+    epistemicStatus: text("epistemic_status"),
+    reportedSpeaker: text("reported_speaker"),
+    hedges: text("hedges").array().notNull().default(sql`'{}'::text[]`),
+    timeContext: text("time_context"),
+    locationContext: text("location_context"),
+    event: jsonb("event"), // provisional: description, type, participants, date, location; never an event ID
+    eventHints: text("event_hints").array().notNull().default(sql`'{}'::text[]`),
+    evidencePhrase: text("evidence_phrase"),
+    provenance: text("provenance"), // witness_statement | question_adopted
+    attributionStatus: text("attribution_status").notNull(), // verified | uncertain | invalid
+    sourceVerification: text("source_verification").notNull(), // verified | approximate | unsupported | invalid_reference
+    valueSupport: text("value_support"), // verified | approximate | not_applicable (fact-schema-v2)
+    // source_supported: the value is the cited words and nothing needs a reader; needs_semantic_review
+    // otherwise, with review_reasons. Never "verified": code checks quotations, not interpretation.
+    semanticStatus: text("semantic_status"),
+    reviewReasons: text("review_reasons").array().notNull().default(sql`'{}'::text[]`),
+    correction: boolean("correction"),
+    status: text("status").notNull(), // indexed | rejected | stale
+    rejectionReason: text("rejection_reason"),
+    warnings: text("warnings").array().notNull().default(sql`'{}'::text[]`),
+    sourceHash: text("source_hash").notNull(),
+    raw: jsonb("raw").notNull(), // the model's fact as received
+    llmCallId: ref("llm_call_id").references(() => llmCalls.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    foreignKey({ name: "facts_exchange_fk", columns: [t.exchangeId, t.depositionId], foreignColumns: [exchanges.id, exchanges.depositionId] }).onDelete("cascade"),
+    index("facts_case_dimension_idx").on(t.caseId, t.factualDimension),
+    index("facts_unit_idx").on(t.unitKey, t.extractorVersion),
+    check("facts_status_check", sql`${t.status} in ('indexed', 'rejected', 'stale')`),
+    check("facts_indexed_check", sql`${t.status} <> 'indexed' or (${t.sourceVerification} in ('verified', 'approximate') and ${t.attributionStatus} <> 'invalid' and ${t.rejectionReason} is null and ${t.factualDimension} is not null and ${t.evidencePhrase} is not null)`),
+  ],
 );

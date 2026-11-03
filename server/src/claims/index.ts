@@ -6,7 +6,7 @@ export { addressedShare, CARDS_JSON_SCHEMA, ExtractedCard, isNegated, MIN_ADDRES
 export { CARD_EXTRACTOR_VERSION, CARD_MAX_OUTPUT_TOKENS, CARDS_MODEL, CARDS_PROMPT_VERSION, CARDS_SYSTEM_PROMPT, CHUNK_OVERLAP_PAGES, chunkByPages, estimateCards, PAGES_PER_CHUNK, PLANNING_CARD_OUTPUT_SHARE, type CardEstimate } from "./cardPrompt";
 export { CARD_CONCURRENCY, cardSummary, extractCards, partLines, plannedChunks, screenStoredNoAssertions, type CardSummary, type ExtractOptions, type ExtractResult } from "./extract";
 export { normalizeEntities, normalizeEntity } from "./entities";
-export { anthropicCardModel, anthropicTopicModel, type ClaimModel, type ModelReply } from "./model";
+export { anthropicCardModel, anthropicFactModel, anthropicTopicModel, type ClaimModel, type ModelReply } from "./model";
 export { cardLabel, formatTopicInput, MAX_CARDS_PER_CALL, readTopicMap, topicReport, TOPICS_JSON_SCHEMA, TOPICS_MODEL, TOPICS_PROMPT_VERSION, UNASSIGNED, type MappedTopic, type TopicMember, type TopicReading, type TopicReport } from "./topicMap";
 export { buildTopicMap, latestMapVersion, mapMembers, type TopicMapResult } from "./topics";
 export { formatBatch } from "./prompt";

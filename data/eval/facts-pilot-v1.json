@@ -1,0 +1,64 @@
+{
+ "version": 1,
+ "set": "facts-pilot-v1",
+ "extractorVersion": "facts-v2+fact-schema-v1+claude-haiku-5-5",
+ "out": "data/raw/pilot",
+ "about": "The Stage 2 real-model pilot's source windows, fixed before any call. Each window is the answer groups holding an anchor range plus the two groups before and after it in the same document, extracted with the production prompt and nothing else: no labels, dimensions or other witness's facts are sent. Documents are named by fixture key and resolved by file SHA-256 within the named case; the excluded copies 32, 33, 60 and 61 can't be chosen. Expected records are those of facts-expected-v1.json whose spans fall in a window; they were written before this pilot and are not changed after it.",
+ "neighbourGroups": 2,
+ "budget": {
+  "name": "stage2-pilot-v1",
+  "limitUsd": 0.5
+ },
+ "windows": [
+  {
+   "id": "A1",
+   "issue": "limo-suv",
+   "document": "hutchinson-2022-06-20",
+   "case": "Hutchinson parser r2",
+   "from": "6:4",
+   "to": "6:8"
+  },
+  {
+   "id": "A2",
+   "issue": "limo-suv",
+   "document": "hutchinson-2022-09-15",
+   "case": "Hutchinson parser r2",
+   "from": "33:7",
+   "to": "33:12",
+   "note": "its neighbours include a non-recollection answer (33:5)"
+  },
+  {
+   "id": "B1",
+   "issue": "dog escape",
+   "document": "simpson-1996-01-23",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "1:561",
+   "to": "1:563"
+  },
+  {
+   "id": "B2",
+   "issue": "dog escape",
+   "document": "resnick-1996-02-11-direct",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "0:782",
+   "to": "0:782"
+  },
+  {
+   "id": "C1",
+   "issue": "compatible control: drug use in different periods",
+   "document": "simpson-1996-01-23",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "1:224",
+   "to": "1:225"
+  },
+  {
+   "id": "C2",
+   "issue": "compatible control: drug use in different periods",
+   "document": "resnick-1996-02-11-direct",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "0:139",
+   "to": "0:139"
+  }
+ ],
+ "repeat": "A1"
+}

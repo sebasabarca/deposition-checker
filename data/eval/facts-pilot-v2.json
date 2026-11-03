@@ -1,0 +1,91 @@
+{
+ "version": 2,
+ "set": "facts-pilot-v2",
+ "extractorVersion": "facts-v3+fact-schema-v2+claude-haiku-5-5",
+ "out": "data/raw/pilot-v2",
+ "about": "The second Stage 2 pilot, fixed before any call: the first pilot's six windows unchanged, plus held-out windows (H1-H3) that were neither in the first pilot nor used to design the facts-v3 changes. Same rules as the first pilot: production prompt only, one document per request, no labels, dimensions or other witness's facts sent; expected records (facts-expected-v1.json) are not changed after the run. The first pilot's outputs stay in data/raw/pilot/ under its own extractor version and are never mixed with these.",
+ "neighbourGroups": 2,
+ "budget": {
+  "name": "stage2-pilot-v2",
+  "limitUsd": 0.5
+ },
+ "windows": [
+  {
+   "id": "A1",
+   "issue": "limo-suv",
+   "document": "hutchinson-2022-06-20",
+   "case": "Hutchinson parser r2",
+   "from": "6:4",
+   "to": "6:8"
+  },
+  {
+   "id": "A2",
+   "issue": "limo-suv",
+   "document": "hutchinson-2022-09-15",
+   "case": "Hutchinson parser r2",
+   "from": "33:7",
+   "to": "33:12",
+   "note": "its neighbours include a non-recollection answer (33:5)"
+  },
+  {
+   "id": "B1",
+   "issue": "dog escape",
+   "document": "simpson-1996-01-23",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "1:561",
+   "to": "1:563"
+  },
+  {
+   "id": "B2",
+   "issue": "dog escape",
+   "document": "resnick-1996-02-11-direct",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "0:782",
+   "to": "0:782"
+  },
+  {
+   "id": "C1",
+   "issue": "compatible control: drug use in different periods",
+   "document": "simpson-1996-01-23",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "1:224",
+   "to": "1:225"
+  },
+  {
+   "id": "C2",
+   "issue": "compatible control: drug use in different periods",
+   "document": "resnick-1996-02-11-direct",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "0:139",
+   "to": "0:139"
+  },
+  {
+   "id": "H1",
+   "issue": "held out: alley (C02)",
+   "document": "simpson-1996-01-23",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "1:587",
+   "to": "1:592",
+   "heldOut": true
+  },
+  {
+   "id": "H2",
+   "issue": "held out: alley (C02)",
+   "document": "resnick-1996-02-11-direct",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "0:802",
+   "to": "0:803",
+   "heldOut": true
+  },
+  {
+   "id": "H3",
+   "issue": "held out: reported remark (C03, Resnick side)",
+   "document": "resnick-1996-02-11-direct",
+   "case": "Simpson-Resnick (Stage 2 pilot)",
+   "from": "0:1215",
+   "to": "0:1215",
+   "heldOut": true
+  }
+ ],
+ "repeat": "A1"
+}

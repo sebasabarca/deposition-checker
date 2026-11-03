@@ -8,6 +8,7 @@ export const V2_MODELS = {
   statement_cards: "claude-haiku-5-5",
   topic_mapping: "claude-haiku-5-5",
   discovery: "claude-fable-5-1",
+  fact_extraction: "claude-haiku-5-5", // Stage 2: source-grounded facts from each answer group
 } as const;
 
 export type Stage = keyof typeof V2_MODELS;

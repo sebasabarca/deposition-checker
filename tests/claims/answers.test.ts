@@ -5,13 +5,13 @@ const Q = "Did you approve the transaction?";
 
 describe("readAnswer", () => {
   it("reads plain affirmatives as affirming", () => {
-    for (const a of ["Yes.", "Yes, sir.", "Correct.", "That's right.", "I did.", "Yes, they do.", "Absolutely."]) {
+    for (const a of ["Yes.", "Yes, sir.", "Correct.", "That's right.", "I did.", "Yes, they do.", "Yes, he did.", "Absolutely."]) {
       expect(readAnswer(Q, a), a).toBe("affirms");
     }
   });
 
   it("reads plain negatives as denying, never as agreement", () => {
-    for (const a of ["No.", "No, sir.", "Incorrect.", "I did not.", "Never.", "No. No.", "No, it does not."]) {
+    for (const a of ["No.", "No, sir.", "Incorrect.", "I did not.", "Never.", "No. No.", "No, it does not.", "No, he did not.", "No, she wasn't."]) {
       expect(readAnswer(Q, a), a).toBe("denies");
     }
   });

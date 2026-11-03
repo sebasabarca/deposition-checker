@@ -1,0 +1,649 @@
+{
+ "version": 1,
+ "set": "facts-expected-v1",
+ "about": "Hand-authored Stage 2 fact records over the real fixtures of data/eval/evidence-fixtures-v1.json (the same local, git-ignored files). They test what the fact schema can express and what code verification accepts or rejects; they are written by hand, never by a model, so they measure no extraction quality or recall. No transcript text: each evidence phrase and hedge is a word range of one source span (\"page:line\", words [from, to) of its stored text split on whitespace). Never read by runtime prompts or extraction code.",
+ "pairs": [
+  {
+   "case": "limo-suv",
+   "facts": [
+    "limo-june",
+    "suv-september"
+   ],
+   "sharedDimension": true,
+   "expect": "same dimension, different values; both second-hand and hedged; not labelled a contradiction"
+  },
+  {
+   "case": "C01",
+   "facts": [
+    "gate-simpson",
+    "garage-resnick"
+   ],
+   "sharedDimension": true,
+   "expect": "same dimension, different values; Simpson's rests on his Yes to a question naming the gate"
+  },
+  {
+   "case": "C02",
+   "facts": [
+    "alley-simpson",
+    "alley-resnick"
+   ],
+   "sharedDimension": true,
+   "expect": "same dimension, opposite polarity; Simpson's is qualified, Resnick's an unqualified denial whose basis of observation is not stated"
+  },
+  {
+   "case": "C03",
+   "facts": [
+    "recall-simpson",
+    "remark-resnick"
+   ],
+   "sharedDimension": false,
+   "expect": "non-recollection kept apart from denial; Resnick's is reported speech"
+  },
+  {
+   "case": "NC-002",
+   "facts": [
+    "cocaine-simpson",
+    "cocaine-resnick"
+   ],
+   "sharedDimension": true,
+   "expect": "same dimension, opposite polarity, different time contexts preserved"
+  },
+  {
+   "case": "C06",
+   "facts": [
+    "breakup-simpson",
+    "breakup-resnick"
+   ],
+   "sharedDimension": false,
+   "expect": "possibly different occasions: separate provisional event descriptions, never an event identity"
+  }
+ ],
+ "facts": [
+  {
+   "case": "limo-suv",
+   "id": "limo-june",
+   "document": "hutchinson-2022-06-20",
+   "spans": [
+    "6:4",
+    "6:5",
+    "6:6"
+   ],
+   "subject": "Mr. Trump",
+   "predicate": "lunged toward the front of",
+   "object": "the Presidential limo",
+   "factualQuestion": "What vehicle was Mr. Trump in when he lunged toward the steering wheel on January 6?",
+   "dimension": "vehicle_during_steering_wheel_incident",
+   "polarity": "positive",
+   "epistemic": "reported_by_other",
+   "reportedSpeaker": "Tony",
+   "timeContext": "January 6",
+   "event": {
+    "description": "Mr. Trump's reaction on being told he would not go to the Capitol, as retold by Tony Ornato",
+    "eventType": "vehicle_altercation",
+    "participants": [
+     "Bobby Engel",
+     "Tony"
+    ],
+    "date": "January 6",
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement"
+   },
+   "phrase": {
+    "span": "6:6",
+    "words": [
+     5,
+     11
+    ]
+   },
+   "hedges": [
+    {
+     "span": "6:4",
+     "words": [
+      5,
+      9
+     ]
+    },
+    {
+     "span": "6:5",
+     "words": [
+      14,
+      18
+     ]
+    }
+   ]
+  },
+  {
+   "case": "limo-suv",
+   "id": "suv-september",
+   "document": "hutchinson-2022-09-15",
+   "spans": [
+    "33:7",
+    "33:8",
+    "33:9",
+    "33:10"
+   ],
+   "subject": "the incident Ornato referenced",
+   "predicate": "happened in",
+   "object": "the Presidential SUV",
+   "factualQuestion": "What vehicle was Mr. Trump in when he lunged toward the steering wheel on January 6?",
+   "dimension": "vehicle_during_steering_wheel_incident",
+   "polarity": "positive",
+   "epistemic": "reported_by_other",
+   "reportedSpeaker": "Tony Ornato",
+   "timeContext": "January 6th",
+   "event": {
+    "description": "The January 6 incident Ornato referred to in a later phone call",
+    "eventType": "vehicle_altercation",
+    "participants": [
+     "Mr. Engel"
+    ],
+    "date": "January 6th",
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement"
+   },
+   "phrase": {
+    "span": "33:9",
+    "words": [
+     1,
+     10
+    ]
+   },
+   "hedges": [
+    {
+     "span": "33:10",
+     "words": [
+      0,
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "case": "C01",
+   "id": "gate-simpson",
+   "document": "simpson-1996-01-23",
+   "spans": [
+    "1:562",
+    "1:563"
+   ],
+   "subject": "the dog",
+   "predicate": "ran out through",
+   "object": "the gate",
+   "factualQuestion": "Through what opening did the dog get out?",
+   "dimension": "dog_escape_route",
+   "polarity": "positive",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": null,
+   "event": {
+    "description": "The dog running out during Simpson's visit with Justin",
+    "eventType": "dog_escape",
+    "participants": [
+     "Justin"
+    ],
+    "date": null,
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "question_adopted",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "1:562",
+    "words": [
+     1,
+     5
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "C01",
+   "id": "garage-resnick",
+   "document": "resnick-1996-02-11-direct",
+   "spans": [
+    "0:782"
+   ],
+   "subject": "Kato, the dog",
+   "predicate": "bolted out of",
+   "object": "the garage door",
+   "factualQuestion": "Through what opening did the dog get out?",
+   "dimension": "dog_escape_route",
+   "polarity": "positive",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": "June 5, 1994",
+   "event": {
+    "description": "Simpson's June 5, 1994 visit to pick something up for Justin",
+    "eventType": "dog_escape",
+    "participants": [
+     "O.J. Simpson",
+     "Justin",
+     "Nicole"
+    ],
+    "date": "June 5, 1994",
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:782",
+    "words": [
+     116,
+     126
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "C02",
+   "id": "alley-simpson",
+   "document": "simpson-1996-01-23",
+   "spans": [
+    "1:591",
+    "1:592"
+   ],
+   "subject": "O.J. Simpson",
+   "predicate": "walked down",
+   "object": null,
+   "factualQuestion": "Did Simpson go into the side alleyway?",
+   "dimension": "whether_simpson_entered_alleyway",
+   "polarity": "positive",
+   "epistemic": "qualified",
+   "reportedSpeaker": null,
+   "timeContext": null,
+   "event": {
+    "description": "Looking for the dog beside Nicole's house",
+    "eventType": "dog_search",
+    "participants": [],
+    "date": null,
+    "location": "the side of her house"
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "question_adopted"
+   },
+   "phrase": {
+    "span": "1:591",
+    "words": [
+     2,
+     7
+    ]
+   },
+   "hedges": [
+    {
+     "span": "1:592",
+     "words": [
+      1,
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "case": "C02",
+   "id": "alley-resnick",
+   "document": "resnick-1996-02-11-direct",
+   "spans": [
+    "0:802",
+    "0:803"
+   ],
+   "subject": "Mr. Simpson",
+   "predicate": "entered",
+   "object": null,
+   "factualQuestion": "Did Simpson go into the side alleyway?",
+   "dimension": "whether_simpson_entered_alleyway",
+   "polarity": "negative",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": "June 5, 1994",
+   "event": {
+    "description": "Simpson's visit while the dog was chased",
+    "eventType": "dog_search",
+    "participants": [
+     "Mr. Simpson"
+    ],
+    "date": null,
+    "location": "that alleyway"
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "question_adopted",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:802",
+    "words": [
+     8,
+     17
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "C02",
+   "id": "dog-found-simpson",
+   "document": "simpson-1996-01-23",
+   "spans": [
+    "1:589",
+    "1:590"
+   ],
+   "subject": "the dog",
+   "predicate": "was found at",
+   "object": "the side of the alleyway",
+   "factualQuestion": "Where was the dog found?",
+   "dimension": "dog_found_location",
+   "polarity": "positive",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": null,
+   "event": {
+    "description": "Finding the dog",
+    "eventType": "dog_search",
+    "participants": [],
+    "date": null,
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "question_adopted",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "1:589",
+    "words": [
+     3,
+     8
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "C03",
+   "id": "recall-simpson",
+   "document": "simpson-1996-02-27",
+   "spans": [
+    "0:3020"
+   ],
+   "subject": "O.J. Simpson",
+   "predicate": "saw",
+   "object": "Faye Resnick",
+   "factualQuestion": "Did Simpson see Faye Resnick at the funeral?",
+   "dimension": "whether_simpson_saw_resnick_at_funeral",
+   "polarity": "unknown",
+   "epistemic": "does_not_recall",
+   "reportedSpeaker": null,
+   "timeContext": null,
+   "event": {
+    "description": "Nicole's wake or funeral",
+    "eventType": "funeral",
+    "participants": [
+     "Faye"
+    ],
+    "date": null,
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:3020",
+    "words": [
+     1,
+     6
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "C03",
+   "id": "remark-resnick",
+   "document": "resnick-1996-02-11-direct",
+   "spans": [
+    "0:1215"
+   ],
+   "subject": "O.J. Simpson",
+   "predicate": "said",
+   "object": null,
+   "factualQuestion": "Did Simpson tell Faye Resnick that he loved Nicole too much?",
+   "dimension": "whether_simpson_said_loved_her_too_much",
+   "polarity": "positive",
+   "epistemic": "reported_by_other",
+   "reportedSpeaker": "O.J. Simpson",
+   "timeContext": null,
+   "event": {
+    "description": "A conversation with Simpson after Nicole's death",
+    "eventType": "conversation",
+    "participants": [],
+    "date": null,
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:1215",
+    "words": [
+     18,
+     23
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "NC-002",
+   "id": "cocaine-simpson",
+   "document": "simpson-1996-01-23",
+   "spans": [
+    "1:224",
+    "1:225"
+   ],
+   "subject": "O.J. Simpson",
+   "predicate": "took",
+   "object": "cocaine",
+   "factualQuestion": "Did Simpson use cocaine?",
+   "dimension": "simpson_cocaine_use",
+   "polarity": "negative",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": "January 1994 through June 12, 1994",
+   "event": {
+    "description": null,
+    "eventType": null,
+    "participants": [],
+    "date": "January 1994 through June 12, 1994",
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "question_adopted",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "1:224",
+    "words": [
+     3,
+     17
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "NC-002",
+   "id": "cocaine-resnick",
+   "document": "resnick-1996-02-11-direct",
+   "spans": [
+    "0:139"
+   ],
+   "subject": "O.J. Simpson",
+   "predicate": "used",
+   "object": "cocaine",
+   "factualQuestion": "Did Simpson use cocaine?",
+   "dimension": "simpson_cocaine_use",
+   "polarity": "positive",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": "that night",
+   "event": {
+    "description": "A night at Simpson's house on Rockingham",
+    "eventType": "drug_use",
+    "participants": [
+     "O.J."
+    ],
+    "date": null,
+    "location": "Rockingham"
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:139",
+    "words": [
+     2,
+     8
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "C06",
+   "id": "breakup-simpson",
+   "document": "simpson-1996-02-27",
+   "spans": [
+    "0:2070"
+   ],
+   "subject": "Simpson and Nicole's relationship",
+   "predicate": "ended",
+   "object": "the day after Mother's Day",
+   "factualQuestion": "When did Simpson and Nicole's relationship end?",
+   "dimension": "relationship_end_date",
+   "polarity": "positive",
+   "epistemic": "qualified",
+   "reportedSpeaker": null,
+   "timeContext": "the day after Mother's Day",
+   "event": {
+    "description": "Simpson breaking off with Nicole after Mother's Day dinner",
+    "eventType": "breakup",
+    "participants": [
+     "Nicole"
+    ],
+    "date": "the day after Mother's Day",
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:2070",
+    "words": [
+     1,
+     9
+    ]
+   },
+   "hedges": [
+    {
+     "span": "0:2070",
+     "words": [
+      1,
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "case": "C06",
+   "id": "breakup-resnick",
+   "document": "resnick-1996-02-11-direct",
+   "spans": [
+    "0:532"
+   ],
+   "subject": "Nicole",
+   "predicate": "told Simpson",
+   "object": "the end of the relationship",
+   "factualQuestion": "What did Nicole tell Simpson about the relationship?",
+   "dimension": "what_nicole_told_simpson_about_relationship",
+   "polarity": "positive",
+   "epistemic": "reported_by_other",
+   "reportedSpeaker": "O.J.",
+   "timeContext": null,
+   "event": {
+    "description": "Simpson's call to Faye Resnick after Nicole's call",
+    "eventType": "phone_call",
+    "participants": [
+     "O.J.",
+     "Nicole"
+    ],
+    "date": null,
+    "location": null
+   },
+   "expect": {
+    "status": "indexed",
+    "provenance": "witness_statement",
+    "attribution": "verified"
+   },
+   "phrase": {
+    "span": "0:532",
+    "words": [
+     16,
+     31
+    ]
+   },
+   "hedges": []
+  },
+  {
+   "case": "attorney-control",
+   "id": "encounter-question",
+   "document": "resnick-1996-02-11-direct",
+   "spans": [
+    "0:781",
+    "0:782"
+   ],
+   "subject": "Faye Resnick",
+   "predicate": "had an encounter with",
+   "object": "O.J. Simpson",
+   "factualQuestion": "When did Resnick have an encounter with Simpson?",
+   "dimension": "resnick_simpson_encounter_date",
+   "polarity": "positive",
+   "epistemic": "asserted",
+   "reportedSpeaker": null,
+   "timeContext": "June 5, 1994",
+   "event": {
+    "description": null,
+    "eventType": null,
+    "participants": [],
+    "date": null,
+    "location": null
+   },
+   "expect": {
+    "status": "rejected",
+    "rejectionReason": "attorney_assertion"
+   },
+   "phrase": {
+    "span": "0:781",
+    "words": [
+     5,
+     14
+    ]
+   },
+   "hedges": []
+  }
+ ]
+}
