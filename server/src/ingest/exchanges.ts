@@ -66,7 +66,7 @@ const NAME = String.raw`(?:MR|MS|MRS|DR)\. [A-Z][A-Za-z'-]+(?: [A-Z][A-Za-z'-]+)
 // Lines are trimmed before matching, so a label alone on its line ends at the colon: every label
 // pattern accepts end-of-line as well as whitespace after it.
 const ANY_LABEL = /^([A-Z][A-Z.'-]*(?: [A-Z][A-Z.'-]*)*):(?:\s|$)/;
-const QA_MARKER = /^([QA])(?:[._]|\s|$)/; // OCR can read the space after a marker as "_"
+const QA_MARKER = /^([QA])(?:[._:]|\s|$)/; // OCR can read the space after a marker as "_"; some exports write "Q:"
 const ATTORNEY_QUESTION = new RegExp(`^(${NAME}):\\s+Q\\.(?:\\s|$)`);
 const WITNESS = /^THE WITNESS:(?:\s|$)/;
 const COLLOQUY = new RegExp(`^(${NAME}|THE (?:REPORTER|VIDEOGRAPHER)):`);
@@ -103,6 +103,12 @@ function hearingTurn(name: string, clean: boolean, witnessSurname?: string): { t
   return misread(surname, witnessSurname) <= 2 ? { turn: "unrecognized", name } : { turn: "Q", name };
 }
 
+// A whole row that only marks the page: "END PAGE", "END OF PAGE 1 / ...", "PAGE 2", "Page 2 of 9",
+// "... | PAGE 2", or an all-capitals heading carried over, "DEPOSITION OF MARA VOSS (continued)". Whole
+// rows only, so testimony such as "page 12 of the report says" is never caught.
+const PAGE_MARKER = /^(?:end\s+(?:of\s+)?page\b.*|page\s+\d+(?:\s+of\s+\d+)?|.*\|\s*page\s+\d+)$/i;
+const CONTINUED_HEADING = /^[A-Z][A-Z .,'-]+\((?:continued|CONTINUED)\)$/;
+
 // Q./A. turn markers are indented less than paragraph and colloquy indents (x ≈ 110–113 against
 // 122–125 in the Ellison PDFs); the layout profile holds the threshold between them.
 export function markLine(text: string, indentX: number | null, layout: LayoutProfile, witnessSurname?: string, ocr = false): { turn: TurnMarker; name: string | null } {
@@ -123,7 +129,9 @@ export function markLine(text: string, indentX: number | null, layout: LayoutPro
   if (WITNESS.test(t)) return { turn: "A", name: null };
   const colloquy = t.match(COLLOQUY);
   if (colloquy) return { turn: "colloquy", name: colloquy[1] };
-  if (t.startsWith("(")) return { turn: "parenthetical", name: null };
+  // Parentheses, square brackets ("[EXHIBIT 7 IDENTIFIED]", "[STAMP: ...]") and page markers are the
+  // record's notes, not anyone's words.
+  if (t.startsWith("(") || t.startsWith("[") || PAGE_MARKER.test(t) || CONTINUED_HEADING.test(t)) return { turn: "parenthetical", name: null };
   const label = t.match(ANY_LABEL);
   if (label) return { turn: "unrecognized", name: label[1] };
   return { turn: null, name: null };
@@ -149,20 +157,34 @@ const ROLE_OF_TURN: Record<Exclude<TurnMarker, null>, SpeakerRole> = {
 
 export const surnameOf = (name: string) => name.trim().replace(/,?\s+(?:jr|sr|ii|iii)\.?$/i, "").split(/\s+/).pop()!.toLowerCase();
 
+// An unmarked line continues the previous speaker. After a note that has closed ("[Pause.]", "(Exhibit
+// marked.)", "END PAGE"), it continues the speaker from before the note, so the rest of an answer stays
+// the witness's; a note still open ("(Whereupon, the" ...) keeps its own continuation lines.
 export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, witnessSurname?: string): AttributedLine[] {
   const result: AttributedLine[] = [];
+  let noteOpen = false;
+  let speaker: AttributedLine | null = null; // the last line that wasn't a note, with nothing redacted since
   lines.forEach((line, index) => {
     const { turn, name } = markLine(line.rawText, line.indentX, layout, witnessSurname, line.ocrConfidence !== undefined);
     const previous = result[index - 1];
     const continuesTurn = previous !== undefined && isContiguous(lines[index - 1], line, layout);
+    if (!continuesTurn) speaker = null;
+    const from = previous?.role === "parenthetical" && !noteOpen && speaker ? speaker : previous;
+    let attributed: AttributedLine;
     if (turn !== null) {
-      result.push({ ...line, index, turn, role: ROLE_OF_TURN[turn], speakerName: name });
+      attributed = { ...line, index, turn, role: ROLE_OF_TURN[turn], speakerName: name };
     } else if (continuesTurn) {
-      result.push({ ...line, index, turn, role: previous.role, speakerName: previous.speakerName });
+      attributed = { ...line, index, turn, role: from.role, speakerName: from.speakerName };
     } else {
       // First line, or the first line after a redaction gap, with no speaker marker.
-      result.push({ ...line, index, turn, role: "unknown", speakerName: null });
+      attributed = { ...line, index, turn, role: "unknown", speakerName: null };
     }
+    result.push(attributed);
+    const text = line.rawText.trim();
+    if (attributed.role !== "parenthetical") {
+      noteOpen = false;
+      speaker = attributed;
+    } else noteOpen = (turn === null ? noteOpen : /^[([]/.test(text)) && !/[)\]]$/.test(text);
   });
   return result;
 }

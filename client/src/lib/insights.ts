@@ -48,9 +48,11 @@ const citationDate = (iso: string | null | undefined) => {
 };
 
 export function pinpointCitation(a: Pick<EvidenceSide, "range" | "deposition" | "lines">, b: Pick<EvidenceSide, "range" | "deposition" | "lines">) {
-  const one = (s: typeof a) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${citationDate(s.deposition.takenOn) ?? "date not stated"})${citesInferredPage(s) ? " [page number inferred; verify against the scan]" : ""}`;
+  const one = (s: typeof a) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${citationDate(s.deposition.takenOn) ?? "date not stated"})${citesInferredPage(s) ? " [page number inferred; verify against the scan]" : ""}${s.deposition.physicalLines ? ` [${PHYSICAL_LINE}]` : ""}`;
   return `${one(a)}; compare ${one(b)}.`;
 }
+
+export const PHYSICAL_LINE = "line counted on the page, not an official line number";
 
 export const citesInferredPage = (s: Pick<EvidenceSide, "lines">) => s.lines.some((l) => l.pageInferred);
 
@@ -78,19 +80,21 @@ export function relativeTime(iso: string, now: number) {
 }
 
 export type CheckState =
-  | { kind: "pick" | "too_many" | "different_witness" | "not_ready" }
+  | { kind: "pick" | "too_many" | "different_witness" | "not_ready" | "no_date" }
   | { kind: "new"; a: number; b: number }
   | { kind: "running" | "done"; a: number; b: number; report: Pick<AnalysisRow, "id" | "createdAt">; };
 
 // What the New check panel offers for the ticked depositions. Pure. The same two files, in either
 // order, are one comparison: a file uploaded twice to a case is one deposition, so IDs identify it.
-export function checkState(selected: readonly number[], depositions: readonly Pick<DepositionRow, "id" | "witnessId" | "status">[], reports: readonly Pick<AnalysisRow, "id" | "depositionA" | "depositionB" | "status" | "createdAt">[]): CheckState {
+export function checkState(selected: readonly number[], depositions: readonly Pick<DepositionRow, "id" | "witnessId" | "status" | "takenOn">[], reports: readonly Pick<AnalysisRow, "id" | "depositionA" | "depositionB" | "status" | "createdAt">[]): CheckState {
   if (selected.length < 2) return { kind: "pick" };
   if (selected.length > 2) return { kind: "too_many" };
   const [a, b] = selected.map((id) => depositions.find((d) => d.id === id));
   if (!a || !b) return { kind: "pick" };
   if (a.witnessId !== b.witnessId) return { kind: "different_witness" };
   if (a.status !== "ready" || b.status !== "ready") return { kind: "not_ready" };
+  // The dates decide which testimony came first, so a check waits for both (the server insists too).
+  if (!a.takenOn || !b.takenOn) return { kind: "no_date" };
   const same = reports.filter((r) => [r.depositionA, r.depositionB].includes(a.id) && [r.depositionA, r.depositionB].includes(b.id));
   const running = same.find((r) => isActive(r.status));
   if (running) return { kind: "running", a: a.id, b: b.id, report: running };
@@ -107,6 +111,14 @@ export function pairsChecked(sessions: readonly number[], reports: readonly Pick
 }
 
 // Text without page numbers is stored on page 0 and cited by its line: "0:12–0:14" reads "Lines 12–14".
+// Whether a line falls inside a cited "page:line-page:line" range (as the deposition link carries it). Pure.
+export function inMarkedRange(mark: string, page: number, lineNo: number): boolean {
+  const m = mark.match(/^(\d+):(\d+)-(\d+):(\d+)$/);
+  if (!m) return false;
+  const at = page * 1000 + lineNo;
+  return at >= Number(m[1]) * 1000 + Number(m[2]) && at <= Number(m[3]) * 1000 + Number(m[4]);
+}
+
 export const displayRef = <T extends string | null>(ref: T): T =>
   (ref === null ? ref : ref.replace(/\b0:0*(\d+)\s*[–-]\s*0:0*(\d+)/g, "Lines $1–$2").replace(/\b0:0*(\d+)/g, "Line $1")) as T;
 

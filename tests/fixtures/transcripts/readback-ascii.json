@@ -1,0 +1,42 @@
+{
+  "about": "Ground truth for readback-ascii, verified by hand against sample-deposition.txt and its PDF rendering sample-full.pdf (same page:line on every line checked). Text is the line as printed after the line number, with the clock timestamp at the end of the row removed and outer spaces trimmed.",
+  "witness": "Jordan Avery Sample",
+  "pages": { "count": 16, "linesPerPage": [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25] },
+  "lines": [
+    { "ref": "1:17", "text": "DEPOSITION OF JORDAN AVERY SAMPLE" },
+    { "ref": "1:22", "text": "Casey L. Stenwright, CSR No. 9021" },
+    { "ref": "3:8", "text": "BY MR. WHITFIELD                               5" },
+    { "ref": "5:1", "text": "EXAMINATION BY MR. WHITFIELD" },
+    { "ref": "5:2", "text": "BY MR. WHITFIELD:", "role": "colloquy", "speaker": "MR. WHITFIELD" },
+    { "ref": "5:6", "text": "MS. OKONKWO:  Objection; vague as to time.", "role": "colloquy", "speaker": "MS. OKONKWO" },
+    { "ref": "5:7", "text": "Q.   Who supervised the dock on the night shift?", "role": "attorney" },
+    { "ref": "5:8", "text": "so I wrote the numbers down on the clipboard by the door", "role": "attorney" },
+    { "ref": "5:9", "text": "A.   A shift lead named Parker handled the dock.", "role": "witness" },
+    { "ref": "5:25", "text": "Q.   What did the maintenance log show for that week?", "role": "attorney" },
+    { "ref": "6:4", "text": "(Marked Deposition Exhibit 1)", "role": "parenthetical" },
+    { "ref": "6:5", "text": "MS. OKONKWO:  Objection; vague as to time.", "role": "colloquy", "speaker": "MS. OKONKWO" },
+    { "ref": "6:6", "text": "Q.   Please look at Exhibit 1 for a moment.", "role": "attorney" },
+    { "ref": "6:8", "text": "A.   It showed two repairs on the conveyor belt.", "role": "witness" },
+    { "ref": "7:4", "text": "MS. OKONKWO:  Objection; vague as to time.", "role": "colloquy", "speaker": "MS. OKONKWO" },
+    { "ref": "7:5", "text": "Q.   Why was the north entrance closed that morning?", "role": "attorney" },
+    { "ref": "7:7", "text": "A.   They were repainting the loading area.", "role": "witness" },
+    { "ref": "7:9", "text": "because the drivers needed a signature on each manifest", "role": "witness" },
+    { "ref": "7:25", "text": "A.   Yes, the coordinator went over it every Monday.", "role": "witness" },
+    { "ref": "8:1", "text": "because the drivers needed a signature on each manifest", "role": "witness" },
+    { "ref": "8:3", "text": "MS. OKONKWO:  Objection; vague as to time.", "role": "colloquy", "speaker": "MS. OKONKWO" },
+    { "ref": "12:4", "text": "(Marked Deposition Exhibit 2)", "role": "parenthetical" },
+    { "ref": "12:12", "text": "Q.   Why was the north entrance closed that morning?", "role": "attorney" },
+    { "ref": "12:14", "text": "A.   They were repainting the loading area.", "role": "witness" },
+    { "ref": "13:1", "text": "REPORTER'S CERTIFICATE" },
+    { "ref": "13:17", "text": "Dated: March 21, 2024" },
+    { "ref": "14:1", "text": "DECLARATION UNDER PENALTY OF PERJURY" },
+    { "ref": "16:22", "text": "Signature: ______________________________" }
+  ],
+  "exchanges": [
+    { "question": ["5:7", "5:8"], "answer": ["5:9", "5:11"] },
+    { "question": ["7:5", "7:6"], "answer": ["7:7", "7:9"] },
+    { "question": ["7:23", "7:24"], "answer": ["7:25", "8:2"], "note": "the answer crosses from page 7 to page 8" },
+    { "question": ["12:12", "12:13"], "answer": ["12:14", "12:16"] }
+  ],
+  "warnings": ["2 rows have no line number", "Timestamps beside the line numbers were removed from 200 lines"]
+}

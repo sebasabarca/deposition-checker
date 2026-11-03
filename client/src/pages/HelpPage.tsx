@@ -68,7 +68,7 @@ export function HelpPage() {
           <Section id="marks" title="What each mark means">
             <dl className="divide-y divide-rule rounded-lg border border-line bg-sheet text-[14px] leading-6">
               <Def term={<TestimonyMark />}>Stored transcript lines, verbatim, with their page:line.</Def>
-              <Def term={<OcrMark />}>Read from a scan by OCR. It may differ from the scan; low-confidence lines are flagged. Check the scan before quoting.</Def>
+              <Def term={<OcrMark />}>The PDF was a scanned image with no selectable text, so Veridict read the words from a picture of each page. A word can be misread now and then; lines that were hard to read are flagged. Compare with the page image before quoting.</Def>
               <Def term={<ModelMark />}>Written by Veridict's analysis, an AI system. It is not testimony and not a legal conclusion.</Def>
               <Def term={<VerifiedMark />}>Code found the cited words in the stored transcript. The citation is real; that says nothing about whether the contradiction is.</Def>
               <Def term={<HumanMark>Kept</HumanMark>}>Your decision, never the model's.</Def>

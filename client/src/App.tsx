@@ -55,7 +55,7 @@ export default function App() {
       {route.name === "case" && <CasePage key={route.id} id={route.id} />}
       {route.name === "report" && <ReportPage key={route.id} id={route.id} />}
       {route.name === "depositions" && <DepositionsPage caseId={route.caseId} />}
-      {route.name === "deposition" && <DepositionPage key={route.id} id={route.id} page={route.page} q={route.q} />}
+      {route.name === "deposition" && <DepositionPage key={route.id} id={route.id} page={route.page} q={route.q} mark={route.mark} />}
       {route.name === "findings" && <FindingsPage />}
       {route.name === "analyses" && <AnalysesPage />}
       {route.name === "analysis" && <AnalysisPage key={route.id} id={route.id} findingId={route.findingId} />}

@@ -68,6 +68,8 @@ export const api = {
   // The kept findings as a PDF download: of the given finished analyses, or all of the case's.
   reportPdf: (caseId: number, analyses?: number[], withContext = false) =>
     `/api/cases/${caseId}/report.pdf?${new URLSearchParams({ ...(analyses ? { analyses: analyses.join(",") } : {}), ...(withContext ? { context: "1" } : {}) })}`,
+  setDepositionDate: (id: number, takenOn: string | null) => request<{ deposition: DepositionView }>("PATCH", `/depositions/${id}`, { takenOn }),
+  moveDeposition: (id: number, caseId: number, witness: string) => request<{ deposition: DepositionView }>("POST", `/depositions/${id}/move`, { caseId, witness }),
   deleteDeposition: (id: number) => request<{ deleted: { depositions: number; analyses: number } }>("DELETE", `/depositions/${id}`),
   deleteCase: (id: number) => request<{ deleted: { depositions: number; analyses: number } }>("DELETE", `/cases/${id}`),
   retryDeposition: (id: number) => request<unknown>("POST", `/depositions/${id}/retry`),

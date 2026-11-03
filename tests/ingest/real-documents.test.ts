@@ -3,9 +3,11 @@
 // docs/parser-spike.md: production extraction must reproduce the validated spike exactly.
 
 import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { readDeposition } from "../../server/src/ingest";
+import { isMostlyImages } from "../../server/src/ingest/pdf";
 import { readHtmlTranscript } from "../../scripts/spike/html";
 import { readPdf as readPdfSpike } from "../../scripts/spike/pdf";
 import { buildExchanges as buildExchangesSpike, markPdfLine } from "../../scripts/spike/exchanges";
@@ -17,13 +19,22 @@ const bytes = (path: string) => new Uint8Array(readFileSync(path));
 const linesOf = (r: Awaited<ReturnType<typeof readDeposition>>) => r.pdf!.pages.flatMap((p) => p.lines);
 
 const ellison = [
-  { doc: "p3171", lines: 3943, textPages: 211, blankPages: [] as number[], exchanges: 533, splitGroups: 1 },
-  { doc: "p3173", lines: 1660, textPages: 99, blankPages: [64, 65, 66, 67, 68, 69, 70, 71, 72], exchanges: 209, splitGroups: 4 },
+  { doc: "p3171", lines: 3943, textPages: 211, blankPages: [] as number[], exchanges: 533, splitGroups: 1, sha256: "e16c4bf686d884d22c4d16db2a26615074608a534ffb67ea6151a0854c77b1de" },
+  { doc: "p3173", lines: 1660, textPages: 99, blankPages: [64, 65, 66, 67, 68, 69, 70, 71, 72], exchanges: 209, splitGroups: 4, sha256: "9d02671bfe43f4db8dc382eb6d415d01324884dc400afa6501f939aca005ccc8" },
 ];
 
 describe.skipIf(!existsSync(`${RAW}/ellison/p3171.pdf`) || !existsSync(`${RAW}/ellison/p3173.pdf`))(
   "Ellison depositions (real DOJ PDFs)",
   () => {
+    // The whole read, apart from the parser version, hashed as parser revision 4 produced it, before
+    // gutterless PDFs were read by physical line: a PDF with printed line numbers reads byte-identically.
+    for (const expected of ellison) {
+      it(`${expected.doc} reads exactly as it did before the physical-line fallback`, async () => {
+        const { parserVersion, ...read } = await readDeposition(bytes(`${RAW}/ellison/${expected.doc}.pdf`), undefined, async () => ({ available: false, reason: "off" }));
+        expect(parserVersion).toMatch(/-r6$/);
+        expect(createHash("sha256").update(JSON.stringify(read)).digest("hex")).toBe(expected.sha256);
+      }, TIMEOUT);
+    }
     for (const expected of ellison) {
       it(
         `${expected.doc} is ready, with every page:line matching the DOJ HTML and the spike`,
@@ -150,6 +161,13 @@ describe.skipIf(!gates.every((g) => existsSync(`${RAW}/gates/${g.file}`)))("Gate
       TIMEOUT,
     );
   }
+});
+
+describe.skipIf(!existsSync(`${RAW}/gates/gates8a.pdf`) || !existsSync(`${RAW}/ellison/p3171.pdf`))("scan detection", () => {
+  it("tells a scan (OCR first) from a born-digital PDF (its text layer first)", async () => {
+    expect(await isMostlyImages(bytes(`${RAW}/gates/gates8a.pdf`))).toBe(true);
+    expect(await isMostlyImages(bytes(`${RAW}/ellison/p3171.pdf`))).toBe(false);
+  }, TIMEOUT);
 });
 
 describe("unreadable files", () => {

@@ -203,7 +203,7 @@ export const ocrDocument: OcrReader = async (data, pageCount) => {
     await run("pdftoppm", ["-v"]);
     engine = `${version.stdout.split("\n")[0].trim()}, ${OCR_DPI} dpi`;
   } catch {
-    return { available: false, reason: "OCR tools aren't installed on this server (tesseract and poppler)" };
+    return { available: false, reason: "this PDF is a scanned image, and the reader for scanned pages isn't installed on this server" }; // tesseract and poppler
   }
   const dir = await mkdtemp(join(tmpdir(), "deposition-ocr-"));
   try {

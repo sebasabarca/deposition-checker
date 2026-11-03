@@ -18,7 +18,8 @@ export const APPROXIMATE_QUOTE = 0.6;
 export const DUPLICATE_OVERLAP = 0.5; // of the shorter passage, on both sides
 
 export type StoredLine = { id: number; page: number; line: number; pdfPage: number; text: string; role: string; ocrConfidence: number | null };
-export type StoredSession = { label: "A" | "B"; depositionId: number; lines: readonly StoredLine[] };
+// physicalLines: a PDF without printed line numbers, whose references count rows on the page (ingest/physical.ts).
+export type StoredSession = { label: "A" | "B"; depositionId: number; lines: readonly StoredLine[]; physicalLines?: boolean };
 
 export type QuoteStatus = "exact" | "approximate" | "elsewhere_in_session" | "not_found";
 export type Speaker = "witness" | "adopted" | "attorney_only" | "mixed" | "unknown" | "none";
@@ -39,6 +40,7 @@ export type DirectSide = {
   ocr: { read: boolean; minConfidence: number | null; lowLines: string[] };
   lineIds: number[];
   pdfPages: number[];
+  physicalLines: boolean; // the reference counts rows on a PDF page, not printed line numbers
 };
 
 export type DirectCheck = {
@@ -91,7 +93,7 @@ function speakerOf(cited: readonly StoredLine[], excerpt: string, following: rea
 }
 
 export function checkDirectSide(session: StoredSession | undefined, citation: string, excerpt: string): DirectSide {
-  const base = { depositionId: session?.depositionId ?? 0, citation, matchScore: 0, qualifier: null, noRecall: false, reportedSpeech: false, ocr: { read: false, minConfidence: null, lowLines: [] }, lineIds: [], pdfPages: [] };
+  const base = { depositionId: session?.depositionId ?? 0, citation, matchScore: 0, qualifier: null, noRecall: false, reportedSpeech: false, ocr: { read: false, minConfidence: null, lowLines: [] }, lineIds: [], pdfPages: [], physicalLines: session?.physicalLines === true };
   const inSession = session ? quoteMatchScore(excerpt, unmarked(session.lines)) >= 1 || quoteMatchScore(excerpt, printed(session.lines)) >= 1 : false;
   const unresolved: DirectSide = { ...base, resolved: false, quote: inSession ? "elsewhere_in_session" : "not_found", speaker: "none", level: "not_adopted", rule: "the citation doesn't resolve to stored lines" };
   const range = parseCitation(citation);
@@ -149,8 +151,9 @@ export function laneOf(finding: Pick<DiscoveryFinding, "classification" | "compa
   if (evidenceStatus === "approximate") doubts.push("A quotation only approximately matches the transcript.");
   if (sides.some((s) => s.level === "uncertain")) doubts.push("Code couldn't establish who said a cited statement.");
   if (sides.some((s) => s.noRecall)) doubts.push("A cited statement is a lack of recollection, not a denial.");
-  if (sides.some((s) => s.ocr.lowLines.length > 0)) doubts.push("A cited line was read by OCR with low confidence. Check the scan.");
+  if (sides.some((s) => s.ocr.lowLines.length > 0)) doubts.push("A cited line was hard to read on the scanned page. Compare it with the page image.");
   if (sides.some((s) => parseCitation(s.citation)?.first[0] === UNNUMBERED_PAGE)) doubts.push("A cited passage is from a text without page and line numbers, so its reference is not an official citation.");
+  if (sides.some((s) => s.physicalLines)) doubts.push("A cited passage is from a PDF without printed line numbers. Its reference counts the lines on the page and is not an official line number.");
   if (finding.classification === "compatible") return doubts.length === 0 || (doubts.length === 1 && finding.comparable !== "yes") ? { lane: "compatible", reasons: [] } : { lane: "needs_context", reasons: doubts };
   return doubts.length > 0 ? { lane: "needs_context", reasons: doubts } : { lane: "contradictions", reasons: [] };
 }

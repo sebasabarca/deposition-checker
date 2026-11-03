@@ -18,7 +18,7 @@ export type Removal = { outcome: "deleted"; depositions: number; analyses: numbe
 
 type Tx = Parameters<Parameters<typeof withTransaction>[1]>[0];
 
-async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analyses: number; storageKeys: string[] } | { running: number[] }> {
+export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analyses: number; storageKeys: string[] } | { running: number[] }> {
   if (ids.length === 0) return { analyses: 0, storageKeys: [] };
   const rows = await tx.select({ id: depositions.id, storageKey: depositions.storageKey, witnessId: depositions.witnessId }).from(depositions).where(inArray(depositions.id, ids)).for("update");
   const used = await tx

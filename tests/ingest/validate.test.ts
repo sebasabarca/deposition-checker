@@ -167,7 +167,7 @@ describe("validateDeposition", () => {
     const other = [item("Page 1", 300, 760), item("Some other publisher's layout", 72, 600)];
     const result = depo(other, other);
     expect(result.status).toBe("unsupported");
-    expect(result.reasons).toEqual(["2 of 2 pages do not match layout ellison-doj-v1"]);
+    expect(result.reasons).toEqual(["2 of 2 pages couldn't be read as transcript pages: their layout isn't one Veridict recognizes"]);
   });
 
   it("is unsupported when the PDF has no pages", () => {

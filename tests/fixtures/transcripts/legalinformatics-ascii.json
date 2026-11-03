@@ -1,0 +1,33 @@
+{
+  "about": "Ground truth for legalinformatics-ascii, verified by hand against li-sample.txt (bytes of the curly quotes and ellipsis checked) and its PDF rendering li-sample.pdf (same page:line on every line checked). Text is the line as printed after the line number, outer spaces trimmed.",
+  "witness": "Dr. Soares",
+  "pages": { "count": 5, "linesPerPage": [28, 28, 28, 28, 4] },
+  "lines": [
+    { "ref": "1:1", "text": "Court File No. T-2051-10" },
+    { "ref": "1:21", "text": "CROSS-EXAMINATION OF DR. SOARES" },
+    { "ref": "2:1", "text": "Q   Thank you. If you turn to the patent on page 6, it says - -", "role": "attorney" },
+    { "ref": "2:2", "text": "at line 9.", "role": "attorney" },
+    { "ref": "2:3", "text": "A   Now, 6 at line 9, yeah.", "role": "witness" },
+    { "ref": "2:6", "text": "And I think we can all agree that should read “defined”.", "role": "attorney" },
+    { "ref": "2:15", "text": "… above which the length cannot be distinguished by carbon", "role": "witness" },
+    { "ref": "2:25", "text": "Q   Yes is a good enough answer.", "role": "attorney" },
+    { "ref": "2:26", "text": "A   No, I think this patent refers back to the - - I think it’s", "role": "witness" },
+    { "ref": "3:1", "text": "rebuttal report, but I don’t have it in front of me. And", "role": "witness" },
+    { "ref": "3:14", "text": "obvious.", "role": "witness" },
+    { "ref": "3:24", "text": "A   But that’s not - - oh, sorry, you want to interject?", "role": "witness" },
+    { "ref": "3:25", "text": "MR. DIMOCK:  He has already answered the question, that loaded", "role": "colloquy", "speaker": "MR. DIMOCK" },
+    { "ref": "3:26", "text": "question.", "role": "colloquy", "speaker": "MR. DIMOCK" },
+    { "ref": "3:27", "text": "BY MR. MACFARLANE:", "role": "colloquy", "speaker": "MR. MACFARLANE" },
+    { "ref": "3:28", "text": "Q   Well, I would just like to get a clear answer. If it’s 6", "role": "attorney" },
+    { "ref": "4:1", "text": "carbon lengths in the chain, it’s referring to an octene?", "role": "attorney" },
+    { "ref": "4:2", "text": "A   If it is 6, but the NMR would measure 8, 10, 20, 1,000 as 6.", "role": "witness" },
+    { "ref": "5:1", "text": "A   I don’t agree with this. This is wrong.", "role": "witness" },
+    { "ref": "5:4", "text": "octene incorporation as a long branch.", "role": "witness" }
+  ],
+  "exchanges": [
+    { "question": ["2:1", "2:2"], "answer": ["2:3", "2:3"] },
+    { "question": ["2:25", "2:25"], "answer": ["2:26", "3:14"], "note": "the answer crosses from page 2 to page 3" },
+    { "question": ["3:28", "4:1"], "answer": ["4:2", "4:2"], "note": "the question crosses from page 3 to page 4, after an objection and a new examiner" }
+  ],
+  "warnings": ["10 rows have no line number"]
+}

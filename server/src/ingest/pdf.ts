@@ -91,23 +91,53 @@ export function readPageItems(pdfPage: number, items: TextItem[], layout: Layout
   return page;
 }
 
-// Throws if pdfjs cannot open the file; the caller reports that as an unsupported deposition.
-export async function extractPdf(data: Uint8Array, layout: LayoutProfile): Promise<ExtractedPdf> {
+// Each page's text rows, top to bottom, with no gutter or layout check: what a gutterless PDF is read from.
+// shortcut: row and word gaps are the Ellison measurements; tune them if a gutterless PDF merges or splits rows.
+export const pageRows = (items: TextItem[], layout: LayoutProfile): string[] =>
+  groupRows(items, layout).map((row) => joinRow(row, layout).trim()).filter(Boolean);
+
+// The text items of every page. Throws if pdfjs cannot open the file; the caller reports that as an
+// unsupported deposition.
+export async function readPdfItems(data: Uint8Array): Promise<TextItem[][]> {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   // pdfjs takes ownership of the buffer it is given, so pass a copy and leave the caller's bytes intact.
   const doc = await getDocument({ data: data.slice(), verbosity: 0 }).promise;
   try {
-    const pages: PageExtraction[] = [];
+    const pages: TextItem[][] = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const content = await (await doc.getPage(p)).getTextContent();
       const items: TextItem[] = [];
       for (const item of content.items) {
         if ("str" in item) items.push({ str: item.str, x: item.transform[4], y: item.transform[5], width: item.width });
       }
-      pages.push(readPageItems(p, items, layout));
+      pages.push(items);
     }
-    return { pageCount: doc.numPages, pages };
+    return pages;
   } finally {
     await doc.destroy();
   }
+}
+
+// Whether most pages draw an image: a scan, whose text layer (if any) is a scanner's own reading.
+const IMAGE_OPS = ["paintImageXObject", "paintInlineImageXObject", "paintImageXObjectRepeat"] as const;
+export async function isMostlyImages(data: Uint8Array): Promise<boolean> {
+  const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const paints = new Set<number>(IMAGE_OPS.map((op) => OPS[op]));
+  const doc = await getDocument({ data: data.slice(), verbosity: 0 }).promise;
+  try {
+    let withImages = 0;
+    for (let p = 1; p <= doc.numPages; p++) {
+      const { fnArray } = await (await doc.getPage(p)).getOperatorList();
+      if (fnArray.some((fn) => paints.has(fn))) withImages++;
+    }
+    return withImages >= doc.numPages / 2;
+  } finally {
+    await doc.destroy();
+  }
+}
+
+export const extractItems = (pages: TextItem[][], layout: LayoutProfile): ExtractedPdf => ({ pageCount: pages.length, pages: pages.map((items, i) => readPageItems(i + 1, items, layout)) });
+
+export async function extractPdf(data: Uint8Array, layout: LayoutProfile): Promise<ExtractedPdf> {
+  return extractItems(await readPdfItems(data), layout);
 }

@@ -21,7 +21,8 @@ const day = (iso: string | Date | null) => {
 };
 // Text transcripts without page numbers are stored on page 0 and cited by line.
 const displayRef = (r: string | null) => r && r.replace(/\b0:0*(\d+)\s*[–-]\s*0:0*(\d+)/g, "Lines $1–$2").replace(/\b0:0*(\d+)/g, "Line $1");
-const cite = (s: Side) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${day(s.deposition.takenOn)})${s.lines.some((l) => l.pageInferred) ? " [page number inferred; verify against the scan]" : ""}`;
+const PHYSICAL = "line counted on the page, not an official line number";
+const cite = (s: Side) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${day(s.deposition.takenOn)})${s.lines.some((l) => l.pageInferred) ? " [page number inferred; verify against the scan]" : ""}${s.deposition.physicalLines ? ` [${PHYSICAL}]` : ""}`;
 const headline = (f: Detail) => (f.group === "contradictions" ? (f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction") : f.groupLabel);
 
 export async function reportData(db: Database, caseId: number, analysisIds: number[] | null, withContext: boolean) {
@@ -110,7 +111,7 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
     for (const [name, s] of [["Earlier session", f.a], ["Later session", f.b]] as const) {
       doc.moveDown(0.9);
       room(60);
-      label(`${name} · ${day(s.deposition.takenOn)} · ${displayRef(s.range) ?? "no reference"}`);
+      label(`${name} · ${day(s.deposition.takenOn)} · ${displayRef(s.range) ?? "no reference"}${s.deposition.physicalLines ? ` (${PHYSICAL})` : ""}`);
       doc.moveDown(0.3);
       const cited = s.lines.filter((l) => l.highlighted);
       for (const l of cited.length ? cited : s.lines) {

@@ -43,7 +43,7 @@ export const ModelMark = ({ children = "Veridict's analysis" }: { children?: Rea
   <Badge tone="accent" icon={Sparkles} title="Written by Veridict's analysis. Not testimony and not a legal conclusion.">{children}</Badge>
 );
 export const TestimonyMark = () => <Badge tone="neutral" icon={BadgeCheck} title="Shown verbatim from the stored transcript lines">Verbatim testimony</Badge>;
-export const OcrMark = () => <Badge tone="warn" icon={ScanText} title="Read from a scan by OCR. The text may differ from the scan.">Read by OCR</Badge>;
+export const OcrMark = () => <Badge tone="warn" icon={ScanText} title="Read from a picture of the page. A word may be misread: compare with the page image before quoting.">Scanned copy</Badge>;
 export const VerifiedMark = ({ children = "Citation verified" }: { children?: ReactNode }) => <Badge tone="good" icon={CircleCheck} title="Checked by code against the stored transcript">{children}</Badge>;
 export const HumanMark = ({ children }: { children: ReactNode }) => <Badge tone="neutral" icon={UserRoundCheck} title="A person's decision, not the model's">{children}</Badge>;
 

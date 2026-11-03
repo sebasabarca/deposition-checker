@@ -127,6 +127,7 @@ const NEEDS_VERIFIED: [string, RegExp][] = [
   ["POST", /^\/cases\/\d+\/analyses$/],
   ["POST", /^\/analyses\/\d+\/resume$/],
   ["POST", /^\/depositions\/\d+\/retry$/],
+  ["POST", /^\/depositions\/\d+\/move$/],
 ];
 const PAID: [string, RegExp][] = [
   ["POST", /^\/cases\/\d+\/analyses$/],

@@ -1,0 +1,69 @@
+{
+  "about": "Transcript samples used to validate the format adapters. Originals live under data/raw/transcripts/ (not in git: no licence is stated for them); this manifest records where each came from and its SHA-256, and the ground truth beside it was verified by hand against the original file and, where one exists, the independent PDF rendering of the same deposition. 'genuine' means the file is as its publisher distributed it; 'derived' files were converted from a genuine sample by software for adapter testing only and never count as an independent sample.",
+  "samples": [
+    {
+      "id": "readback-ascii",
+      "file": "data/raw/transcripts/readback/sample-deposition.txt",
+      "format": "text",
+      "kind": "genuine",
+      "source": "https://readbackhq.com/samples/sample-deposition.txt",
+      "listedOn": "https://readbackhq.com/samples/",
+      "sha256": "b6e973c8ef67de37004f96234a54bee882dcca271c05da425a7e4195814e9c3d",
+      "notes": "Synthetic deposition (every name invented), California caption, 25 lines per page, page number right-aligned above each page, form feeds, CRLF, double-spaced rows, clock timestamps after each testimony line.",
+      "rendering": { "file": "data/raw/transcripts/readback/sample-full.pdf", "source": "https://readbackhq.com/samples/sample-full.pdf", "sha256": "bf799b0890960f24d9c95cd4038c46b7c926067a8dee7e788030c998d55ac1f3" },
+      "ground": "readback-ascii.json"
+    },
+    {
+      "id": "legalinformatics-ascii",
+      "file": "data/raw/transcripts/legalinformatics/li-sample.txt",
+      "format": "text",
+      "kind": "genuine",
+      "source": "https://drive.google.com/uc?id=1691Braz8TZu9c6IKNCp2GjrAXe3iYYqX&export=download",
+      "listedOn": "https://www.legalinformatics.ca/discover-e-transcripts",
+      "sha256": "2d5cf59e5a262d3c9c879b252141aabe69ebc5375e215f2de7eb524a97dc923d",
+      "notes": "Cross-examination excerpt (Dow v. Nova, Federal Court of Canada), 28 lines per page, zero-padded page numbers (001) above each page, Q/A markers followed by spaces rather than periods, reporter footer on every page, UTF-8 curly quotes and ellipses, LF line ends.",
+      "rendering": { "file": "data/raw/transcripts/legalinformatics/li-sample.pdf", "source": "https://drive.google.com/uc?id=1jViPhqHq5-Tmi353Ge0INFqZSErKVwQ3&export=download", "sha256": "66743f61e1e3111d4d8b91232b3b8efc63b2730d61306da8d654204d399de263" },
+      "ground": "legalinformatics-ascii.json"
+    },
+    {
+      "id": "readback-ascii-as-rtf",
+      "file": "data/raw/transcripts/derived/sample-deposition.textutil.rtf",
+      "format": "rtf",
+      "kind": "derived",
+      "derivedFrom": "readback-ascii",
+      "made": "textutil -convert rtf -inputencoding UTF-8 -font Courier (macOS)",
+      "sha256": "d3b5dbb8140d0cc06953227291b8506c8268f0785d65059149b019fe5dddc222",
+      "ground": "readback-ascii.json"
+    },
+    {
+      "id": "readback-ascii-as-docx",
+      "file": "data/raw/transcripts/derived/sample-deposition.textutil.docx",
+      "format": "docx",
+      "kind": "derived",
+      "derivedFrom": "readback-ascii",
+      "made": "textutil -convert docx -inputencoding UTF-8 -font Courier (macOS)",
+      "sha256": "c5d9e534b9e34bf8fb4b8c10c2e40148171556c675e84cfee0712f8df86af831",
+      "ground": "readback-ascii.json"
+    },
+    {
+      "id": "legalinformatics-ascii-as-rtf",
+      "file": "data/raw/transcripts/derived/li-sample.textutil.rtf",
+      "format": "rtf",
+      "kind": "derived",
+      "derivedFrom": "legalinformatics-ascii",
+      "made": "textutil -convert rtf -inputencoding UTF-8 -font Courier (macOS)",
+      "sha256": "2faf4e8e53b022a2e8190575e91cb71bdea04fde07185a1802754a1bf572ecf4",
+      "ground": "legalinformatics-ascii.json"
+    },
+    {
+      "id": "legalinformatics-ascii-as-docx",
+      "file": "data/raw/transcripts/derived/li-sample.textutil.docx",
+      "format": "docx",
+      "kind": "derived",
+      "derivedFrom": "legalinformatics-ascii",
+      "made": "textutil -convert docx -inputencoding UTF-8 -font Courier (macOS)",
+      "sha256": "467e2b0c84b368754d22656521fcee603acb47c0db1240e31eb6d98fee1174d4",
+      "ground": "legalinformatics-ascii.json"
+    }
+  ]
+}

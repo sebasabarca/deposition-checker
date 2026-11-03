@@ -13,6 +13,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { BudgetExceeded, closeFailed, failureIsUnbilled, maxBatchRequestCost, recordCall, releaseUnbilled, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { analyses, candidates, depositions, discoveryRuns, exchangeLines, exchanges, findings, lines, verdicts, witnesses } from "../db/schema";
+import { hasPhysicalLines } from "../ingest";
 import { EVIDENCE_STRENGTH_VERSION, evidenceStrength, unscoredReasonOf } from "../score";
 import { evidenceKey, groupDuplicates, verifyDirectFinding, type DirectCheck, type DirectSide, type StoredLine, type StoredSession } from "../verify";
 import { DISCOVERY_PROMPT_VERSION, DISCOVERY_SYSTEM, discoveryUserPrompt, promptHash } from "./discoverPrompt";
@@ -114,14 +115,15 @@ export type DiscoveryStep = { outcome: "polling" | "completed" } | { outcome: "f
 
 export async function loadSessions(db: Database, a: Pick<Analysis, "witnessId" | "depositionA" | "depositionB">) {
   const [witness] = await db.select({ name: witnesses.name }).from(witnesses).where(eq(witnesses.id, a.witnessId));
-  const docs = await db.select({ id: depositions.id, takenOn: depositions.takenOn, sha: depositions.fileSha256 }).from(depositions).where(inArray(depositions.id, [a.depositionA, a.depositionB]));
+  const docs = await db.select({ id: depositions.id, takenOn: depositions.takenOn, sha: depositions.fileSha256, validation: depositions.validation }).from(depositions).where(inArray(depositions.id, [a.depositionA, a.depositionB]));
   const session = async (label: "A" | "B", depositionId: number): Promise<StoredSession & { description: string }> => {
     const rows = await db
       .select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, pdfPage: lines.pdfPage, text: lines.rawText, role: lines.speakerRole, ocrConfidence: lines.ocrConfidence })
       .from(lines)
       .where(eq(lines.depositionId, depositionId))
       .orderBy(asc(lines.printedPage), asc(lines.lineNo));
-    return { label, depositionId, lines: rows as StoredLine[], description: `session of ${docs.find((d) => d.id === depositionId)?.takenOn ?? "date not stated"}` };
+    const doc = docs.find((d) => d.id === depositionId);
+    return { label, depositionId, lines: rows as StoredLine[], physicalLines: hasPhysicalLines(doc?.validation), description: `session of ${doc?.takenOn ?? "date not stated"}` };
   };
   const pair: [Awaited<ReturnType<typeof session>>, Awaited<ReturnType<typeof session>>] = [await session("A", a.depositionA), await session("B", a.depositionB)];
   return { witness: witness.name, sessions: pair, hashes: Object.fromEntries(docs.map((d) => [d.id, d.sha])) };

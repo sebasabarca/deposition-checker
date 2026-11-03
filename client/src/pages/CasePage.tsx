@@ -48,6 +48,8 @@ export function CasePage({ id }: { id: number }) {
         actions={<><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
       />
 
+      <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} />
+
       {detail.depositions.length === 0 ? (
         <Empty title="No depositions in this case yet" action={<Button onClick={() => add.open(id)}>Add deposition</Button>}>Add two sessions of the same witness, as PDF or text, to check them against each other.</Empty>
       ) : (
@@ -75,7 +77,7 @@ export function CasePage({ id }: { id: number }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {sessions.map((d) => <SessionRow key={d.id} d={d} witness={w.name} selected={selected.includes(d.id)} onToggle={() => toggle(d.id)} onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))} />)}
+                    {sessions.map((d) => <SessionRow key={d.id} d={d} witness={w.name} selected={selected.includes(d.id)} onToggle={() => toggle(d.id)} onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))} onUseDate={(date) => api.setDepositionDate(d.id, date).then(load).catch((e: Error) => setError(e.message))} />)}
                   </tbody>
                 </table>
               </div>
@@ -109,16 +111,16 @@ export function CasePage({ id }: { id: number }) {
   );
 }
 
-function SessionRow({ d, witness, selected, onToggle, onRetry }: { d: DepositionRow; witness: string; selected: boolean; onToggle: () => void; onRetry: () => void }) {
+function SessionRow({ d, witness, selected, onToggle, onRetry, onUseDate }: { d: DepositionRow; witness: string; selected: boolean; onToggle: () => void; onRetry: () => void; onUseDate: (date: string) => void }) {
   const s = DEPOSITION_STATUS[d.status];
   const name = d.originalFilename ?? `Deposition #${d.id}`;
-  const note = d.status === "failed" || d.status === "unsupported" ? `Couldn't be read: ${d.error ?? "this file's layout isn't recognized."}` : d.status === "needs_review" ? (d.error ?? "Some pages couldn't be read.") : d.scanned ? "Read by OCR. Check the scan before quoting." : null;
+  const note = d.status === "failed" || d.status === "unsupported" ? `Couldn't be read: ${d.error ?? "this file's layout isn't recognized."}` : d.status === "needs_review" ? (d.error ?? "Some pages couldn't be read.") : d.scanned ? "Scanned copy. Compare quotations with the page image." : null;
   return (
     <tr className={cx(rowClass, selected && "bg-info-bg hover:bg-info-bg")}>
       <td className={cx(tdClass, "align-top")}>
         <input type="checkbox" aria-label={`Select ${witness}, ${formatDate(d.takenOn)}`} checked={selected} disabled={d.status !== "ready"} onChange={onToggle} className="size-4 rounded accent-navy" />
       </td>
-      <td className={cx(tdClass, "align-top font-medium whitespace-nowrap tabular-nums")}>{formatDate(d.takenOn)}</td>
+      <td className={cx(tdClass, "align-top whitespace-nowrap")}><SessionDate d={d} onUse={onUseDate} /></td>
       <td className={cx(tdClass, "max-w-80 align-top")}>
         <a href={href.deposition(d.id)} className="block truncate font-medium hover:underline" title={name}>{name}</a>
         {note && <span className="mt-0.5 block text-xs text-muted">{note}</span>}
@@ -135,6 +137,44 @@ function SessionRow({ d, witness, selected, onToggle, onRetry }: { d: Deposition
   );
 }
 
+// The date taken, or what's needed instead: a date the transcript states, to confirm with one click, or a
+// link to enter it. A date that differs from the transcript's is flagged, since it decides the order.
+const smallButton = (variant: "primary" | "secondary") => buttonClass(variant, "h-7! px-2.5! text-xs!");
+function SessionDate({ d, onUse }: { d: DepositionRow; onUse: (date: string) => void }) {
+  const found = d.dateFound;
+  const differs = !!(d.takenOn && found && found.date !== d.takenOn);
+  if (d.takenOn && !differs) return <span className="font-medium tabular-nums">{formatDate(d.takenOn)}</span>;
+  return (
+    <div className="space-y-1.5">
+      {d.takenOn ? <span className="block font-medium tabular-nums">{formatDate(d.takenOn)}</span> : null}
+      <Badge tone="warn" dot>{d.takenOn ? "Check the date" : "Date needed"}</Badge>
+      {found && <span className="block text-xs text-muted">The transcript says {formatDate(found.date)}</span>}
+      <span className="flex flex-wrap gap-1.5">
+        {found && found.date !== d.takenOn && <button type="button" onClick={() => onUse(found.date)} className={smallButton("primary")}>Use {formatDate(found.date)}</button>}
+        <a href={href.deposition(d.id)} className={smallButton("secondary")}>{d.takenOn ? "Edit date" : "Enter date"}</a>
+      </span>
+    </div>
+  );
+}
+
+// Above the sessions while any of them needs a date (or has one the transcript contradicts), since no
+// check can start without both dates.
+function DatesBanner({ depositions, witnesses }: { depositions: DepositionRow[]; witnesses: CaseDetail["witnesses"] }) {
+  const missing = depositions.filter((d) => !d.takenOn);
+  const differ = depositions.filter((d) => d.takenOn && d.dateFound && d.dateFound.date !== d.takenOn);
+  if (missing.length + differ.length === 0) return null;
+  const name = (d: DepositionRow) => `${witnesses.find((w) => w.id === d.witnessId)?.name ?? "Witness"}, ${d.originalFilename ?? `deposition #${d.id}`}`;
+  return (
+    <Alert tone="warn" title={missing.length ? `${missing.length} ${missing.length === 1 ? "session needs" : "sessions need"} a date` : `${differ.length} ${differ.length === 1 ? "date differs" : "dates differ"} from the transcript`}>
+      <p>The dates decide which testimony came first, so a check can't start until both sessions have one. Use the date the transcript states, or enter it, in the table below.</p>
+      <ul className="mt-1.5 list-disc pl-5">
+        {missing.map((d) => <li key={d.id}>{name(d)}: no date{d.dateFound ? ` (the transcript says ${formatDate(d.dateFound.date)})` : ""}</li>)}
+        {differ.map((d) => <li key={d.id}>{name(d)}: entered as {formatDate(d.takenOn)}, the transcript says {formatDate(d.dateFound!.date)}</li>)}
+      </ul>
+    </Alert>
+  );
+}
+
 // The selection's next step, docked at the bottom of the window so it stays in reach.
 function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selected: number[]; onClear: () => void }) {
   const { start, error, busy } = useStartCheck(detail.case.id);
@@ -142,7 +182,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
   const estimate = useEstimate(detail.case.id, state.kind === "new" ? state.a : null, state.kind === "new" ? state.b : null);
   const user = useUser();
   const blocked = !user?.emailVerified ? "Verify your email before running checks." : !user.analysisAccess ? NO_ACCESS : null;
-  const message = { pick: "Select one more session of the same witness.", too_many: "Select exactly two sessions. An analysis compares two.", different_witness: "These are different witnesses. An analysis compares two sessions of one witness.", not_ready: "Both sessions must finish reading first." };
+  const message = { pick: "Select one more session of the same witness.", too_many: "Select exactly two sessions. An analysis compares two.", different_witness: "These are different witnesses. An analysis compares two sessions of one witness.", not_ready: "Both sessions must finish reading first.", no_date: "Add the date of both sessions first. The dates decide which testimony came first." };
   const pair = () => {
     const [a, b] = selected.map((s) => detail.depositions.find((d) => d.id === s)!).sort((x, y) => (x.takenOn ?? "").localeCompare(y.takenOn ?? ""));
     return `${detail.witnesses.find((w) => w.id === a.witnessId)?.name}: ${formatDate(a.takenOn)} and ${formatDate(b.takenOn)}`;

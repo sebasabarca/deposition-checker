@@ -1,7 +1,7 @@
 // Hash routes, so the app needs no router library and works behind any static host:
 //   #/                          overview: what needs the reviewer now
 //   #/cases, #/cases/:id        cases, and one case; #/cases/:id/report its kept findings, to print
-//   #/depositions[?case=]       every deposition, filtered by case; #/depositions/:id[?page=&q=] one, readable
+//   #/depositions[?case=]       every deposition, filtered by case; #/depositions/:id[?page=&q=&mark=] one, readable (mark: a cited page:line range to highlight)
 //   #/findings                  every finding across cases
 //   #/analyses, #/analyses/:id  every analysis; one, with its findings beside the selected one
 //   #/analyses/:id/findings/:f  the same analysis with finding f open
@@ -15,7 +15,7 @@ export type Route =
   | { name: "case"; id: number }
   | { name: "report"; id: number }
   | { name: "depositions"; caseId: number | null }
-  | { name: "deposition"; id: number; page: number | null; q: string }
+  | { name: "deposition"; id: number; page: number | null; q: string; mark: string }
   | { name: "findings" }
   | { name: "analyses" }
   | { name: "analysis"; id: number; findingId: number | null }
@@ -54,7 +54,7 @@ export function parseRoute(hash: string): Route {
   m = path.match(/^\/cases\/(\d+)\/report$/);
   if (m) return { name: "report", id: Number(m[1]) };
   m = path.match(/^\/depositions\/(\d+)$/);
-  if (m) return { name: "deposition", id: Number(m[1]), page: num("page"), q: q.get("q") ?? "" };
+  if (m) return { name: "deposition", id: Number(m[1]), page: num("page"), q: q.get("q") ?? "", mark: q.get("mark") ?? "" };
   m = path.match(/^\/analyses\/(\d+)(?:\/findings\/(\d+))?$/);
   if (m) return { name: "analysis", id: Number(m[1]), findingId: m[2] ? Number(m[2]) : null };
   return { name: "not_found" };
@@ -74,7 +74,7 @@ export const href = {
   case: (id: number) => `#/cases/${id}`,
   report: (caseId: number) => `#/cases/${caseId}/report`,
   depositions: (caseId?: number | null) => withQuery("#/depositions", { case: caseId }),
-  deposition: (id: number, at?: { page?: number | null; q?: string }) => withQuery(`#/depositions/${id}`, { page: at?.page, q: at?.q }),
+  deposition: (id: number, at?: { page?: number | null; q?: string; mark?: string }) => withQuery(`#/depositions/${id}`, { page: at?.page, q: at?.q, mark: at?.mark }),
   findings: () => "#/findings",
   analyses: () => "#/analyses",
   analysis: (id: number, findingId?: number) => (findingId ? `#/analyses/${id}/findings/${findingId}` : `#/analyses/${id}`),

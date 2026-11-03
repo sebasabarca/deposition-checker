@@ -3,18 +3,25 @@
 // does the parsing, and these endpoints only read what it stored.
 
 import express, { Router, type ErrorRequestHandler, type Response } from "express";
-import { deleteCase, deleteDeposition, type Removal } from "./remove";
-import { and, countDistinct, eq, sql } from "drizzle-orm";
+import { deleteCase, deleteDeposition, removeDepositions, type Removal } from "./remove";
+import { and, countDistinct, eq, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { withTransaction, type Database } from "../db/client";
-import { cases, depositions, exchanges, lines, witnesses } from "../db/schema";
-import { depositionLockKey, isPdf, isText, PARSER_VERSION, readUpload, storeUpload, UPLOADS_DIR } from "../ingest";
+import { analyses, cases, depositions, exchanges, lines, witnesses } from "../db/schema";
+import { depositionLockKey, detectFormat, PARSER_VERSION, readUpload, storeUpload, UPLOADS_DIR } from "../ingest";
 import { enqueueIngest } from "../jobs";
 import { timed, timedSync } from "../timing";
 
 export const MAX_UPLOAD_MB = 50;
+
+// Thrown inside the move's transaction to roll it back when the target case already has the file.
+class AlreadyInCase extends Error {
+  constructor(readonly depositionId: number) {
+    super("already in case");
+  }
+}
 
 export type ApiDeps = { db: Database; pool: Pool; boss: PgBoss; uploadsDir?: string };
 
@@ -25,6 +32,27 @@ const UploadQuery = z.object({
   // The name the file had on the user's computer, kept for display only; never used as a path.
   filename: z.string().trim().min(1).max(255).optional(),
 });
+
+const DateEdit = z.object({ takenOn: z.iso.date().nullable() });
+const Move = z.object({ caseId: Id, witness: z.string().trim().min(1).max(200) });
+type Tx = Parameters<Parameters<typeof withTransaction>[1]>[0];
+type NewDeposition = { caseId: number; witness: string; takenOn: string | null; fileSha256: string; storageKey: string; originalFilename: string | null; sourceFormat: (typeof depositions.$inferInsert)["sourceFormat"] };
+
+// Records a deposition as processing and queues its reading, in the caller's transaction (which holds
+// the file's lock), so both are committed or neither. The witness is found or created in the case.
+async function insertDeposition(tx: Tx, client: Parameters<typeof enqueueIngest>[1], boss: PgBoss, v: NewDeposition) {
+  await tx.insert(witnesses).values({ caseId: v.caseId, name: v.witness }).onConflictDoNothing();
+  const [witness] = await tx.select({ id: witnesses.id }).from(witnesses).where(and(eq(witnesses.caseId, v.caseId), eq(witnesses.name, v.witness)));
+  const [deposition] = await tx
+    .insert(depositions)
+    .values({ caseId: v.caseId, witnessId: witness.id, takenOn: v.takenOn, fileSha256: v.fileSha256, storageKey: v.storageKey, originalFilename: v.originalFilename, sourceFormat: v.sourceFormat, parserVersion: PARSER_VERSION, status: "processing" })
+    .returning({ id: depositions.id, run: depositions.ingestRun });
+  await enqueueIngest(boss, client, { depositionId: deposition.id, run: deposition.run });
+  return deposition.id;
+}
+
+const fileLock = (tx: Tx, caseId: number, fileSha256: string) =>
+  tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${depositionLockKey(caseId, fileSha256, PARSER_VERSION)}, 0))`);
 
 // The deposition as the API shows it. Fields that only exist once the file has been read are null
 // while it is processing (or if it failed before any attempt finished), never placeholders.
@@ -55,9 +83,13 @@ export async function depositionView(db: Database, id: number) {
     needsOcrPages: d.needsOcrPages,
     blankPages: d.blankPages,
     validation: d.validation
-      ? { layout: d.validation.layout, pages: d.validation.counts, failedPages: d.validation.failedPages, reasons: d.validation.reasons, ocr: d.validation.ocr ?? null }
+      ? { layout: d.validation.layout, pages: d.validation.counts, failedPages: d.validation.failedPages, reasons: d.validation.reasons, ocr: d.validation.ocr ?? null, warnings: d.validation.warnings ?? [] }
       : null,
     stored: { lines: await db.$count(lines, eq(lines.depositionId, id)), exchanges: stored.exchanges, parts: stored.parts },
+    // The date the transcript states on its cover, for the user to confirm; never applied by itself.
+    dateFound: d.validation?.dateFound ?? null,
+    // Analyses that compared this deposition: moving it to another witness or case deletes them.
+    checks: await db.$count(analyses, or(eq(analyses.depositionA, id), eq(analyses.depositionB, id))),
     createdAt: d.createdAt,
   };
 }
@@ -81,9 +113,12 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     if (body === undefined || (Buffer.isBuffer(body) && body.length === 0)) {
       return res.status(400).json({ error: "Send the PDF or text file as the request body." });
     }
-    // A PDF, or plain UTF-8 text (a .txt transcript or pasted text), which the worker reads as text.
-    const format = Buffer.isBuffer(body) ? timedSync("upload.validate", () => (isPdf(body) ? "pdf" : isText(body) ? "text" : null)) : null;
-    if (!Buffer.isBuffer(body) || !format) return res.status(415).json({ error: "The file is not a PDF or plain text." });
+    // A PDF, text (an ASCII .txt/.asc export or pasted text), RTF or Word .docx, told by its bytes. A
+    // proprietary format such as E-Transcript (.ptx) is refused with what to ask the reporter for.
+    if (!Buffer.isBuffer(body)) return res.status(415).json({ error: "Send the transcript file as the request body." });
+    const detected = timedSync("upload.validate", () => detectFormat(body, query.data.filename));
+    if ("error" in detected) return res.status(415).json({ error: detected.error, code: "unsupported_format" });
+    const format = detected.format;
 
     const [kase] = await db.select({ id: cases.id }).from(cases).where(eq(cases.id, caseId.data));
     if (!kase) return res.status(404).json({ error: "Case not found." });
@@ -94,8 +129,7 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     // Under the same lock as saveDeposition, so concurrent uploads of one file create one deposition
     // and one job. The job is queued in this transaction: both are committed, or neither.
     const { id, created } = await timed("upload.record", () => withTransaction(pool, async (tx, client) => {
-      const lockKey = depositionLockKey(kase.id, fileSha256, PARSER_VERSION);
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
+      await fileLock(tx, kase.id, fileSha256);
       const [existing] = await tx
         .select({ id: depositions.id })
         .from(depositions)
@@ -103,31 +137,62 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
           and(eq(depositions.caseId, kase.id), eq(depositions.fileSha256, fileSha256), eq(depositions.parserVersion, PARSER_VERSION)),
         );
       if (existing) return { id: existing.id, created: false };
-
-      await tx.insert(witnesses).values({ caseId: kase.id, name: query.data.witness }).onConflictDoNothing();
-      const [witness] = await tx
-        .select({ id: witnesses.id })
-        .from(witnesses)
-        .where(and(eq(witnesses.caseId, kase.id), eq(witnesses.name, query.data.witness)));
-      const [deposition] = await tx
-        .insert(depositions)
-        .values({
-          caseId: kase.id,
-          witnessId: witness.id,
-          takenOn: query.data.takenOn ?? null,
-          fileSha256,
-          storageKey,
-          originalFilename: query.data.filename ? (query.data.filename.split(/[\\/]/).pop() ?? null) : null,
-          sourceFormat: format,
-          parserVersion: PARSER_VERSION,
-          status: "processing",
-        })
-        .returning({ id: depositions.id, run: depositions.ingestRun });
-      await enqueueIngest(boss, client, { depositionId: deposition.id, run: deposition.run });
-      return { id: deposition.id, created: true };
+      const originalFilename = query.data.filename ? (query.data.filename.split(/[\\/]/).pop() ?? null) : null;
+      const id = await insertDeposition(tx, client, boss, { caseId: kase.id, witness: query.data.witness, takenOn: query.data.takenOn ?? null, fileSha256, storageKey, originalFilename, sourceFormat: format });
+      return { id, created: true };
     }));
 
     return res.status(created ? 202 : 200).json({ created, deposition: await depositionView(db, id) });
+  });
+
+  // Set or correct the date the session was taken. Analyses already run keep their findings; the dates
+  // they show are read live, so a corrected date appears everywhere at once.
+  router.patch("/depositions/:id", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    const body = DateEdit.safeParse(req.body ?? {});
+    if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
+    if (!body.success) return res.status(400).json({ error: "takenOn must be a date (YYYY-MM-DD) or null." });
+    const [updated] = await db.update(depositions).set({ takenOn: body.data.takenOn }).where(eq(depositions.id, id.data)).returning({ id: depositions.id });
+    if (!updated) return res.status(404).json({ error: "Deposition not found." });
+    return res.json({ deposition: await depositionView(db, id.data) });
+  });
+
+  // File a deposition under another witness or case. The witness is part of every stored line and
+  // exchange, so the deposition is read again from its stored file, as a new deposition, and the old one
+  // is deleted with the analyses that compared it, all in one transaction. 409 while one of those
+  // analyses is running, or when the target case already has this file.
+  router.post("/depositions/:id/move", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    const body = Move.safeParse(req.body ?? {});
+    if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
+    if (!body.success) return res.status(400).json({ error: "Choose a case and a witness name." });
+    const [source] = await db
+      .select({ d: depositions, org: cases.orgId, witness: witnesses.name })
+      .from(depositions)
+      .innerJoin(cases, eq(cases.id, depositions.caseId))
+      .innerJoin(witnesses, eq(witnesses.id, depositions.witnessId))
+      .where(eq(depositions.id, id.data));
+    if (!source) return res.status(404).json({ error: "Deposition not found." });
+    // The path is scoped to the user's firm; the target case comes in the body, so it is checked here.
+    const [target] = await db.select({ id: cases.id, org: cases.orgId }).from(cases).where(eq(cases.id, body.data.caseId));
+    if (!target || target.org !== source.org) return res.status(404).json({ error: "Case not found." });
+    if (target.id === source.d.caseId && body.data.witness === source.witness) return res.status(400).json({ error: "That is already this deposition's case and witness." });
+
+    const d = source.d;
+    const outcome = await withTransaction(pool, async (tx, client) => {
+      await fileLock(tx, target.id, d.fileSha256);
+      const removed = await removeDepositions(tx, [d.id]);
+      if ("running" in removed) return { running: removed.running } as const;
+      const [already] = await tx.select({ id: depositions.id }).from(depositions).where(and(eq(depositions.caseId, target.id), eq(depositions.fileSha256, d.fileSha256), eq(depositions.parserVersion, PARSER_VERSION)));
+      if (already) throw new AlreadyInCase(already.id);
+      return { id: await insertDeposition(tx, client, boss, { caseId: target.id, witness: body.data.witness, takenOn: d.takenOn, fileSha256: d.fileSha256, storageKey: d.storageKey, originalFilename: d.originalFilename, sourceFormat: d.sourceFormat }) } as const;
+    }).catch((e: unknown) => {
+      if (e instanceof AlreadyInCase) return { already: e.depositionId } as const;
+      throw e;
+    });
+    if ("running" in outcome) return res.status(409).json({ error: "This deposition is being checked right now. Stop the check, or wait for it to finish, then move it.", analyses: outcome.running });
+    if ("already" in outcome) return res.status(409).json({ error: "That case already has this file.", depositionId: outcome.already });
+    return res.status(202).json({ deposition: await depositionView(db, outcome.id) });
   });
 
   router.get("/depositions/:id", async (req, res) => {
@@ -173,7 +238,9 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     if (!row) return res.status(404).json({ error: "Deposition not found." });
     const data = await readUpload(row.storageKey, uploadsDir).catch(() => null);
     if (!data) return res.status(404).json({ error: "The original file isn't available." });
-    return res.type(row.format === "text" ? "text/plain; charset=utf-8" : "application/pdf").set("Content-Disposition", "inline").send(Buffer.from(data));
+    const TYPES = { text: "text/plain", rtf: "application/rtf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", html: "text/html", pdf: "application/pdf" } as const;
+    // A PDF or text opens in the browser; RTF and Word download, to open in the user's own program.
+    return res.type(TYPES[row.format]).set("Content-Disposition", row.format === "rtf" || row.format === "docx" ? "attachment" : "inline").send(Buffer.from(data));
   });
 
   // Retry a failed deposition: back to processing as a new run, with a new job queued in the same

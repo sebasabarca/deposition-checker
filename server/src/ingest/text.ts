@@ -1,7 +1,11 @@
-// Text transcripts: a .txt file or pasted text, read into the same page:line source lines as a PDF.
-// Text with a line-number gutter keeps its own page:line. Text without one is never rejected: its
-// non-empty lines are numbered in order on page 0, which the interface shows as "Line N" and which
-// verification never lets reach the contradictions lane, because it is not an official citation.
+// Text transcripts: a court reporter's ASCII export (.txt, .asc), pasted text, or the text the RTF and
+// DOCX adapters extract, read into the same page:line source lines as a PDF. Text with a line-number
+// gutter keeps its own page:line. Text without one is never rejected: its non-empty lines are numbered
+// in order on page 0, which the interface shows as "Line N" and which verification never lets reach
+// the contradictions lane, because it is not an official citation.
+//
+// Nothing is guessed silently: a page number that isn't printed is inferred and flagged, timestamps
+// beside the line numbers are removed and counted, and every oddity is a warning on the deposition.
 
 import { buildExchangeParts } from "./exchanges";
 import type { LayoutProfile } from "./layout";
@@ -27,23 +31,60 @@ export const TEXT_UNNUMBERED_V1: LayoutProfile = { ...TEXT_BASE, name: "text-unn
 export const UNNUMBERED_PAGE = 0;
 
 const MAX_LINE_NO = 30; // a gutter number above this is a page number standing alone
-const NUMBERED = /^\s*(\d{1,2})(?:\s+(.*?))?\s*$/;
-const PAGE_MARK = /^\s*(?:page\s+(\d{1,5})(?:\s+of\s+\d+)?|(\d{1,5}))\s*$/i;
+const NUMBERED = /^(\s*)(\d{1,2})(?:\s+(.*?))?\s*$/;
+const PAGE_MARK = /^\s*(?:page\s+(\d{1,5})(?:\s+of\s+\d+)?|-\s*(\d{1,5})\s*-|(\d{1,5}))\s*$/i;
 const QA = /^\s*[QA](?:[.:]|\s|$)/;
 const NUMBERED_SHARE = 0.6;
+// A bare number this many columns away from the line-number gutter is a page number, not a line.
+const PAGE_NUMBER_OFFSET = 4;
+// Realtime and video-synced exports print a clock time (with seconds) beside each line number.
+const TIME = String.raw`\d{1,2}:\d{2}:\d{2}(?:\s?[AaPp]\.?[Mm]\.?)?`;
+const LEADING_TIME = new RegExp(String.raw`^\s*${TIME}\s*(?=\d{1,2}(?:\s|$))`);
+const AFTER_NUMBER_TIME = new RegExp(String.raw`^${TIME}(?:\s+|$)`);
+const TRAILING_TIME = new RegExp(String.raw`\s{2,}${TIME}\s*$`);
 
-// Plain UTF-8 with no NUL bytes. A PDF is checked first, so this only decides text versus junk.
-export function isText(data: Uint8Array): boolean {
-  if (data.length === 0 || data.subarray(0, 65536).includes(0)) return false;
+export type TextEncoding = "utf-8" | "utf-16le" | "utf-16be" | "windows-1252";
+
+// Text in one of the encodings court-reporter software writes: UTF-8 (or UTF-16 with its byte-order
+// mark), else Windows-1252, the usual ANSI code page of older CAT software. Null for binary data:
+// NUL bytes without a UTF-16 mark, or too many control characters to be a transcript.
+export function decodeText(data: Uint8Array): { text: string; encoding: TextEncoding } | null {
+  if (data.length === 0) return null;
+  const bom = data[0] === 0xff && data[1] === 0xfe ? "utf-16le" : data[0] === 0xfe && data[1] === 0xff ? "utf-16be" : null;
+  if (bom) {
+    if (data.length % 2 !== 0) return null; // UTF-16 comes in pairs of bytes; an odd length is damaged or not text
+    try {
+      return { text: new TextDecoder(bom, { fatal: true }).decode(data.subarray(2)), encoding: bom };
+    } catch {
+      return null;
+    }
+  }
+  const head = data.subarray(0, 65536);
+  if (head.includes(0)) return null;
+  // Tab, line feed, form feed and carriage return are text; other C0 controls in quantity mean binary.
+  let controls = 0;
+  for (const b of head) if (b < 0x20 && b !== 9 && b !== 10 && b !== 12 && b !== 13) controls++;
+  if (controls > head.length * 0.01) return null;
   try {
-    new TextDecoder("utf-8", { fatal: true }).decode(data);
-    return true;
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(data), encoding: "utf-8" };
   } catch {
-    return false;
+    return { text: new TextDecoder("windows-1252").decode(data), encoding: "windows-1252" };
   }
 }
 
-const line = (page: number, pdfPage: number, lineNo: number, text: string): SourceLine => ({
+export const isText = (data: Uint8Array): boolean => decodeText(data) !== null;
+
+// Whether most rows start with a line number: a numbered transcript, even when its layout isn't one we know.
+export function looksNumbered(rows: string[]): boolean {
+  const content = rows.map((r) => r.replaceAll("\f", "")).filter((r) => r.trim());
+  const numbered = content.filter((r) => {
+    const m = r.match(NUMBERED);
+    return m !== null && Number(m[2]) >= 1 && Number(m[2]) <= MAX_LINE_NO;
+  });
+  return content.length > 0 && numbered.length / content.length >= NUMBERED_SHARE;
+}
+
+export const textLine = (page: number, pdfPage: number, lineNo: number, text: string): SourceLine => ({
   pdfPage,
   printedPage: page,
   lineNo,
@@ -52,49 +93,108 @@ const line = (page: number, pdfPage: number, lineNo: number, text: string): Sour
   rawText: text.trim(),
 });
 
-export function readTextPages(text: string): { layout: LayoutProfile; pages: PageExtraction[] } {
-  const rows = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").split("\n");
-  const content = rows.filter((r) => r.trim());
-  const numberedRows = content.filter((r) => {
+export type TextPages = { layout: LayoutProfile; pages: PageExtraction[]; inferredPages: number[]; warnings: string[] };
+
+// One row with its timestamps removed, and whether there were any.
+function untimed(row: string): { row: string; timed: boolean } {
+  const lead = row.replace(LEADING_TIME, (m) => " ".repeat(m.length));
+  const trail = lead.replace(TRAILING_TIME, "");
+  return { row: trail, timed: trail !== row };
+}
+
+// The column where line numbers end, read from the rows that have text after their number. Line
+// numbers are right-aligned in a fixed gutter; a page number sits elsewhere (usually far right).
+function gutterEnd(rows: string[]): number | null {
+  const counts = new Map<number, number>();
+  for (const r of rows) {
     const m = r.match(NUMBERED);
-    return m !== null && Number(m[1]) >= 1 && Number(m[1]) <= MAX_LINE_NO;
+    if (m && m[3] && Number(m[2]) <= MAX_LINE_NO) {
+      const end = m[1].length + m[2].length;
+      counts.set(end, (counts.get(end) ?? 0) + 1);
+    }
+  }
+  let best: number | null = null;
+  for (const [end, n] of counts) if (best === null || n > counts.get(best)!) best = end;
+  return best;
+}
+
+const listed = (ns: number[]) => (ns.length > 8 ? `${ns.slice(0, 8).join(", ")} and ${ns.length - 8} more` : ns.join(", "));
+
+export function readTextPages(text: string): TextPages {
+  const warnings: string[] = [];
+  let timedRows = 0;
+  const rows = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").split("\n").map((r) => {
+    const t = untimed(r.replaceAll("\t", "    "));
+    if (t.timed) timedRows++;
+    return t.row;
   });
-  if (content.length === 0 || numberedRows.length / content.length < NUMBERED_SHARE) {
-    const lines = content.map((r, i) => line(UNNUMBERED_PAGE, 1, i + 1, r));
-    return { layout: TEXT_UNNUMBERED_V1, pages: lines.length ? [{ pdfPage: 1, hasText: true, printedPage: UNNUMBERED_PAGE, footer: [], lines, unnumbered: [] }] : [] };
+  if (!looksNumbered(rows)) {
+    const content = rows.filter((r) => r.replaceAll("\f", "").trim());
+    const lines = content.map((r, i) => textLine(UNNUMBERED_PAGE, 1, i + 1, r.replaceAll("\f", "")));
+    if (lines.length) warnings.push("This text has no page and line numbers, so its lines are numbered in order and can't be cited by page:line. Ask the court reporter for the plain-text (.txt) or PDF transcript, which has them.");
+    return { layout: TEXT_UNNUMBERED_V1, pages: lines.length ? [{ pdfPage: 1, hasText: true, printedPage: UNNUMBERED_PAGE, footer: [], lines, unnumbered: [] }] : [], inferredPages: [], warnings };
   }
 
-  // A page starts where the gutter restarts (or a form feed or "Page N" row says so); its number is
-  // the one printed above it when there is one, otherwise one more than the last.
+  // A page starts where the gutter restarts (or a form feed or page-number row says so); its number is
+  // the one printed above it when there is one, otherwise one more than the last, flagged as inferred.
+  const gutter = gutterEnd(rows.map((r) => r.replaceAll("\f", "")));
   const pages: PageExtraction[] = [];
+  const inferred: number[] = [];
   let pending: number | null = null;
+  let printedMark = false; // whether `pending` was printed, rather than counted on from a form feed
   let current: PageExtraction | null = null;
   const open = () => {
     const printed: number = pending ?? (current?.printedPage ?? 0) + 1;
     current = { pdfPage: pages.length + 1, hasText: true, printedPage: printed, footer: [], lines: [], unnumbered: [] };
+    if (!printedMark) inferred.push(current.pdfPage);
     pages.push(current);
     pending = null;
+    printedMark = false;
   };
   for (const raw of rows) {
-    if (raw.includes("\f") && current) pending = pending ?? (current as PageExtraction).printedPage! + 1;
+    if (raw.includes("\f") && current && pending === null) pending = (current as PageExtraction).printedPage! + 1;
     const row = raw.replaceAll("\f", "");
     const m = row.match(NUMBERED);
-    const n = m ? Number(m[1]) : NaN;
-    if (m && n >= 1 && n <= MAX_LINE_NO) {
+    const n = m ? Number(m[2]) : NaN;
+    const awayFromGutter = m !== null && !m[3] && gutter !== null && Math.abs(m[1].length + m[2].length - gutter) > PAGE_NUMBER_OFFSET;
+    if (m && n >= 1 && n <= MAX_LINE_NO && !awayFromGutter) {
       const last = (current as PageExtraction | null)?.lines.at(-1);
       if (!current || pending !== null || (last && n <= last.lineNo)) open();
-      current!.lines.push(line(current!.printedPage!, current!.pdfPage, n, m[2] ?? ""));
+      const body = (m[3] ?? "").replace(AFTER_NUMBER_TIME, () => {
+        timedRows++;
+        return "";
+      });
+      current!.lines.push(textLine(current!.printedPage!, current!.pdfPage, n, body));
       continue;
     }
     const mark = row.match(PAGE_MARK);
-    if (mark) pending = Number(mark[1] ?? mark[2]);
+    if (mark) {
+      pending = Number(mark[1] ?? mark[2] ?? mark[3]);
+      printedMark = true;
+    }
     else if (row.trim() && current) (current as PageExtraction).unnumbered.push(row.trim());
   }
-  return { layout: TEXT_NUMBERED_V1, pages };
+
+  // What a reader should know before citing these pages.
+  if (inferred.length) warnings.push(`Page ${listed(inferred.map((p) => pages[p - 1].printedPage!))} ${inferred.length === 1 ? "has" : "have"} no printed page number; the number was inferred from the page before. Verify it against the certified transcript.`);
+  const gaps = pages.filter((p) => p.lines.some((l, i) => i > 0 && l.lineNo !== p.lines[i - 1].lineNo + 1) || (p.lines[0] && p.lines[0].lineNo !== 1));
+  if (gaps.length) warnings.push(`Line numbers skip on page ${listed(gaps.map((p) => p.printedPage!))}. Lines that are missing from the file can't be cited.`);
+  const backwards = pages.filter((p, i) => i > 0 && p.printedPage! <= pages[i - 1].printedPage!);
+  if (backwards.length) warnings.push(`Page numbers don't increase at page ${listed(backwards.map((p) => p.printedPage!))}. Check that the file is one transcript, in order.`);
+  const loose = pages.flatMap((p) => p.unnumbered);
+  if (loose.length) warnings.push(`${loose.length} ${loose.length === 1 ? "row has" : "rows have"} no line number (headers, footers or text between lines, such as "${loose[0].slice(0, 60)}") and ${loose.length === 1 ? "is" : "are"} kept out of the testimony.`);
+  if (timedRows) warnings.push(`Timestamps beside the line numbers were removed from ${timedRows} ${timedRows === 1 ? "line" : "lines"}; the testimony text is unchanged.`);
+  return { layout: TEXT_NUMBERED_V1, pages, inferredPages: inferred, warnings };
 }
 
-export function readText(data: Uint8Array, witnessSurname?: string) {
-  const { layout, pages } = readTextPages(new TextDecoder("utf-8").decode(data));
+// Reads extracted transcript text. `notes` are the extracting adapter's own warnings (encoding,
+// unreadable parts of an RTF or DOCX), shown with the parser's.
+export function readTextTranscript(text: string, witnessSurname?: string, notes: string[] = []) {
+  return transcriptFromPages(readTextPages(text), witnessSurname, notes);
+}
+
+// Validation and exchanges for pages read by printed page and line (text, or a PDF's text layer).
+export function transcriptFromPages({ layout, pages, inferredPages, warnings }: TextPages, witnessSurname?: string, notes: string[] = []) {
   const lineCount = pages.reduce((n, p) => n + p.lines.length, 0);
   const validation: Validation = {
     status: lineCount > 0 ? "ready" : "unsupported",
@@ -104,9 +204,18 @@ export function readText(data: Uint8Array, witnessSurname?: string) {
     needsOcrPages: [],
     blankPages: [],
     failedPages: [],
-    reasons: lineCount > 0 ? [] : ["the text is empty"],
+    reasons: lineCount > 0 ? [] : ["the file has no transcript text"],
     pages: pages.map((p) => ({ pdfPage: p.pdfPage, printedPage: p.printedPage, status: "text", lineCount: p.lines.length, failures: [] })),
+    warnings: [...notes, ...warnings],
+    inferredPages,
   };
   const exchanges = validation.status === "ready" ? buildExchangeParts(pages.flatMap((p) => p.lines), layout, witnessSurname) : null;
   return { pdf: { pageCount: pages.length, pages }, validation, exchanges };
+}
+
+export function readText(data: Uint8Array, witnessSurname?: string) {
+  const decoded = decodeText(data);
+  if (!decoded) return readTextTranscript("", witnessSurname, ["The file isn't readable as text."]);
+  const notes = decoded.encoding === "windows-1252" ? ["This file uses an older text encoding, so check accented letters and quotation marks against the certified transcript."] : [];
+  return readTextTranscript(decoded.text, witnessSurname, notes);
 }

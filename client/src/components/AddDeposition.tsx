@@ -1,8 +1,10 @@
-// Add a deposition from anywhere: a PDF, a .txt file, or text pasted in. Text with page and line
-// numbers keeps them; text without is still accepted and cited by its line in the file.
+// Add depositions from anywhere: one or more files (PDF, or a court reporter's text, RTF or Word
+// export) into one drop zone, or text pasted in. Case and witness are shared by the batch; each file
+// may carry its date, and a date left empty is looked for on the transcript's cover and confirmed in
+// the case before any check.
 
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { ClipboardPaste, FileText, FileType2, UploadCloud } from "lucide-react";
+import { ClipboardPaste, FileText, UploadCloud, X } from "lucide-react";
 import { api } from "../lib/api";
 import { describeText } from "../lib/textTranscript";
 import { href } from "../lib/router";
@@ -12,17 +14,25 @@ import { Alert, Button, cx, Dialog, Field, fieldClass, inputClass, selectClass }
 import { DateInput } from "./DateInput";
 
 const MAX_UPLOAD_MB = 50; // server/src/api/depositions.ts
-type Source = "pdf" | "txt" | "paste";
-const SOURCES: { id: Source; label: string; icon: typeof FileText; note: string }[] = [
-  { id: "pdf", label: "PDF", icon: FileType2, note: "A transcript PDF, typeset or scanned." },
-  { id: "txt", label: "Text file", icon: FileText, note: "A .txt transcript, as the court reporter sent it." },
-  { id: "paste", label: "Paste text", icon: ClipboardPaste, note: "Copy the transcript from anywhere and paste it here." },
-];
 const NEW_CASE = "new";
+const PLAIN = /\.(txt|text|asc)$/i; // read here to preview its shape
+const SUPPORTED = /\.(pdf|txt|text|asc|rtf|docx)$/i;
+const PROPRIETARY = /\.(ptx|ptz|lef|ptf)$/i; // server/src/ingest/formats.ts
+const ACCEPT = "application/pdf,.pdf,text/plain,.txt,.asc,.rtf,application/rtf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+type Item = { key: string; file: File; takenOn: string; shape: ReturnType<typeof describeText> | null; state: "waiting" | "sending" | "added" | "failed"; error?: string };
+
+// Why a file can't be sent, in plain words; null when it can.
+function problemOf(f: File): string | null {
+  if (PROPRIETARY.test(f.name)) return "E-Transcript (.ptx, .ptz), LiveNote (.lef) and .ptf files are proprietary. Export the transcript as plain text (.txt) from the free E-Transcript viewer, or ask the court reporter for the text or PDF transcript.";
+  if (!SUPPORTED.test(f.name) && f.type !== "application/pdf" && !f.type.startsWith("text/")) return "Not a transcript file Veridict can read. Use a PDF, .txt, .asc, .rtf or .docx file.";
+  if (f.size > MAX_UPLOAD_MB * 1024 * 1024) return `Larger than ${MAX_UPLOAD_MB} MB.`;
+  return null;
+}
 
 export function AddDeposition({ open, caseId, onClose }: { open: boolean; caseId?: number; onClose: () => void }) {
   return (
-    <Dialog open={open} onClose={onClose} title="Add deposition" description="One session of one witness. Veridict reads it into page and line references before it can be checked." size="xl">
+    <Dialog open={open} onClose={onClose} title="Add depositions" description="One or more sessions of one witness. Veridict reads each into page and line references before they can be checked." size="xl">
       <Form presetCase={caseId} onClose={onClose} />
     </Dialog>
   );
@@ -35,11 +45,10 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
   const [newCase, setNewCase] = useState("");
   const [witnesses, setWitnesses] = useState<string[]>([]);
   const [witness, setWitness] = useState("");
-  const [takenOn, setTakenOn] = useState("");
-  const [source, setSource] = useState<Source>("pdf");
-  const [file, setFile] = useState<File | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
+  const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState("");
-  const [fileText, setFileText] = useState<string | null>(null);
+  const [pastedDate, setPastedDate] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,27 +67,20 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
     }).catch(() => setWitnesses([]));
   }, [caseChoice]);
 
-  const pickFile = (f: File | null) => {
+  const update = (key: string, change: Partial<Item>) => setItems((all) => all.map((i) => (i.key === key ? { ...i, ...change } : i)));
+  const addFiles = (files: File[]) => {
     setError(null);
-    setFile(f);
-    setFileText(null);
-    if (f && source === "txt") f.text().then(setFileText).catch(() => setFileText(null));
+    const added = files.map((file): Item => ({ key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`, file, takenOn: "", shape: null, state: "waiting" }));
+    setItems((all) => [...all.filter((i) => i.state !== "added"), ...added]);
+    for (const item of added) if (PLAIN.test(item.file.name)) item.file.text().then((t) => update(item.key, { shape: describeText(t) })).catch(() => undefined);
   };
-  const switchSource = (s: Source) => {
-    setSource(s);
-    setFile(null);
-    setFileText(null);
-    setError(null);
-  };
+  const remove = (key: string) => setItems((all) => all.filter((i) => i.key !== key));
 
-  const text = source === "paste" ? pasted : source === "txt" ? fileText : null;
-  const shape = useMemo(() => (text ? describeText(text) : null), [text]);
-  const tooBig = !!file && file.size > MAX_UPLOAD_MB * 1024 * 1024;
-  const wrongType = !!file && (source === "pdf" ? !/\.pdf$/i.test(file.name) && file.type !== "application/pdf" : !/\.(txt|text)$/i.test(file.name) && !file.type.startsWith("text/"));
-  const hasSource = source === "paste" ? pasted.trim().length > 0 : !!file && !tooBig && !wrongType;
+  const pastedShape = useMemo(() => (pasting && pasted.trim() ? describeText(pasted) : null), [pasting, pasted]);
+  const sendable = pasting ? (pasted.trim() ? 1 : 0) : items.filter((i) => i.state !== "added" && !problemOf(i.file)).length;
   const caseReady = caseChoice === NEW_CASE ? newCase.trim().length > 0 : /^\d+$/.test(caseChoice);
   const verified = useUser()?.emailVerified ?? false;
-  const ready = verified && hasSource && caseReady && witness.trim().length > 0 && !busy;
+  const ready = verified && sendable > 0 && caseReady && witness.trim().length > 0 && !busy;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -87,12 +89,32 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
     setError(null);
     try {
       const target = caseChoice === NEW_CASE ? (await api.createCase(newCase.trim())).case.id : Number(caseChoice);
-      const body = source === "paste"
-        ? new File([pasted], `Pasted transcript, ${witness.trim()}${takenOn ? ` ${takenOn}` : ""}.txt`, { type: "text/plain" })
-        : file!;
-      const { deposition } = await api.upload(target, body, witness.trim(), takenOn || undefined);
-      onClose();
-      window.location.hash = href.deposition(deposition.id);
+      if (caseChoice === NEW_CASE) setCaseChoice(String(target)); // a retry adds to the case just made
+      const name = witness.trim();
+      if (pasting) {
+        const body = new File([pasted], `Pasted transcript, ${name}${pastedDate ? ` ${pastedDate}` : ""}.txt`, { type: "text/plain" });
+        const { deposition } = await api.upload(target, body, name, pastedDate || undefined);
+        onClose();
+        window.location.hash = href.deposition(deposition.id);
+        return;
+      }
+      // One at a time, so a failure is reported against its file and the rest still go through.
+      const queue = items.filter((i) => i.state !== "added" && !problemOf(i.file));
+      const added: number[] = [];
+      for (const item of queue) {
+        update(item.key, { state: "sending", error: undefined });
+        try {
+          const { deposition } = await api.upload(target, item.file, name, item.takenOn || undefined);
+          added.push(deposition.id);
+          update(item.key, { state: "added" });
+        } catch (err) {
+          update(item.key, { state: "failed", error: (err as Error).message });
+        }
+      }
+      if (added.length === queue.length) {
+        onClose();
+        window.location.hash = added.length === 1 ? href.deposition(added[0]) : href.case(target);
+      } else setBusy(false);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -104,7 +126,7 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
       <div className="grid min-h-0 flex-1 overflow-y-auto md:grid-cols-[17rem_1fr]">
         <div className="space-y-4 border-rule bg-well px-6 py-5 max-md:border-b md:border-r">
           <Field label="Case" htmlFor={`${ids}-case`}>
-            <select id={`${ids}-case`} className={cx(selectClass, "w-full")} value={caseChoice} onChange={(e) => setCaseChoice(e.target.value)} disabled={!cases}>
+            <select id={`${ids}-case`} className={cx(selectClass, "w-full")} value={caseChoice} onChange={(e) => setCaseChoice(e.target.value)} disabled={!cases || busy}>
               {!cases && <option>Loading cases…</option>}
               {cases?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               <option value={NEW_CASE}>New case…</option>
@@ -115,46 +137,48 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
               <input id={`${ids}-newcase`} className={inputClass} value={newCase} onChange={(e) => setNewCase(e.target.value)} maxLength={200} placeholder="Webb v. Harlow Logistics" />
             </Field>
           )}
-          <Field label="Witness" htmlFor={`${ids}-witness`} hint={witnesses.length ? "Pick a witness in this case or type a new name." : "The person deposed, as you want them named in citations."}>
-            <input id={`${ids}-witness`} autoFocus className={inputClass} list={`${ids}-witnesses`} value={witness} onChange={(e) => setWitness(e.target.value)} required maxLength={200} placeholder="Marcus Webb" />
+          <Field label="Witness" htmlFor={`${ids}-witness`} hint={`${witnesses.length ? "Pick a witness in this case or type a new name. " : ""}Every file you add here is a session of this witness.`}>
+            <input id={`${ids}-witness`} autoFocus className={inputClass} list={`${ids}-witnesses`} value={witness} onChange={(e) => setWitness(e.target.value)} required maxLength={200} placeholder="Marcus Webb" disabled={busy} />
             <datalist id={`${ids}-witnesses`}>{witnesses.map((w) => <option key={w} value={w} />)}</datalist>
           </Field>
-          <Field label="Date taken" htmlFor={`${ids}-date`} hint="Used to order the sessions and in citations.">
-            <DateInput id={`${ids}-date`} value={takenOn} onChange={setTakenOn} />
-          </Field>
+          <p className="text-xs leading-5 text-muted">Leave a date empty and Veridict looks for it on the transcript's cover. You confirm it in the case before running a check. You can change the date, witness or case later from the deposition's page.</p>
         </div>
 
         <div className="min-w-0 space-y-4 px-6 py-5">
-          <div role="radiogroup" aria-label="Source" className="grid grid-cols-3 gap-1 rounded-lg bg-rule p-1">
-            {SOURCES.map((s) => (
-              <button key={s.id} type="button" role="radio" aria-checked={source === s.id} onClick={() => switchSource(s.id)} className={cx("flex h-9 items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors", source === s.id ? "bg-sheet text-ink ring-1 ring-line" : "text-muted hover:text-ink")}>
-                <s.icon aria-hidden className="size-4" strokeWidth={1.75} />
-                <span className="max-sm:sr-only">{s.label}</span>
-              </button>
-            ))}
-          </div>
-          <p className="text-sm text-muted">{SOURCES.find((s) => s.id === source)!.note}</p>
-
-          {source === "paste" ? (
-            <div>
-              <label htmlFor={`${ids}-paste`} className="sr-only">Transcript text</label>
+          {pasting ? (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor={`${ids}-paste`} className="text-sm font-medium">Transcript text</label>
+                <button type="button" onClick={() => setPasting(false)} className="text-sm font-medium text-info hover:underline">Upload files instead</button>
+              </div>
               <textarea
                 id={`${ids}-paste`}
                 value={pasted}
                 onChange={(e) => setPasted(e.target.value)}
-                rows={14}
+                rows={12}
                 spellCheck={false}
                 placeholder={"12   Q.  Where were you on the morning of June 4th?\n13   A.  At the depot on Kerr Street, from about six."}
                 className={cx(fieldClass, "w-full resize-y py-2.5 font-mono text-[13px] leading-6 whitespace-pre")}
               />
-            </div>
+              <Field label="Date taken" htmlFor={`${ids}-pasted-date`} hint="Optional. Used to order the sessions and in citations.">
+                <DateInput id={`${ids}-pasted-date`} value={pastedDate} onChange={setPastedDate} />
+              </Field>
+              {pastedShape && <TextShape shape={pastedShape} />}
+            </>
           ) : (
-            <DropZone source={source} file={file} onFile={pickFile} />
+            <>
+              <DropZone onFiles={addFiles} compact={items.length > 0} disabled={busy} />
+              {items.length > 0 && (
+                <ul className="divide-y divide-rule rounded-lg border border-line" aria-label="Files to add">
+                  {items.map((item) => <FileRow key={item.key} item={item} disabled={busy} onDate={(d) => update(item.key, { takenOn: d })} onRemove={() => remove(item.key)} />)}
+                </ul>
+              )}
+              <button type="button" onClick={() => setPasting(true)} disabled={busy} className="flex items-center gap-1.5 text-sm font-medium text-info hover:underline disabled:opacity-50">
+                <ClipboardPaste aria-hidden className="size-4" />Paste the transcript text instead
+              </button>
+            </>
           )}
 
-          {shape && <TextShape shape={shape} />}
-          {tooBig && <Alert tone="warn">This file is larger than {MAX_UPLOAD_MB} MB.</Alert>}
-          {wrongType && <Alert tone="warn">{source === "pdf" ? "This isn't a PDF. Choose “Text file” for a .txt transcript." : "This isn't a .txt file. Choose “PDF” for a PDF."}</Alert>}
           {!verified && <Alert tone="warn" title="Verify your email first">Open the link we emailed you, then add depositions. You can send a new link from the banner at the top of the page.</Alert>}
           {error && <Alert>{error}</Alert>}
         </div>
@@ -164,42 +188,70 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
         <p className="text-xs text-faint">The original is stored exactly as uploaded. Nothing is sent to a model until you start a check.</p>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={!ready}>{busy ? "Adding…" : "Add deposition"}</Button>
+          <Button type="submit" disabled={!ready}>{busy ? "Adding…" : sendable > 1 ? `Add ${sendable} depositions` : "Add deposition"}</Button>
         </div>
       </div>
     </form>
   );
 }
 
-function DropZone({ source, file, onFile }: { source: Source; file: File | null; onFile: (f: File | null) => void }) {
+function FileRow({ item, disabled, onDate, onRemove }: { item: Item; disabled: boolean; onDate: (iso: string) => void; onRemove: () => void }) {
+  const id = useId();
+  const problem = problemOf(item.file);
+  const size = item.file.size / 1024 / 1024;
+  return (
+    <li className="px-4 py-3">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        <FileText aria-hidden className="mt-0.5 size-4 flex-none text-slate" strokeWidth={1.75} />
+        <div className="min-w-0 flex-1 basis-48">
+          <p className="truncate font-medium" title={item.file.name}>{item.file.name}</p>
+          <p className="text-xs text-muted tabular-nums">
+            {size.toFixed(size < 1 ? 2 : 1)} MB
+            {item.shape && item.shape.lines > 0 && (item.shape.numbered ? " · page and line numbers found" : " · no page and line numbers: cited by line")}
+            {item.state === "sending" && " · sending…"}
+            {item.state === "added" && " · added"}
+          </p>
+        </div>
+        {!problem && item.state !== "added" && (
+          <div className="flex flex-none items-center gap-2">
+            <label htmlFor={id} className="text-xs text-muted">Date taken</label>
+            <DateInput id={id} value={item.takenOn} onChange={onDate} />
+          </div>
+        )}
+        {item.state !== "sending" && item.state !== "added" && (
+          <button type="button" onClick={onRemove} disabled={disabled} aria-label={`Remove ${item.file.name}`} className="flex size-7 flex-none items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink disabled:opacity-50">
+            <X aria-hidden className="size-4" />
+          </button>
+        )}
+      </div>
+      {problem && <p className="mt-2 text-sm text-context">{problem}</p>}
+      {item.error && <p className="mt-2 text-sm text-conflict">{item.error}</p>}
+    </li>
+  );
+}
+
+function DropZone({ onFiles, compact, disabled }: { onFiles: (files: File[]) => void; compact: boolean; disabled: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const drop = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
-    onFile(e.dataTransfer.files?.[0] ?? null);
+    if (!disabled) onFiles([...(e.dataTransfer.files ?? [])]);
   };
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={drop}
-      className={cx("flex min-h-56 flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-8 text-center transition-colors", over ? "border-slate bg-info-bg" : "border-control bg-well")}
+      className={cx("flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 text-center transition-colors", compact ? "py-5" : "min-h-56 py-8", over ? "border-slate bg-info-bg" : "border-control bg-well")}
     >
-      <UploadCloud aria-hidden className="size-7 text-slate" strokeWidth={1.5} />
-      {file ? (
-        <div>
-          <p className="font-medium break-all">{file.name}</p>
-          <p className="mt-0.5 text-sm text-muted tabular-nums">{(file.size / 1024 / 1024).toFixed(file.size < 1024 * 1024 ? 2 : 1)} MB</p>
-        </div>
-      ) : (
-        <div>
-          <p className="font-medium">Drop the {source === "pdf" ? "PDF" : ".txt file"} here</p>
-          <p className="mt-0.5 text-sm text-muted">{source === "pdf" ? `Up to ${MAX_UPLOAD_MB} MB. Scans are read by OCR.` : "Plain text, any length."}</p>
-        </div>
-      )}
-      <Button variant="secondary" onClick={() => input.current?.click()}>{file ? "Choose another file" : "Choose file"}</Button>
-      <input ref={input} type="file" className="sr-only" tabIndex={-1} accept={source === "pdf" ? "application/pdf,.pdf" : "text/plain,.txt"} onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
+      {!compact && <UploadCloud aria-hidden className="size-7 text-slate" strokeWidth={1.5} />}
+      <div>
+        <p className="font-medium">{compact ? "Drop more files here" : "Drop deposition files here"}</p>
+        <p className="mt-0.5 text-sm text-muted">PDF (typed or scanned), .txt, .asc, .rtf or .docx. Up to {MAX_UPLOAD_MB} MB each.</p>
+      </div>
+      <Button variant="secondary" disabled={disabled} onClick={() => input.current?.click()}>{compact ? "Choose more files" : "Choose files"}</Button>
+      <input ref={input} type="file" multiple className="sr-only" tabIndex={-1} accept={ACCEPT} onChange={(e) => { onFiles([...(e.target.files ?? [])]); e.target.value = ""; }} />
     </div>
   );
 }

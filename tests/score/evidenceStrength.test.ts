@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { evidenceStrength, EVIDENCE_STRENGTH_VERSION, type StrengthCheck } from "../../server/src/score";
 import type { DirectSide, Lane } from "../../server/src/verify";
 
-const side = (over: Partial<DirectSide> = {}): DirectSide => ({ depositionId: 1, citation: "1:01", resolved: true, quote: "exact", matchScore: 1, speaker: "witness", level: "clear", rule: "", qualifier: null, noRecall: false, reportedSpeech: false, ocr: { read: false, minConfidence: null, lowLines: [] }, lineIds: [1], pdfPages: [1], ...over });
+const side = (over: Partial<DirectSide> = {}): DirectSide => ({ depositionId: 1, citation: "1:01", resolved: true, quote: "exact", matchScore: 1, speaker: "witness", level: "clear", rule: "", qualifier: null, noRecall: false, reportedSpeech: false, ocr: { read: false, minConfidence: null, lowLines: [] }, lineIds: [1], pdfPages: [1], physicalLines: false, ...over });
 const score = (over: { classification?: string; comparable?: string; lane?: Lane; a?: Partial<DirectSide>; b?: Partial<DirectSide> } = {}) => evidenceStrength({ classification: "direct_contradiction", comparable: "yes", lane: "contradictions", ...over, a: side(over.a), b: side(over.b) });
 const points = (checks: StrengthCheck[]) => checks.map((c) => c.points);
 

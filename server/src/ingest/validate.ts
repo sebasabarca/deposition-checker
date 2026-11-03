@@ -4,6 +4,7 @@
 
 import type { LayoutProfile } from "./layout";
 import type { PageExtraction } from "./pdf";
+import type { DateFound } from "./sessionDate";
 
 export type PageStatus = "text" | "blank" | "needs_ocr" | "failed";
 export type DepositionStatus = "ready" | "needs_review" | "unsupported";
@@ -42,6 +43,12 @@ export type Validation = {
   // Present when the text came from OCR: this text is a reading of a scan, not the file's own text.
   ocr?: { engine: string; meanConfidence: number | null; lowConfidenceWords: number; annotations: { pdfPage: number; text: string }[]; noiseWords: number; coverPages: number[]; inferredPages: number[]; markersCorrected: number; pipesCorrected: number };
   pages: PageValidation[];
+  // Text formats: what a reader should know before citing (inferred page numbers, skipped lines,
+  // removed timestamps, the encoding read), and the PDF-page indexes whose page number was inferred.
+  warnings?: string[];
+  inferredPages?: number[];
+  // The session date the transcript states on its cover, offered to the user to confirm (sessionDate.ts).
+  dateFound?: DateFound;
 };
 
 // Below this a page is unreliable as evidence. Start of a measured range, to revisit with more scans.
@@ -131,7 +138,7 @@ export function validateDeposition(pages: PageExtraction[], layout: LayoutProfil
 
   const reasons: string[] = [];
   if (counts.needs_ocr > 0) reasons.push(`${counts.needs_ocr} of ${results.length} pages have no readable text`);
-  if (counts.failed > 0) reasons.push(`${counts.failed} of ${results.length} pages do not match layout ${layout.name}`);
+  if (counts.failed > 0) reasons.push(`${counts.failed} of ${results.length} pages couldn't be read as transcript pages: their layout isn't one Veridict recognizes`);
   if (results.length === 0) reasons.push("the PDF has no pages");
 
   const status: DepositionStatus =

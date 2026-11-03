@@ -13,7 +13,10 @@ import { Alert, Button, cx, Dialog, ModelMark, OcrMark, TestimonyMark } from "./
 
 export function Passage({ label, side }: { label: string; side: EvidenceSide }) {
   const ocr = ocrPassage(side);
-  const page = side.lines[0] ? Number(side.lines[0].ref.split(":")[0]) : null; // 0 for unnumbered text
+  // The cited lines (or the whole exchange), to open the transcript at and highlight there.
+  const cited = side.lines.some((l) => l.highlighted) ? side.lines.filter((l) => l.highlighted) : side.lines;
+  const page = cited[0] ? Number(cited[0].ref.split(":")[0]) : null; // 0 for unnumbered text
+  const mark = cited.length ? `${cited[0].ref}-${cited.at(-1)!.ref}` : undefined;
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-sheet">
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 border-b border-rule px-4 py-3">
@@ -28,7 +31,7 @@ export function Passage({ label, side }: { label: string; side: EvidenceSide }) 
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-rule px-4 py-2 text-xs text-faint">
         <span className="truncate">{side.deposition.witness} · {side.deposition.originalFilename ?? `Deposition #${side.deposition.id}`}</span>
-        {page !== null && <a href={href.deposition(side.deposition.id, { page })} className="flex-none font-medium text-info hover:underline">Read in full</a>}
+        {page !== null && <a href={href.deposition(side.deposition.id, { page, mark })} className="flex-none font-medium text-info hover:underline">Read in full</a>}
       </footer>
     </section>
   );
@@ -38,8 +41,18 @@ export function PassageLines({ side }: { side: EvidenceSide }) {
   return (
     <>
       <OcrNotice side={side} />
+      <PhysicalNotice side={side} />
       <LineList side={side} />
     </>
+  );
+}
+
+function PhysicalNotice({ side }: { side: EvidenceSide }) {
+  if (!side.deposition.physicalLines) return null;
+  return (
+    <p className="border-b border-context/15 bg-context-bg px-4 py-2.5 text-sm text-context">
+      This PDF has no printed line numbers, so Veridict counted the lines on each page. These counts are not the court reporter's official line numbers: cite the certified transcript.
+    </p>
   );
 }
 
@@ -54,8 +67,8 @@ function OcrNotice({ side }: { side: EvidenceSide }) {
     <>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-context/15 bg-context-bg px-4 py-2.5 text-sm text-context">
         <p className="min-w-0 flex-1 basis-56">
-          Read from a scan by OCR. Check the scan before quoting.
-          {ocr.lowLines > 0 && ` ${low} below ${LOW_OCR_CONFIDENCE}% confidence.`}
+          This is a scanned copy: Veridict read the words from a picture of each page, and a word can be misread now and then. Compare with the page image before quoting.
+          {ocr.lowLines > 0 && ` ${low} hard to read (under ${LOW_OCR_CONFIDENCE}% reading accuracy).`}
           {ocr.inferredPages.length > 0 && <strong className="block font-semibold">Page {ocr.inferredPages.join(", ")} inferred: verify the number against the scan before citing.</strong>}
         </p>
         <Button variant="secondary" className="h-7" onClick={() => setOpen(true)}><FileSearch aria-hidden className="size-4" />View scan</Button>
@@ -95,7 +108,7 @@ export function TranscriptRows({ lines, muted }: { lines: (Pick<EvidenceLine, "i
   return (
     <ol>
       {lines.map((l) => (
-        <li key={l.id} className="grid grid-cols-[3.6rem_1fr_auto] items-start">
+        <li key={l.id} data-highlighted={l.highlighted || undefined} className="grid scroll-mt-24 grid-cols-[3.6rem_1fr_auto] items-start">
           <span className={cx("pr-2.5 text-right text-[12px] select-none tabular-nums", l.highlighted ? "font-bold text-mark-ink" : "text-faint")}>{displayRef(l.ref).replace("Line ", "")}</span>
           <span className={cx("min-w-0 border-l-[3px] border-double border-margin pr-4 pl-4 break-words whitespace-pre-wrap", l.highlighted && "bg-mark text-ink [box-decoration-break:clone]", muted && !l.highlighted && "text-muted")}>{l.text || " "}</span>
           <Confidence value={l.ocrConfidence} />
@@ -108,7 +121,7 @@ export function TranscriptRows({ lines, muted }: { lines: (Pick<EvidenceLine, "i
 function Confidence({ value }: { value: number | null }) {
   if (value == null || value >= LOW_OCR_CONFIDENCE) return null;
   return (
-    <span className="flex items-center gap-1 pr-3 font-sans text-xs whitespace-nowrap text-context tabular-nums" title="OCR confidence for this line">
+    <span className="flex items-center gap-1 pr-3 font-sans text-xs whitespace-nowrap text-context tabular-nums" title="Reading accuracy for this line of the scanned page">
       <TriangleAlert aria-hidden className="size-3" />
       {value}%
     </span>
@@ -193,10 +206,10 @@ export function ChecksCard({ f }: { f: FindingDetail }) {
                 {s.verification.location ? `, ${LOCATION[s.verification.location] ?? s.verification.location}` : ""}.
                 {s.verification.bareAnswer ? " The quoted words are a short answer, so the question they answer is shown with them." : ""}
               </p>
-              {ocrPassage(s) && <p className="text-context">Checked against the OCR text, not the scan itself.</p>}
+              {ocrPassage(s) && <p className="text-context">Checked against the text read from the scanned page, not the page image itself.</p>}
               <p>Attribution: {ATTRIBUTION_LEVEL[s.attribution.level] ?? s.attribution.level}.</p>
               {f.direct && <p>Speaker: {SPEAKER[f.direct[k].speaker] ?? f.direct[k].speaker}.{f.direct[k].reportedSpeech ? " This reports what someone else said." : ""}</p>}
-              {f.direct && f.direct[k].ocr.lowLines.length > 0 && <p className="text-context">Low OCR confidence on {f.direct[k].ocr.lowLines.join(", ")}.</p>}
+              {f.direct && f.direct[k].ocr.lowLines.length > 0 && <p className="text-context">Hard to read on the scanned page: {f.direct[k].ocr.lowLines.join(", ")}.</p>}
               {s.attribution.disagreement && <p className="text-context">{DISAGREEMENT[s.attribution.disagreement]}</p>}
               {s.verification.reason && <p className="text-conflict">{s.verification.reason}.</p>}
             </li>

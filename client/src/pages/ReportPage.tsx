@@ -9,7 +9,7 @@ import { TranscriptRows } from "../components/FindingView";
 import { Mark } from "../components/Shell";
 import { Alert, Button, buttonClass, cx, Loading } from "../components/ui";
 import { api } from "../lib/api";
-import { displayRef, pinpointCitation } from "../lib/insights";
+import { displayRef, PHYSICAL_LINE, pinpointCitation } from "../lib/insights";
 import { findingHeadline, formatDate } from "../lib/labels";
 import { decisionOf, REVIEW_LABEL } from "../lib/review";
 import { href } from "../lib/router";
@@ -164,7 +164,7 @@ function Item({ n, e }: { n: number; e: Entry }) {
   const decision = decisionOf(f.reviewState);
   const side = (label: string, s: FindingDetail["a"]) => (
     <div className="min-w-0 break-inside-avoid">
-      <p className="text-xs text-faint">{label} · {formatDate(s.deposition.takenOn)} · <span className="font-mono">{displayRef(s.range) ?? "no reference"}</span></p>
+      <p className="text-xs text-faint">{label} · {formatDate(s.deposition.takenOn)} · <span className="font-mono">{displayRef(s.range) ?? "no reference"}</span>{s.deposition.physicalLines && ` · ${PHYSICAL_LINE}`}</p>
       <div className="transcript mt-1.5 rounded-md border border-line py-2 text-[13px] leading-[22px]">
         <TranscriptRows lines={s.lines.filter((l) => l.highlighted).length ? s.lines.filter((l) => l.highlighted) : s.lines} />
       </div>

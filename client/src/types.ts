@@ -17,6 +17,9 @@ export type CaseSummary = {
 };
 
 export type DepositionStatus = "processing" | "ready" | "needs_review" | "unsupported" | "failed";
+// The session date the transcript states on its cover: a suggestion for the user to confirm.
+export type DateFound = { date: string; ref: string; text: string };
+
 export type DepositionRow = {
   id: number;
   witnessId: number;
@@ -29,6 +32,7 @@ export type DepositionRow = {
   fileSha256: string;
   createdAt: string;
   scanned: boolean;
+  dateFound: DateFound | null;
 };
 
 export type OcrReadout = {
@@ -54,8 +58,11 @@ export type DepositionView = {
   pageCount: number | null;
   needsOcrPages: number[];
   blankPages: number[];
-  validation: { layout: string; pages: Record<string, number>; failedPages: number[]; reasons: unknown; ocr: OcrReadout | null } | null;
+  sourceFormat: "pdf" | "html" | "text" | "rtf" | "docx";
+  validation: { layout: string; pages: Record<string, number>; failedPages: number[]; reasons: unknown; ocr: OcrReadout | null; warnings?: string[] } | null;
   stored: { lines: number; exchanges: number; parts: number };
+  dateFound: DateFound | null;
+  checks: number; // analyses that compared it: moving it deletes them
   createdAt: string;
 };
 
@@ -181,7 +188,8 @@ export type FindingGroups = { groups: { group: FindingGroup; label: string; find
 export type EvidenceLine = { id: number; ref: string; text: string; role: string; highlighted: boolean; ocrConfidence: number | null; pdfPage: number; pageInferred?: boolean };
 export type EvidenceSide = {
   exchangeId: string;
-  deposition: { id: number; takenOn: string | null; originalFilename: string | null; witness: string };
+  // physicalLines: a PDF without printed line numbers; its references count rows on the page.
+  deposition: { id: number; takenOn: string | null; originalFilename: string | null; witness: string; physicalLines?: boolean };
   range: string | null;
   before: EvidenceLine[];
   lines: EvidenceLine[];

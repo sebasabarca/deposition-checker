@@ -1,23 +1,28 @@
 // One deposition: read it page by page as the transcript, search it, and see where it was checked.
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Pencil } from "lucide-react";
 import { DangerZone } from "../components/DangerZone";
 import { TranscriptRows } from "../components/FindingView";
 import { useNow } from "../components/CheckProgress";
-import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, fieldClass, Loading, PageHeader } from "../components/ui";
+import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, fieldClass, inputClass, Loading, PageHeader, selectClass } from "../components/ui";
+import { DateInput } from "../components/DateInput";
 import { api } from "../lib/api";
-import { isActive } from "../lib/insights";
+import { inMarkedRange, isActive } from "../lib/insights";
 import { ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, CaseDetail, DepositionLines, DepositionView } from "../types";
+import type { AnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView } from "../types";
 
-export function DepositionPage({ id, page, q }: { id: number; page: number | null; q: string }) {
+const FORMAT = { pdf: "PDF", html: "HTML", text: "Text", rtf: "RTF", docx: "Word (.docx)" } as const;
+
+export function DepositionPage({ id, page, q, mark }: { id: number; page: number | null; q: string; mark: string }) {
   const [d, setD] = useState<DepositionView | null>(null);
   const [kase, setKase] = useState<CaseDetail | null>(null);
   const [analyses, setAnalyses] = useState<AnalysisView[]>([]);
   const [text, setText] = useState<DepositionLines | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moving, setMoving] = useState<"witness" | "case" | null>(null);
+  const [editingDate, setEditingDate] = useState(false);
   const load = useCallback(() => {
     api.deposition(id).then((r) => setD(r.deposition)).catch((e: Error) => setError(e.message));
   }, [id]);
@@ -38,14 +43,21 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
     api.lines(id, { page, q }).then(setText).catch((e: Error) => setError(e.message));
   }, [id, page, q, ready]);
 
+  // Opened from a finding: bring its cited lines into view, once they are on the page.
+  useEffect(() => {
+    if (mark && text) document.querySelector("[data-highlighted]")?.scrollIntoView({ block: "center" });
+  }, [mark, text]);
+
   if (error) return <Alert title="This deposition couldn't be loaded">{error}</Alert>;
   if (!d) return <Loading />;
   const s = DEPOSITION_STATUS[d.status];
   const at = text?.page ?? null;
   const pageIndex = at === null ? -1 : (text?.pages.indexOf(at) ?? -1);
-  const go = (p: number | null, query = q) => (window.location.hash = href.deposition(id, { page: p, q: query }));
+  const go = (p: number | null, query = q) => (window.location.hash = href.deposition(id, { page: p, q: query, mark }));
   const hitLines = new Set(text?.hits.map((h) => h.id));
-  const isText = /\.txt$/i.test(d.originalFilename ?? "");
+  const isText = d.sourceFormat === "text";
+  const downloadOnly = d.sourceFormat === "rtf" || d.sourceFormat === "docx"; // downloads; the browser can't show it
+  const warnings = d.validation?.warnings ?? [];
 
   return (
     <>
@@ -53,11 +65,17 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
         above={kase && <a href={href.case(kase.case.id)} className="mb-1 inline-block text-sm text-muted hover:text-ink">{kase.case.name}</a>}
         title={<>{d.witness.name}<span className="font-normal text-muted">, {formatDate(d.takenOn)}</span></>}
         description={[d.originalFilename ?? `Deposition #${d.id}`, d.pageCount && d.validation?.layout !== "text-unnumbered-v1" ? `${d.pageCount} ${d.pageCount === 1 ? "page" : "pages"}` : null, d.stored.lines ? `${d.stored.lines.toLocaleString()} lines` : null].filter(Boolean).join(" · ")}
-        actions={<a href={api.depositionOriginal(d.id)} target="_blank" rel="noreferrer" className={buttonClass("secondary")}><ExternalLink aria-hidden className="size-3.5" />View original {isText ? "text" : "PDF"}</a>}
+        actions={<a href={api.depositionOriginal(d.id)} target={downloadOnly ? undefined : "_blank"} rel="noreferrer" className={buttonClass("secondary")}><ExternalLink aria-hidden className="size-3.5" />{downloadOnly ? `Download original ${FORMAT[d.sourceFormat]}` : `View original ${isText ? "text" : "PDF"}`}</a>}
       />
-      {d.status === "processing" && <Reading since={d.createdAt} scanned={!/\.txt$/i.test(d.originalFilename ?? "")} />}
+      {d.status === "processing" && <Reading since={d.createdAt} scanned={d.sourceFormat === "pdf"} />}
       {(d.status === "failed" || d.status === "unsupported") && <Alert title={s.label} action={d.status === "failed" ? <Button variant="secondary" onClick={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}>Try again</Button> : undefined}>{d.error ?? "This file's layout isn't recognized."}</Alert>}
       {d.status === "needs_review" && <Alert tone="warn" title="Some pages couldn't be read">{d.error ?? "The pages that were read are shown below."}</Alert>}
+      <DateBanner d={d} onSaved={setD} onEnter={() => { setEditingDate(true); document.getElementById("date-taken")?.scrollIntoView({ block: "center" }); }} />
+      {d.status === "ready" && warnings.length > 0 && (
+        <Alert tone="warn" title="Check before citing">
+          <ul className="list-disc space-y-1 pl-5">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+        </Alert>
+      )}
 
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_21rem]">
         <Card className="overflow-hidden">
@@ -87,7 +105,7 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
             <div className="mx-auto max-w-[52rem]">
               <p className="px-5 pt-5 pb-2 text-right font-mono text-sm text-faint">{at === 0 ? "Text without page numbers, cited by line" : `Page ${at}`}</p>
               <div className="transcript pb-6">
-                <TranscriptRows lines={text.lines.map((l) => ({ id: l.id, ref: String(l.lineNo), text: l.text, ocrConfidence: l.ocrConfidence, highlighted: hitLines.has(l.id) }))} />
+                <TranscriptRows lines={text.lines.map((l) => ({ id: l.id, ref: String(l.lineNo), text: l.text, ocrConfidence: l.ocrConfidence, highlighted: hitLines.has(l.id) || (at !== null && inMarkedRange(mark, at, l.lineNo)) }))} />
               </div>
             </div>
           )}
@@ -117,9 +135,11 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
             <CardHeader title="Details" />
             <dl className="divide-y divide-rule text-sm">
               <Row label="Status"><Badge tone={s.tone} dot>{s.label}</Badge></Row>
-              <Row label="Case">{kase ? <a href={href.case(kase.case.id)} className="font-medium hover:underline">{kase.case.name}</a> : "–"}</Row>
-              <Row label="Source">{isText ? "Text" : d.validation?.ocr ? "Scanned PDF, read by OCR" : "PDF"}</Row>
-              {d.validation?.ocr?.meanConfidence != null && <Row label="OCR confidence">{d.validation.ocr.meanConfidence}% average</Row>}
+              <DateRow d={d} onSaved={setD} editing={editingDate} setEditing={setEditingDate} />
+              <Row label="Witness"><span className="flex items-center gap-2"><span className="font-medium">{d.witness.name}</span><ChangeButton label="Change witness" onClick={() => setMoving("witness")} /></span></Row>
+              <Row label="Case"><span className="flex items-center gap-2">{kase ? <a href={href.case(kase.case.id)} className="min-w-0 truncate font-medium hover:underline">{kase.case.name}</a> : "–"}<ChangeButton label="Change case" onClick={() => setMoving("case")} /></span></Row>
+              <Row label="Source">{d.sourceFormat === "pdf" && d.validation?.ocr ? "Scanned PDF, read from the page images" : FORMAT[d.sourceFormat]}</Row>
+              {d.validation?.ocr?.meanConfidence != null && <Row label="Reading accuracy">{d.validation.ocr.meanConfidence}% average</Row>}
               <Row label="Pages">{d.pageCount ?? "–"}</Row>
               <Row label="Question and answer exchanges">{d.stored.exchanges ? d.stored.exchanges.toLocaleString() : "–"}</Row>
               <Row label="Added">{formatDate(d.createdAt)}</Row>
@@ -152,6 +172,8 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
         </div>
       </div>
 
+      {moving && <MoveDialog d={d} mode={moving} onClose={() => setMoving(null)} />}
+
       <DangerZone
         what="deposition"
         name={`${d.witness.name}, ${formatDate(d.takenOn)}`}
@@ -162,6 +184,121 @@ export function DepositionPage({ id, page, q }: { id: number; page: number | nul
         }}
       />
     </>
+  );
+}
+
+const saveDate = (d: DepositionView, date: string | null) => api.setDepositionDate(d.id, date).then((r) => r.deposition);
+
+// At the top of the page while the date is missing, or differs from the one the transcript states: the
+// fix is right there, since no check can start without it.
+function DateBanner({ d, onSaved, onEnter }: { d: DepositionView; onSaved: (d: DepositionView) => void; onEnter: () => void }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const found = d.dateFound;
+  if (d.takenOn && (!found || found.date === d.takenOn)) return null;
+  const where = found ? `page ${found.ref.split(":")[0]}, line ${found.ref.split(":")[1]}` : "";
+  const use = found && <Button onClick={() => saveDate(d, found.date).then(onSaved).catch((e: Error) => setProblem(e.message))}>Use {formatDate(found.date)}</Button>;
+  return (
+    <Alert
+      tone="warn"
+      title={d.takenOn ? "The transcript gives a different date" : "Add the date this session was taken"}
+      action={<div className="flex flex-wrap gap-2">{use}<Button variant="secondary" onClick={onEnter}><Pencil aria-hidden className="size-4" />{d.takenOn ? "Edit date" : "Enter the date"}</Button></div>}
+    >
+      {d.takenOn
+        ? `You entered ${formatDate(d.takenOn)}; the transcript's cover says ${formatDate(found!.date)} (${where}). The dates decide which testimony came first.`
+        : found
+          ? `The transcript's cover says ${formatDate(found.date)} (${where}). Confirm it, or enter the right date. A check can't start without it.`
+          : "Veridict didn't find a date on the transcript's cover. Enter it: the dates decide which testimony came first, and a check can't start without them."}
+      {problem && <span className="mt-1 block text-conflict">{problem}</span>}
+    </Alert>
+  );
+}
+
+// The date taken, edited in place from the Details card (or from the banner above).
+function DateRow({ d, onSaved, editing, setEditing }: { d: DepositionView; onSaved: (d: DepositionView) => void; editing: boolean; setEditing: (on: boolean) => void }) {
+  const [value, setValue] = useState(d.takenOn ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { if (editing) setValue(d.takenOn ?? d.dateFound?.date ?? ""); }, [editing, d.takenOn, d.dateFound]);
+  const save = (date: string) => saveDate(d, date).then((r) => { onSaved(r); setEditing(false); setProblem(null); }).catch((e: Error) => setProblem(e.message));
+  return (
+    <div id="date-taken" className="scroll-mt-24 px-5 py-2.5">
+      <div className="flex items-center justify-between gap-4">
+        <dt className="text-muted">Date taken</dt>
+        <dd className="flex items-center gap-2 text-right tabular-nums">
+          {d.takenOn ? formatDate(d.takenOn) : <Badge tone="warn" dot>Needed</Badge>}
+          {!editing && <Button variant="secondary" className="h-7! px-2.5! text-xs!" onClick={() => setEditing(true)}><Pencil aria-hidden className="size-3.5" />{d.takenOn ? "Edit" : "Add"}</Button>}
+        </dd>
+      </div>
+      {editing && (
+        <form onSubmit={(e) => { e.preventDefault(); if (value) void save(value); }} className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
+          <DateInput value={value} onChange={setValue} />
+          <Button type="submit" disabled={!value}>Save</Button>
+          <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+        </form>
+      )}
+      {problem && <p className="mt-1.5 text-xs text-conflict">{problem}</p>}
+    </div>
+  );
+}
+
+// File the deposition under another witness or case. Every stored line carries its witness, so the
+// file is read again there, and the checks that compared it go: the dialog says so before anything moves.
+const ChangeButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
+  <Button variant="secondary" className="h-7! flex-none px-2.5! text-xs!" aria-label={label} onClick={onClick}><Pencil aria-hidden className="size-3.5" />Change</Button>
+);
+
+function MoveDialog({ d, mode, onClose }: { d: DepositionView; mode: "witness" | "case"; onClose: () => void }) {
+  const [cases, setCases] = useState<CaseSummary[] | null>(null);
+  const [caseId, setCaseId] = useState(String(d.caseId));
+  const [witnesses, setWitnesses] = useState<string[]>([]);
+  const [witness, setWitness] = useState(d.witness.name);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    api.cases().then((r) => setCases(r.cases)).catch((e: Error) => setProblem(e.message));
+  }, []);
+  useEffect(() => {
+    api.case(Number(caseId)).then((c) => setWitnesses(c.witnesses.map((w) => w.name))).catch(() => setWitnesses([]));
+  }, [caseId]);
+  const unchanged = Number(caseId) === d.caseId && witness.trim() === d.witness.name;
+  const move = async (e: FormEvent) => {
+    e.preventDefault();
+    if (unchanged || !witness.trim()) return;
+    setBusy(true);
+    try {
+      const { deposition } = await api.moveDeposition(d.id, Number(caseId), witness.trim());
+      onClose();
+      window.location.hash = href.deposition(deposition.id);
+    } catch (err) {
+      setProblem((err as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} title={mode === "witness" ? "Change witness" : "Change case"} description={mode === "witness" ? "For when this session was filed under the wrong witness." : "For when this session was added to the wrong case."} size="md">
+      <form onSubmit={move} className="space-y-4 px-6 py-5">
+        {mode === "case" && (
+          <Field label="Case" htmlFor="move-case">
+            <select id="move-case" autoFocus className={cx(selectClass, "w-full")} value={caseId} onChange={(e) => setCaseId(e.target.value)} disabled={!cases || busy}>
+              {!cases && <option value={d.caseId}>Loading cases…</option>}
+              {cases?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label={mode === "witness" ? "Witness" : "Witness in that case"} htmlFor="move-witness" hint={mode === "witness" ? "Pick another witness in this case or type a new name." : "The same name is kept; change it if the witness is named differently in that case."}>
+          <input id="move-witness" autoFocus={mode === "witness"} className={inputClass} list="move-witnesses" value={witness} onChange={(e) => setWitness(e.target.value)} maxLength={200} disabled={busy} />
+          <datalist id="move-witnesses">{witnesses.map((w) => <option key={w} value={w} />)}</datalist>
+        </Field>
+        <Alert tone="info">
+          Veridict reads the file again under the new {Number(caseId) === d.caseId ? "witness" : "case"}; the date and the original file are kept.
+          {d.checks > 0 && ` The ${d.checks === 1 ? "check" : `${d.checks} checks`} that compared this session, with their findings and decisions, will be deleted.`}
+        </Alert>
+        {problem && <Alert>{problem}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={unchanged || !witness.trim() || busy}>{busy ? "Saving…" : mode === "witness" ? "Change witness" : "Move to this case"}</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -205,7 +342,7 @@ function Reading({ since, scanned }: { since: string; scanned: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <p className="font-semibold">Reading this deposition</p>
-          <p className="mt-0.5 text-sm text-muted">{scanned ? "Turning every page into numbered lines. Scanned pages are read by OCR, which can take a few minutes for a long transcript." : "Turning the text into numbered lines. This takes a few seconds."} You can leave this page; it keeps going.</p>
+          <p className="mt-0.5 text-sm text-muted">{scanned ? "Turning every page into numbered lines. Scanned pages are read from their images, which can take a few minutes for a long transcript." : "Turning the text into numbered lines. This takes a few seconds."} You can leave this page; it keeps going.</p>
         </div>
         <span className="font-mono text-[15px] tabular-nums">{s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`}</span>
       </div>

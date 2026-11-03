@@ -50,6 +50,12 @@ describe("direct finding verification", () => {
     expect(c.reasons.join(" ")).toMatch(/not an official citation/);
   });
 
+  it("holds a finding from a PDF without printed line numbers at needs context", () => {
+    const c = verifyDirectFinding(finding(), [june, { ...sept, physicalLines: true }], "Cassidy Hutchinson");
+    expect(c).toMatchObject({ evidenceStatus: "verified", lane: "needs_context", b: { physicalLines: true }, a: { physicalLines: false } });
+    expect(c.reasons.join(" ")).toMatch(/counts the lines on the page and is not an official line number/);
+  });
+
   it("rejects an invented quotation, and never repairs it", () => {
     const c = verify({ exact_excerpt_b: "the Presidential motorcade was stopped" });
     expect(c.evidenceStatus).toBe("unsupported");

@@ -52,6 +52,35 @@ describe("markLine", () => {
     expect(mark("(Marked Deposition Exhibit No. 17)", PARA)).toEqual({ turn: "parenthetical", name: null });
     expect(mark("BY MR. SCOTT:", null)).toEqual({ turn: "examiner", name: "MR. SCOTT" });
   });
+
+  it("reads bracketed notes and page markers as the record's notes, never as the speaker's words", () => {
+    for (const row of ["[STAMP: CHECKLIST-RED | SYNTHETIC ONLY]", "[Recess. ]", "END PAGE", "END OF PAGE 1 / SYNTHETIC", "PAGE 2", "Page 2 of 9", "SYNTHETIC WORD TRANSCRIPT | PAGE 2", "DEPOSITION OF MARA VOSS (continued)"]) {
+      expect(mark(row, PARA), row).toEqual({ turn: "parenthetical", name: null });
+    }
+    for (const row of ["page 12 of the report says otherwise.", "the meeting went on (continued)", "Page 2 is where I signed it."]) {
+      expect(mark(row, PARA), row).toEqual({ turn: null, name: null });
+    }
+  });
+
+  it("ends an answer at a stamp, so the stamp is never testimony", () => {
+    const rows = ["Q. Did you sign it?", "A. Yes.", "[STAMP: SYNTHETIC ONLY]", "END PAGE"];
+    const lines = attributeSpeakers(rows.map((rawText, i) => ({ pdfPage: 1, printedPage: 1, lineNo: i + 1, lineFromPosition: i + 1, indentX: /^[QA]\./.test(rawText) ? TURN : PARA, rawText })), LAYOUT);
+    expect(lines.map((l) => l.role)).toEqual(["attorney", "witness", "parenthetical", "parenthetical"]);
+  });
+
+  const attributed = (rows: string[]) =>
+    attributeSpeakers(rows.map((rawText, i) => ({ pdfPage: 1, printedPage: 1, lineNo: i + 1, lineFromPosition: i + 1, indentX: /^[QA]\./.test(rawText) ? TURN : PARA, rawText })), LAYOUT);
+
+  it("gives the rest of an answer back to the witness after a note in the middle of it", () => {
+    const lines = attributed(["Q. Where were you?", "A. I was in the office,", "[Pause.]", "and then I went to the car.", "Q. Thank you."]);
+    expect(lines.map((l) => l.role)).toEqual(["attorney", "witness", "parenthetical", "witness", "attorney"]);
+    const [exchange] = buildExchangeParts(lines, LAYOUT).exchanges;
+    expect(exchange.lines.map((l) => l.role)).toEqual(["question", "answer", "context", "answer"]);
+  });
+
+  it("keeps a note that runs over two lines together, then resumes the speaker", () => {
+    expect(attributed(["A. That is all I recall.", "(Whereupon, a document was", "marked for identification.)", "Before that, nothing."]).map((l) => l.role)).toEqual(["witness", "parenthetical", "parenthetical", "witness"]);
+  });
 });
 
 describe("speaker attribution", () => {

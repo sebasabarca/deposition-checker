@@ -258,7 +258,7 @@ function Proof() {
 }
 
 const STEPS: { title: string; text: string; picture: ReactNode }[] = [
-  { title: "Add the depositions", text: "Upload a PDF, a text file, or paste the transcript. Scans are read by OCR, and every line keeps its page and line.", picture: <img src="/landing/add-deposition.png" width={2000} height={1400} loading="lazy" alt="The Add deposition dialog with a pasted transcript and the note: Page and line numbers found." className="w-full rounded-lg ring-1 ring-line" /> },
+  { title: "Add the depositions", text: "Upload a PDF, a text file, or paste the transcript. Scanned PDFs are read from the page images, and every line keeps its page and line.", picture: <img src="/landing/add-deposition.png" width={2000} height={1400} loading="lazy" alt="The Add deposition dialog with a pasted transcript and the note: Page and line numbers found." className="w-full rounded-lg ring-1 ring-line" /> },
   { title: "Check two sessions", text: "Pick two sessions of one witness. You see the estimated cost before anything is sent, and a check never spends more than its budget.", picture: <EstimateCard /> },
   { title: "Review each finding", text: "Work through the findings with the testimony on screen, one keystroke apart. Your decisions stay with the case.", picture: <img src="/landing/hero-analysis.png" width={2880} height={1800} loading="lazy" alt="" className="w-full rounded-lg ring-1 ring-line" /> },
   { title: "Export what you kept", text: "Download the findings you kept as a PDF, with pinpoint citations, the testimony and your notes, for one analysis or several at once.", picture: <ReportTray /> },

@@ -1,7 +1,7 @@
 // Figures on screen must add up, and review decisions must never be read from anything but a known value.
 
 import { describe, expect, it } from "vitest";
-import { candidateCoverage, ocrPassage, pinpointCitation, progressShare, recentActivity, relativeTime, checkState, pairsChecked } from "../../client/src/lib/insights";
+import { candidateCoverage, inMarkedRange, ocrPassage, pinpointCitation, progressShare, recentActivity, relativeTime, checkState, pairsChecked } from "../../client/src/lib/insights";
 import type { CaseDetail, EvidenceLine, EvidenceSide } from "../../client/src/types";
 
 describe("OCR passages", () => {
@@ -27,6 +27,18 @@ describe("OCR passages", () => {
     expect(pinpointCitation(clean, clean)).not.toContain("inferred");
     const flagged = { ...clean, lines: [{ ...cited, pageInferred: true }] };
     expect(pinpointCitation(flagged, clean)).toBe("Webb Dep. 13:01 (date not stated) [page number inferred; verify against the scan]; compare Webb Dep. 13:01 (date not stated).");
+  });
+
+  it("marks a physical-line citation as not official", () => {
+    const cited = line({ ref: "2:03", highlighted: true });
+    const plain = { range: "2:03", deposition: { id: 1, takenOn: null, originalFilename: null, witness: "Mara Voss" }, lines: [cited], before: [], after: [] };
+    const physical = { ...plain, deposition: { ...plain.deposition, physicalLines: true } };
+    expect(pinpointCitation(physical, plain)).toBe("Voss Dep. 2:03 (date not stated) [line counted on the page, not an official line number]; compare Voss Dep. 2:03 (date not stated).");
+  });
+
+  it("tells which lines fall inside a cited range, across a page break", () => {
+    expect([inMarkedRange("12:24-13:02", 12, 23), inMarkedRange("12:24-13:02", 12, 25), inMarkedRange("12:24-13:02", 13, 2), inMarkedRange("12:24-13:02", 13, 3)]).toEqual([false, true, true, false]);
+    expect(inMarkedRange("", 1, 1)).toBe(false);
   });
 
   it("opens at the first cited page, not the context", () => {
@@ -78,7 +90,7 @@ describe("recent activity", () => {
 });
 
 describe("the new check panel", () => {
-  const deps = [{ id: 1, witnessId: 1, status: "ready" as const }, { id: 2, witnessId: 1, status: "ready" as const }, { id: 3, witnessId: 2, status: "ready" as const }, { id: 4, witnessId: 1, status: "processing" as const }, { id: 5, witnessId: 1, status: "ready" as const }];
+  const deps = [{ id: 1, witnessId: 1, status: "ready" as const, takenOn: "2026-01-01" }, { id: 2, witnessId: 1, status: "ready" as const, takenOn: "2026-02-01" }, { id: 3, witnessId: 2, status: "ready" as const, takenOn: "2026-01-01" }, { id: 4, witnessId: 1, status: "processing" as const, takenOn: null }, { id: 5, witnessId: 1, status: "ready" as const, takenOn: "2026-03-01" }, { id: 6, witnessId: 1, status: "ready" as const, takenOn: null }];
   const report = (id: number, depositionA: number, depositionB: number, status: "completed" | "adjudicating" | "failed") => ({ id, depositionA, depositionB, status, createdAt: "2026-11-01" });
 
   it("asks for exactly two depositions of one witness, both read", () => {
@@ -87,6 +99,7 @@ describe("the new check panel", () => {
     expect(checkState([1, 2, 5], deps, []).kind).toBe("too_many");
     expect(checkState([1, 3], deps, []).kind).toBe("different_witness");
     expect(checkState([1, 4], deps, []).kind).toBe("not_ready");
+    expect(checkState([1, 6], deps, []).kind).toBe("no_date");
   });
 
   it("offers a new check only for a pair with no report", () => {

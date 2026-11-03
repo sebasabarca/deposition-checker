@@ -95,7 +95,7 @@ describe.skipIf(!TEST_DATABASE_URL)("deposition endpoints (Postgres)", () => {
     it("checks the bytes, not the Content-Type: binary that isn't a PDF is refused even when labelled as one", async () => {
       const res = await upload(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0xff, 0xfe]), undefined, "application/pdf");
       expect(res.status).toBe(415);
-      expect(await res.json()).toEqual({ error: "The file is not a PDF or plain text." });
+      expect(await res.json()).toEqual({ code: "unsupported_format", error: "This file isn't a transcript format Veridict can read. Upload a PDF, a text file (.txt, .asc), an RTF or a Word (.docx) document." });
       expect(await upload(pdf("unlabelled"), undefined, "application/octet-stream").then((r) => r.status)).toBe(202);
       expect(await db.$count(depositions)).toBe(1);
     });
@@ -176,6 +176,59 @@ describe.skipIf(!TEST_DATABASE_URL)("deposition endpoints (Postgres)", () => {
 
     it("answers 404 for an unknown deposition", async () => {
       expect((await fetch(`${api.url}/api/depositions/999999/retry`, { method: "POST" })).status).toBe(404);
+    });
+  });
+
+  const send = (method: string, url: string, body: unknown) => fetch(`${api.url}/api${url}`, { method, body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+
+  describe("PATCH /api/depositions/:id", () => {
+    it("sets, corrects and clears the date taken", async () => {
+      const { deposition } = await (await upload(pdf("a"), "witness=Lawrence%20Ellison")).json();
+      expect(deposition.takenOn).toBeNull();
+      const set = await send("PATCH", `/depositions/${deposition.id}`, { takenOn: "2004-01-20" });
+      expect(set.status).toBe(200);
+      expect((await set.json()).deposition.takenOn).toBe("2004-01-20");
+      expect((await (await send("PATCH", `/depositions/${deposition.id}`, { takenOn: null })).json()).deposition.takenOn).toBeNull();
+      expect((await send("PATCH", `/depositions/${deposition.id}`, { takenOn: "2004-13-45" })).status).toBe(400);
+      expect((await send("PATCH", "/depositions/999999", { takenOn: null })).status).toBe(404);
+    });
+  });
+
+  describe("POST /api/depositions/:id/move", () => {
+    it("re-files the deposition under another witness from its stored file, keeping its date, and queues it to be read again", async () => {
+      const { deposition: old } = await (await upload(pdf("a"))).json();
+      const files = readdirSync(uploads).length;
+      const res = await send("POST", `/depositions/${old.id}/move`, { caseId, witness: "Safra Catz" });
+      expect(res.status).toBe(202);
+      const { deposition } = await res.json();
+      expect(deposition).toMatchObject({ caseId, witness: { name: "Safra Catz" }, takenOn: "2004-01-20", status: "processing" });
+      expect(deposition.id).not.toBe(old.id);
+      expect((await fetch(`${api.url}/api/depositions/${old.id}`)).status).toBe(404);
+      expect(readdirSync(uploads)).toHaveLength(files); // the file is kept: the new deposition uses it
+      expect(await jobsFor(db, INGEST_QUEUE, deposition.id)).toEqual([{ state: "created", retry_count: 0 }]);
+    });
+
+    it("moves to another case of the same firm, never to another firm's", async () => {
+      const { deposition } = await (await upload(pdf("a"))).json();
+      const [org] = await db.select().from(orgs);
+      const [mine] = await db.insert(cases).values({ orgId: org.id, name: "Second case" }).returning();
+      const [other] = await db.insert(orgs).values({ name: "Another firm" }).returning();
+      const [theirs] = await db.insert(cases).values({ orgId: other.id, name: "Their case" }).returning();
+      expect((await send("POST", `/depositions/${deposition.id}/move`, { caseId: theirs.id, witness: "Lawrence Ellison" })).status).toBe(404);
+      const moved = await send("POST", `/depositions/${deposition.id}/move`, { caseId: mine.id, witness: "Lawrence Ellison" });
+      expect(moved.status).toBe(202);
+      expect((await moved.json()).deposition.caseId).toBe(mine.id);
+    });
+
+    it("refuses a move that changes nothing, or into a case that already has the file", async () => {
+      const { deposition } = await (await upload(pdf("a"))).json();
+      expect((await send("POST", `/depositions/${deposition.id}/move`, { caseId, witness: "Lawrence Ellison" })).status).toBe(400);
+      const [org] = await db.select().from(orgs);
+      const [second] = await db.insert(cases).values({ orgId: org.id, name: "Second case" }).returning();
+      await fetch(`${api.url}/api/cases/${second.id}/depositions?witness=X`, { method: "POST", body: pdf("a"), headers: { "content-type": "application/pdf" } });
+      const res = await send("POST", `/depositions/${deposition.id}/move`, { caseId: second.id, witness: "Lawrence Ellison" });
+      expect(res.status).toBe(409);
+      expect((await fetch(`${api.url}/api/depositions/${deposition.id}`)).status).toBe(200); // rolled back: nothing deleted
     });
   });
 });

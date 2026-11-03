@@ -41,7 +41,7 @@ export const depositionStatus = pgEnum("deposition_status", [
   "unsupported",
   "failed",
 ]);
-export const sourceFormat = pgEnum("source_format", ["pdf", "html", "text"]);
+export const sourceFormat = pgEnum("source_format", ["pdf", "html", "text", "rtf", "docx"]);
 export const speakerRole = pgEnum("speaker_role", [
   "attorney",
   "witness",

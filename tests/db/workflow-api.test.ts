@@ -18,6 +18,7 @@ import { WEBB_SUITE } from "../../server/src/eval/synthetic";
 import { storeSynthetic } from "../../server/src/eval/syntheticStore";
 import { createAnalysisQueues, createIngestQueues, startAnalysisWorkers, startBoss, startIngestWorkers } from "../../server/src/jobs";
 import { emptyTables, listen, openTestDatabase, TEST_DATABASE_URL } from "./database";
+import { docx, para, rtf, run } from "../fixtures/transcripts/build";
 
 const P3171 = "data/raw/ellison/p3171.pdf";
 const P3173 = "data/raw/ellison/p3173.pdf";
@@ -90,6 +91,36 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const res = await fetch(`${api.url}/api/cases/${body.case.id}/depositions?witness=W&filename=${encodeURIComponent("C:\\docs\\../Ellison Day 1.pdf")}`, { method: "POST", body: pdf });
     expect(res.status).toBe(202);
     expect((await res.json()).deposition.originalFilename).toBe("Ellison Day 1.pdf");
+  });
+
+  it("reads RTF and Word uploads in the worker, recognises a repeat upload, and refuses .ptx with what to ask for", async () => {
+    const { body } = await call("POST", "/cases", { name: "Formats" });
+    const upload = (data: Uint8Array, filename: string) => fetch(`${api.url}/api/cases/${body.case.id}/depositions?witness=Avery&filename=${encodeURIComponent(filename)}`, { method: "POST", body: Buffer.from(data) });
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `${String(i + 1).padStart(2)}  ${i % 2 ? "A.  Yes." : "Q.  Did you?"}`);
+    const files = {
+      "day1.rtf": rtf(lines(4).map((l) => `${l}\\par`).join("\n")),
+      "day2.docx": docx(lines(4).map((l) => para(run(l))).join("")),
+    };
+    for (const [name, data] of Object.entries(files)) {
+      const first = await upload(data, name);
+      expect(first.status).toBe(202);
+      const d = (await first.json()).deposition;
+      expect(d.sourceFormat).toBe(name.split(".")[1]);
+      const done = await until(() => call("GET", `/depositions/${d.id}`), (r) => r.body.deposition.status !== "processing");
+      expect(done.body.deposition).toMatchObject({ status: "ready", pageCount: 1, stored: { lines: 4 } });
+      const page = (await call("GET", `/depositions/${d.id}/lines?page=1`)).body;
+      expect(page.lines.map((l: { text: string }) => l.text)).toEqual(["Q.  Did you?", "A.  Yes.", "Q.  Did you?", "A.  Yes."]);
+      // The same file again is the same deposition: no second parse, no second set of lines.
+      const again = await upload(data, name);
+      expect(again.status).toBe(200);
+      expect((await again.json()).deposition.id).toBe(d.id);
+      const original = await fetch(`${api.url}/api/depositions/${d.id}/pdf`);
+      expect(original.headers.get("content-disposition")).toBe("attachment");
+    }
+    const ptx = await upload(new TextEncoder().encode("anything"), "Avery 2024-03-07.ptx");
+    expect(ptx.status).toBe(415);
+    expect(await ptx.json()).toMatchObject({ code: "unsupported_format", error: expect.stringMatching(/E-Transcript.*ASCII/) });
+    expect((await call("GET", `/cases/${body.case.id}`)).body.depositions).toHaveLength(2);
   });
 
   it("validates analysis requests and never queues a duplicate", async () => {
@@ -188,6 +219,10 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
         const read = await until(() => call("GET", `/depositions/${d.id}`), (r) => r.body.deposition.status !== "processing", 180_000);
         expect(read.body.deposition.status).toBe("ready");
       }
+      // No check until both sessions have a date: the dates decide which testimony came first.
+      const undated = await call("POST", `/cases/${kase.id}/analyses`, { depositionA: a.id, depositionB: b.id, maxCandidates: 30 });
+      expect([undated.status, undated.body.code]).toEqual([400, "date_missing"]);
+      expect((await call("PATCH", `/depositions/${b.id}`, { takenOn: "2004-01-21" })).status).toBe(200);
       const started = await call("POST", `/cases/${kase.id}/analyses`, { depositionA: a.id, depositionB: b.id, maxCandidates: 30 });
       const done = await until(() => call("GET", `/analyses/${started.body.analysis.id}`), (r) => !["queued", "parsing", "retrieving", "adjudicating"].includes(r.body.analysis.status), 120_000);
       expect(done.body.analysis.status).toBe("completed");

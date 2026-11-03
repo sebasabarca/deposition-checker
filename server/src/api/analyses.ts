@@ -13,6 +13,7 @@ import { withTransaction, type Database } from "../db/client";
 import { analyses, budgets, candidates, depositions, discoveryRuns, exchangeLines, findings, lines, verdicts, witnesses } from "../db/schema";
 import { analysisCost, candidateSetOf, DIRECT_FABLE, enqueueAnalysis } from "../jobs";
 import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claims";
+import { hasPhysicalLines } from "../ingest";
 import { caseDetail, caseSummaries } from "./cases";
 import { estimateDiscovery } from "../adjudicate/estimateDiscovery";
 import { candidateCoverage, compareFindings, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
@@ -227,7 +228,8 @@ export async function findingDetail(db: Database, id: number) {
     const p = packet.sides.find((s) => s.session === (which === "a" ? "A" : "B"))!;
     const source = checks.source[which];
     const highlight = new Set(source.evidenceLineIds);
-    const inferred = new Set(docs.find((d) => d.id === p.depositionId)?.validation?.ocr?.inferredPages ?? []);
+    const validation = docs.find((d) => d.id === p.depositionId)?.validation;
+    const inferred = new Set(validation?.ocr?.inferredPages ?? validation?.inferredPages ?? []);
     const show = (ids: number[], kind: "context" | "exchange") =>
       ids.map((lid) => stored.get(lid)).filter((l) => l !== undefined).map((l) => ({ id: l.id, ref: ref(l.page, l.line), text: l.text, role: kind === "exchange" ? (roles.get(l.id) ?? "unknown") : "context", highlighted: highlight.has(l.id), ocrConfidence: l.ocrConfidence, pdfPage: l.pdfPage, pageInferred: inferred.has(l.pdfPage) }));
     const exchangeLineIds = new Set(p.lineIds);
@@ -239,7 +241,7 @@ export async function findingDetail(db: Database, id: number) {
     const att = checks.attribution[which];
     return {
       exchangeId: p.id,
-      deposition: { id: doc.id, takenOn: doc.takenOn, originalFilename: doc.originalFilename, witness: doc.witness },
+      deposition: { id: doc.id, takenOn: doc.takenOn, originalFilename: doc.originalFilename, witness: doc.witness, physicalLines: hasPhysicalLines(doc.validation) },
       range: firstId && lastId ? `${ref(stored.get(firstId)!.page, stored.get(firstId)!.line)}–${ref(stored.get(lastId)!.page, stored.get(lastId)!.line)}` : null,
       before: show(before, "context"),
       lines: show(p.lineIds, "exchange"),
@@ -335,6 +337,8 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const docs = await db.select().from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, [b.depositionA, b.depositionB])));
     if (docs.length !== 2) return res.status(404).json({ error: "Both depositions must belong to this case." });
     if (docs[0].witnessId !== docs[1].witnessId) return res.status(400).json({ error: "Both depositions must be of the same witness." });
+    // The dates decide which session is the earlier one in every finding, so neither may be guessed.
+    if (docs.some((d) => !d.takenOn)) return res.status(400).json({ error: "Add the date each session was taken before checking them. The dates decide which testimony came first.", code: "date_missing" });
     // Session A is the earlier one (by date, then by upload order), as the findings show them.
     const [first, second] = [...docs].sort((x, y) => (x.takenOn ?? "9999").localeCompare(y.takenOn ?? "9999") || x.id - y.id);
 
