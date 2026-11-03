@@ -1,6 +1,6 @@
 // A direct analysis end to end, with a mock provider and no paid call: submit, poll, verify, store,
 // and every way a request can go wrong. See tests/db/database.ts for when these run.
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { advanceDiscovery, DISCOVERY_FALLBACK_MODEL, DISCOVERY_MODEL, MAX_POLL_FAILURES, type DiscoveryProvider, type DiscoveryRequest, type DiscoveryResult } from "../../server/src/adjudicate";
@@ -345,5 +345,27 @@ describe.skipIf(!TEST_DATABASE_URL)("direct analysis (Postgres, mock provider)",
     const two = await create();
     await finish(two, mockProvider([success(output([f]))]).provider);
     expect(await keyOf(two)).toBe(await keyOf(one));
+  });
+
+  it("reports testimony the check never received, and the model's own limits apart from it", async () => {
+    // Two pages of session A go missing, as a redacted scan's blank pages would: its last page moves on by two.
+    const a = await stored(depositionIds[0]);
+    const last = a[a.length - 1].printedPage;
+    expect(a[0].printedPage).toBeLessThan(last);
+    await db.update(lines).set({ printedPage: last + 2 }).where(and(eq(lines.depositionId, depositionIds[0]), eq(lines.printedPage, last)));
+    const dropped = [last, last + 1];
+    const [d] = await db.select().from(depositions).where(eq(depositions.id, depositionIds[0]));
+    await db.update(depositions).set({ validation: { ...d.validation!, blankPages: dropped } }).where(eq(depositions.id, depositionIds[0]));
+
+    const id = await create();
+    const partial = JSON.stringify({ summary: { completion_status: "partial", limitations: ["A referenced earlier session was not provided."] }, findings: [] });
+    expect(await finish(id, mockProvider([success(partial)]).provider)).toBe("completed");
+    const view = (await analysisView(db, id))!;
+    const [sa, sb] = view.evidence!.sessions;
+    expect(sa.gaps).toEqual([expect.objectContaining({ missingPages: dropped })]);
+    expect(sa.blankPages).toEqual(dropped);
+    expect(sa.notes.some((n) => n.includes("missing"))).toBe(true);
+    expect(sb.notes).toEqual([]);
+    expect(view.evidence!.model).toEqual({ completionStatus: "partial", limitations: ["A referenced earlier session was not provided."] });
   });
 });

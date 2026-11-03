@@ -1,0 +1,405 @@
+{
+ "reviewer": "Claude agent, reviewer 1 (blind rerun)",
+ "items": [
+  {
+   "id": "ITEM-01",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same conversation (Feb 21 inspection): Lindqvist says he told the adjuster the alarm was not on and 'I never said it was set' (A05_w1 p3:1-3; also p2:1-4); Achterberg says during that inspection he told her it was armed and she wrote it in her notes (A05_w2 p2:14-19). Incompatible accounts of one statement on one occasion.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-02",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same moment of impact: Okafor says pavement dry, rain began ~40 minutes later, wipers off all day (B01_w1 p6:21-p7:1); Thibault says it was 'coming down pretty good right when it happened', wipers on high at contact, rain began 10-15 minutes before (B01_w2 p3:5-13). Same place and instant; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-03",
+   "classification": "negative_control",
+   "control_type": "compatible accounts / different calls",
+   "confidence": "high",
+   "reason": "Achterberg says the FIRST 911 call came from a neighbor at 11:25 and 'the report shows a second call, from the homeowner, later' (A05_w2 p3:2-5). That is consistent with Lindqvist calling 911 himself at ~11:40 on arriving home (A05_w1 p1:13-22). Both can be true.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-04",
+   "classification": "negative_control",
+   "control_type": "different copies/print dates of a document",
+   "confidence": "high",
+   "reason": "Szalai's Exhibit 7 ledger was printed July 31, before August rent was due, and he believes a payment came in early August (A03_w2 p3:7-16). Vantongeren's copy (Exhibit 9) was emailed and printed September 12 (A03_w1 p3:22-p4:5). Different printouts at different dates; both readings can be accurate.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-05",
+   "classification": "negative_control",
+   "control_type": "authority vs action",
+   "confidence": "high",
+   "reason": "Szalai describes his authority (repairs under $5,000) (A03_w2 p1:11-15), and says the $11,800 estimate exceeded it and the partnership did not approve until August (p2:6-12). Vantongeren says Peter never approved the repair (A03_w1 p2:16-17). Authority is not an approval, and his own account says he did not approve it.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-06",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Vantongeren: handed the June 3 letter to Peter in person at the management office on June 3 (A03_w1 p2:2-4, with his reply at p2:10-14). Szalai: she handed him nothing on June 3; he was in Tucson all that week (A03_w2 p1:22-p2:2). Same act, date and person; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-07",
+   "classification": "negative_control",
+   "control_type": "different versions of a document (order revisions)",
+   "confidence": "medium",
+   "reason": "Sethi says he verified one version, that 'several revisions of that order' were made by different prescribers, and he doesn't know what the nurse's screen showed (A02_w2 lines 25-34). Morrow read 40 units on the workstation screen before the 9:52 dose (A02_w1 p2:5-12). The testimony points to different order versions, not the same one. The dosing gap merits follow-up, but these are not conflicting claims about one version.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-08",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Both speak to the same account setting on the same date: Vukovic says 'As of April 17, our account required two approvers for any wire' (B05_w1 lines 24-29); Prentiss says 'As of April 17, Harrowgate's profile was set to single approval. Dual control had been disabled' (B05_w2 p5:2-6). Vukovic's basis is inference (set up that way, never asked to change it), but scope is aligned and the claims are incompatible. The disputed source of the change request does not reconcile them.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-09",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Wendell: there was one batch, made Thursday June 5 at ~2 p.m.; Marco Tellez made it and she watched him mix it from across the prep table (B02_w1 p6:18-p7:2). Tellez: 'I didn't touch the chicken salad Thursday', on grill all shift; same single Thursday batch (B02_w2 lines 25-32). Same batch and actor; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-10",
+   "classification": "negative_control",
+   "control_type": "authority vs action",
+   "confidence": "high",
+   "reason": "Castellano testifies only that he had the authority to shut down any scaffold (B03_w1 p5:13-17), and in the next answer says he did not stop work on Bay C (p5:18-19). Achterberg says Owen didn't shut down Bay C (B03_w2 p7:10-12). The accounts agree.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-11",
+   "classification": "review_worthy",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Holloway: SOP-114 required two signatures, 'the version in the binder HR pulled for the investigation', revision unknown (B04_w1 p3:6-13). Obuya: one signature, reviewer box optional; she can't name the revision in effect in Sept 2025, and the SOP is revised yearly (B04_w2 p4:27-p5:9). The accounts conflict, but neither ties the requirement to a revision, so the two may describe different versions.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-12",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Obuya: Holloway attended the Sept 9, 2025 10 a.m. meeting in 2B, sat by the window taking notes and questioned Kenji; she is sure (B04_w2 p4:11-26). Holloway: 'I was not at that meeting'; he was in Denver Sept 8-11 and did not join by phone or video (B04_w1 p2:15-25). Same meeting; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-13",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same dial (the only thermometer in the walk-in), same time (6:30 a.m., Fri June 6), and both were present: Wendell read 38 degrees and logged it (B02_w1 p7:6-19); Tellez read 51 (B02_w2 lines 43-50). Incompatible readings of one instrument at one moment.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-14",
+   "classification": "negative_control",
+   "control_type": "incomplete knowledge / expectation vs actual event",
+   "confidence": "high",
+   "reason": "Achterberg 'wasn't there' and says only that, as far as she knew, nobody was SUPPOSED to be on Bay C (B03_w2 p7:16-18). Castellano says three masons were on it when it collapsed (B03_w1 p5:5-9). What was planned or permitted does not conflict with who was actually on it, and she lacks knowledge of the latter.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-15",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Morrow: she called the pharmacy at ~9:30 before the dose and spoke to Dr. Sethi, identified by his greeting and voice (A02_w1 p2:13-20). Sethi: Morrow did not call; no call from 4 West before or after the dose; he alone took calls after 9:00, and the phone log shows no 4 West call 9:00-10:30 (A02_w2 lines 35-45). Same call window and people; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-16",
+   "classification": "negative_control",
+   "control_type": "different actors / different actions",
+   "confidence": "high",
+   "reason": "Thibault set out three triangles behind the trailer, and saw the pickup driver light flares farther back in the left lane afterward (B01_w2 p3:14-22). Okafor says the pickup driver put out flares (B01_w1 p7:19-21) and lost track of the truck driver (p7:16-18). Different devices set by different people; consistent.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-17",
+   "classification": "negative_control",
+   "control_type": "different times / record vs operation",
+   "confidence": "medium",
+   "reason": "Brennick relies on the ~6:00 a.m. first-shift pre-shift checklist and did not test the brakes herself (A01_w2 p3:6-17). Oduya describes how the pedal felt that afternoon (A01_w1 p3:24-p4:1). A satisfactory morning checklist and soft brakes in the afternoon can both be true. Different time and source, with no shared observation.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-18",
+   "classification": "negative_control",
+   "control_type": "consistent hearsay",
+   "confidence": "high",
+   "reason": "Sethi has no personal knowledge and was told the dose went in 'just before ten' (A02_w2 lines 70-73). That matches Morrow's 9:52 time from her charting and the scan (A02_w1 p2:1-4; p4:1-2).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-19",
+   "classification": "negative_control",
+   "control_type": "reconcilable arithmetic",
+   "confidence": "high",
+   "reason": "Sethi: six logged withdrawals, two cancelled without removal, 'so, four actual removals' (A02_w2 lines 60-65). That matches Morrow's 'I pulled insulin for her four times' (A02_w1 p1:24-28).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-20",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Prentiss: he placed the callback to Vukovic's direct desk line at 10:52 a.m. April 17; she identified herself and gave the code, and it is logged (B05_w2 p6:11-p7:1). Vukovic: nobody from the bank called her that day on desk or cell; the IT desk-line log and her cell bill show nothing (B05_w1 lines 49-53). Same day, same line; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-21",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same inspection (Feb 21; Lindqvist present throughout): Lindqvist says she looked at and photographed pry marks and gouges by the strike plate (A05_w1 p2:15-23); Achterberg says there were no pry marks on the frame or strike plate and she photographed both (A05_w2 p2:1-13). Same door at the same time; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-22",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same test (Nov 12 acceptance test, staging environment, build 2.0.0, 200-stop scenario, dispatcher Leon operating, Thorpe beside him). Okafor: it crashed every time, three of three runs on 200 stops (A04_w1 lines 46-56). Thorpe: every scenario, including 200 stops, completed without a crash (A04_w2 p2:11-23). Scope aligned; incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-23",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Same pocket (her refrigerated-drawer pocket on 4 West) at the same time, before the dose. Morrow: she pulled the U-500 vial, 'the only thing that was in there' (A02_w1 p2:24-p3:2). Sethi: the pocket held only U-100 and 'there was no U-500', restocked 8:40 p.m. with nothing else loaded before the dose (A02_w2 lines 46-55). Sethi's basis is the restock records, not observation; the policy does not downgrade on that ground, and scope is aligned.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-24",
+   "classification": "negative_control",
+   "control_type": "reconcilable arithmetic",
+   "confidence": "high",
+   "reason": "Achterberg: 22 line items, three entered twice, 'so it is nineteen distinct items' (A05_w2 p3:9-12). That matches Lindqvist's nineteen items (A05_w1 p3:4-6).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-25",
+   "classification": "negative_control",
+   "control_type": "consistent (same date stated differently)",
+   "confidence": "high",
+   "reason": "Vukovic reported to the fraud line 'the next business day... at eight a.m.' (B05_w1 lines 66-68). April 17, 2026 was a Friday, so the next business day is Monday April 20, matching Prentiss's 8:06 a.m. claim on Monday April 20 (B05_w2 p7:4-9). He also notes her voicemail late on the 17th, as she describes (lines 62-65).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-26",
+   "classification": "negative_control",
+   "control_type": "different time/location of measurement",
+   "confidence": "medium",
+   "reason": "Castellano guessed 30-35 mph gusts 'up on the deck especially', at a time he can't fix, and did not look at the gauge (B03_w1 p5:20-p6:3). Achterberg's 12 mph/gusts 15 anemometer reading was taken at ground level beside the trailer, untimed but normally on arrival ~6:55 (B03_w2 p6:13-14; p8:1-9). The testimony shows different elevations and probably different times, which could explain the difference. At most a point to explore, not a conflict on aligned scope.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-27",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same walkthrough (July 18, Peter and Doug present), same ceiling over the proofing area. Vantongeren: water came through the tiles, three buckets out, Peter stepped around them (A03_w1 p2:22-p3:9). Szalai: dry, 'No buckets, no drips', stained tiles but no active leak (A03_w2 p2:19-p3:2). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-28",
+   "classification": "negative_control",
+   "control_type": "incomplete knowledge",
+   "confidence": "high",
+   "reason": "Brennick: 'As far as I know, no spotter was assigned... I didn't make the assignments, Dana did, and I didn't see her sheet' (A01_w2 p2:2-10). That disclaims knowledge, so it does not conflict with Oduya's specific account of having spotter Luis Ferro (A01_w1 p2:18-21).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-29",
+   "classification": "negative_control",
+   "control_type": "different times",
+   "confidence": "high",
+   "reason": "Holloway says the badge was active as of September 30, and that deactivation was set for start of business October 3 (B04_w1 p3:20-p4:1). Obuya's statement concerns the morning of October 3 (B04_w2 p5:16-20), so the two are consistent. (Obuya's account is partly what Kenji told her.)",
+   "quote_problem": "Quote is accurate; note the badge failure is partly relayed from Kenji ('He'd tried it a couple of times, he told me')."
+  },
+  {
+   "id": "ITEM-30",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same huddle (2:00 p.m. March 14; Oduya present, per both). Oduya: 'Nobody said a word about aisle 14' (A01_w1 p2:6-14). Brennick: she announced aisle 14 closed to forklifts to the group and told Ray directly by name, and he nodded (A01_w2 p1:14-p2:1). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-31",
+   "classification": "negative_control",
+   "control_type": "different documents (first list vs revised list)",
+   "confidence": "medium",
+   "reason": "Lindqvist says a dealer valued the watch at ~$11,000 and he put that on the 'revised list'; there was also an earlier hurried first list (A05_w1 p3:7-21). Achterberg cites 'the claim file' and would want to see the specific form (A05_w2 p3:13-18). The $4,200 figure may come from the first list. The documents are not aligned, and his quote is a value opinion, not what the claim listed.",
+   "quote_problem": "Quote is accurate, but Lindqvist's line ('worth about eleven thousand') states value, not the amount on a specific claim form; the pairing compares a value opinion with a claim-file figure."
+  },
+  {
+   "id": "ITEM-32",
+   "classification": "negative_control",
+   "control_type": "different systems",
+   "confidence": "high",
+   "reason": "Prentiss: the wire was pending in the bank's back-office queue, and 'the client portal does not display wires that are held for callback'; in the portal it would appear under completed submissions (B05_w2 p6:1-10). Vukovic looked at the portal's pending tab around 10:45 (B05_w1 lines 45-48). Different systems; both are true.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-33",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Same truck on the same stretch approaching mile marker 112 just before the lane change. Okafor estimates 'over seventy' because it was closing on her at 65 (B01_w1 p5:16-25). Thibault says he was at 58 on cruise 'on that stretch' (B01_w2 p2:5-10). Okafor's figure is an estimate, but a truck at 58 could not close on a car at 65, so the accounts are incompatible, not just imprecise.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-34",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same moment (Unit 22 reversing into Delgado). Oduya: 'The backup alarm was beeping the whole time I was reversing'; he heard it (A01_w1 p3:6-11). Brennick, 30 ft away, watching, and listening for it: 'no alarm... not a single beep'; the alarm is audible across the dock (A01_w2 p2:11-24). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-35",
+   "classification": "negative_control",
+   "control_type": "different times (before vs after repainting)",
+   "confidence": "high",
+   "reason": "Oduya describes the lines as faded 'on the 14th' (March 14) (A01_w1 p4:16-21). Brennick describes them as they appear in Exhibit 3, a photo she took in May 2025 after the April 2025 repainting (A01_w2 p3:22-p4:4). Oduya also confirms new paint in spring (p5:6-9). Different times; consistent.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-36",
+   "classification": "review_worthy",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Vantongeren says the lease makes the landlord responsible for the roof (A03_w1 p3:10-16); Szalai says it makes the tenant responsible but would need to see the page (A03_w2 p2:11-18). The characterizations conflict, but both are interpretations (a legal-conclusion objection was made). There is also a possible 2022 amendment or extension paperwork (A03_w1 p1:16-20), so it is not established that both read the same, current document.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-37",
+   "classification": "negative_control",
+   "control_type": "consistent hearsay / equivalent terms",
+   "confidence": "high",
+   "reason": "Holloway: 21 days to consider (B04_w1 p4:6-8). Obuya relays Kenji saying he 'had three weeks to think about it' (B04_w2 p5:26-28). The two are equivalent.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-38",
+   "classification": "negative_control",
+   "control_type": "non-recollection",
+   "confidence": "high",
+   "reason": "Thibault: 'I don't recall which lane the pickup was in'; he didn't notice it until after (B01_w2 p3:23-p4:1). That cannot conflict with Okafor's specific memory that it was in the left lane (B01_w1 p5:11-15).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-39",
+   "classification": "negative_control",
+   "control_type": "consistent hearsay / different time cut-off",
+   "confidence": "high",
+   "reason": "Wendell: 31 in total, 24 of whom had contacted the restaurant by the end of Friday night (B02_w1 p8:13-15). Tellez repeats the Friday-night figure of 24 Priya gave and heard no later number (B02_w2 lines 67-73). Consistent.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-40",
+   "classification": "review_worthy",
+   "control_type": null,
+   "confidence": "low",
+   "reason": "Okafor: in December, in production (2.0.0), the dispatch screen took over 30 seconds most mornings (A04_w1 lines 73-78). Thorpe: 'In my experience... under two seconds... whenever I saw it' (A04_w2 p3:15-18), with no environment, version or date given; elsewhere he demonstrated on Brightloom's demo server (p3:10-12). The difference could be a different environment, but aligned scope is neither established nor excluded, so it is worth probing rather than strict.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-41",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same leg (northeast leg of Bay C) at the same time (~7 a.m. March 12). Castellano: 'it had a two-by-ten pad under it', confident, looked right at it at seven (B03_w1 p4:19-22). Achterberg: 'No mudsill. No timber of any kind', base plate on soil, looked at about seven (B03_w2 p6:20-24). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-42",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same tag (Bay C) at the same time (7 a.m. March 12). Castellano: green (B03_w1 p4:3-14). Achterberg: red, hung by her at 4:30 the day before and checked on arrival (6:55) and before leaving (7:15) (B03_w2 p6:9-19). Only she could change a tag (p6:1). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-43",
+   "classification": "negative_control",
+   "control_type": "different times / different limit definitions",
+   "confidence": "medium",
+   "reason": "Vukovic recalls $250,000 as what she was told 'when we set it up, I think' (B05_w1 lines 30-32). Prentiss reports the current profile's 'daily company limit' of $500,000 as reviewed for the deposition, says limits 'were updated at some point', and did not review per-user limits (B05_w2 p5:11-21). Different points in time and possibly different limit types; not shown to be the same limit at the same time.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-44",
+   "classification": "negative_control",
+   "control_type": "non-recollection",
+   "confidence": "high",
+   "reason": "Thorpe: 'I don't recall whether Ms. Okafor signed the change order' (A04_w2 p3:5-8). That cannot conflict with Okafor's specific testimony that she signed it on August 9 (A04_w1 lines 62-63).",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-45",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Okafor: nothing from Brightloom was on the SFTP server until Nov 6; she checked Oct 31 and Nov 1 with the admin account and the transfer log (A04_w1 lines 34-45). Thorpe: 'We uploaded the 2.0 release build to Halvorsen's SFTP server on October 30' (A04_w2 p1:26-p2:2). Same server and window; the claims are incompatible. Caveat: Thorpe didn't log in and relied on engineer Danforth's message (p2:3-6), so his basis is second-hand, but he asserts the upload affirmatively.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-46",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same meeting (July 14, 2 p.m., Room 2B; Holloway, Obuya and Nakashima). Holloway: he handed over a three-page written plan, Nakashima read page one and took it with him (B04_w1 p1:20-p2:14, Ex. 9). Obuya was there start to finish: 'Nobody handed Kenji anything', no paper on the table, he left with only his mug (B04_w2 p3:18-p4:10). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-47",
+   "classification": "strict_conflict",
+   "control_type": null,
+   "confidence": "high",
+   "reason": "Same lane change from right into center. Okafor, looking at the cab corner beside her window: 'no signal on the cab or the trailer when it came over' (B01_w1 p6:1-13; p8:18-24). Thibault: the left blinker was on 'before I moved over and while I was moving over' (B01_w2 p2:15-22). Incompatible.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-48",
+   "classification": "review_worthy",
+   "control_type": null,
+   "confidence": "medium",
+   "reason": "Wendell: 200 ppm when she tested the prep and line buckets at the start of each of her shifts (B02_w1 p7:24-p8:9). Tellez: strips 'barely changed color' on an unknown day that week, on a bucket he can't identify ('one on the line, I think'), at an unstated time (B02_w2 lines 55-66). The accounts may conflict, but his reading's time, bucket and day are unknown, and a start-of-shift reading doesn't cover later in the shift.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-49",
+   "classification": "negative_control",
+   "control_type": "different reports",
+   "confidence": "high",
+   "reason": "Wendell is describing the county's June 9 report, with four violations (B02_w1 p8:16-24). Tellez explicitly describes the one report he saw, the corporate audit, with two violations (B02_w2 lines 76-84). Different documents.",
+   "quote_problem": null
+  },
+  {
+   "id": "ITEM-50",
+   "classification": "negative_control",
+   "control_type": "different versions/environments",
+   "confidence": "high",
+   "reason": "Okafor's failure was in September 2024, in Halvorsen's test environment, on version 1.9; she never tested later versions (A04_w1 lines 66-72). Thorpe's demonstration was in January on 2.0.1, on Brightloom's demo server, and 2.0.1 was never installed at Halvorsen (A04_w2 p3:9-14). Different versions and environments.",
+   "quote_problem": null
+  }
+ ]
+}

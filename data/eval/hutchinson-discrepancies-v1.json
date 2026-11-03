@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "set": "hutchinson-discrepancies-v1",
+  "about": "Real same-witness discrepancies in Cassidy Hutchinson's June 20 and September 15, 2022 testimony, scored as discovery (was the pair proposed at all) and classification (what it was called), separately. A development case, not held-out proof: the event-path prompt was changed after seeing results on it. Anchored by file SHA-256 and printed page:line.",
+  "documents": {
+    "hutchinson-2022-06-20": { "sha256": "37364b20cae72e21d18cf4c0b6ab4c32fa5bffc932b46217318fa89a1959e1a9", "witness": "Cassidy Hutchinson", "takenOn": "2022-06-20", "source": "Transcript as ingested for case \"Hutchinson parser r2\" (deposition 36, scanned-25-v1)" },
+    "hutchinson-2022-09-15": { "sha256": "90271daa5bb50791f889b4c763fd964814eb0c7eac5a6918b2fb5ee81b0ddb8d", "witness": "Cassidy Hutchinson", "takenOn": "2022-09-15", "source": "Transcript as ingested for case \"Hutchinson parser r2\" (deposition 37, scanned-25-v1); PDF pages 28-29 are blank" }
+  },
+  "discrepancies": [
+    {
+      "id": "limo-suv",
+      "topic": "The vehicle in the January 6, 2021 incident Ornato described: the Presidential limo (June) or the Presidential SUV (September)",
+      "a": [
+        { "document": "hutchinson-2022-06-20", "from": "6:04", "to": "6:08" },
+        { "document": "hutchinson-2022-06-20", "from": "5:20", "to": "5:23" }
+      ],
+      "b": [
+        { "document": "hutchinson-2022-09-15", "from": "33:07", "to": "33:12" },
+        { "document": "hutchinson-2022-09-15", "from": "34:19", "to": "34:24" }
+      ],
+      "classification": {
+        "expected": "context_dependent",
+        "status": "provisional",
+        "decidedBy": "Proposed by Claude from the two transcripts alone, on 2026-11-03; awaiting the developer's decision",
+        "basis": "Both accounts are second-hand (Ornato's retelling) and the June one is hedged ('what I believe is ... would be called the cab of the Presidential limo'); in September she says agents spoke of 'the Beast or ... the Presidential SUV' and 'would have just said the car'. The testimony doesn't settle whether she meant two different vehicles. If the errata or record the developer cited earlier shows she corrected 'limo' to 'SUV', this becomes 'correction'; that source was not checked here."
+      },
+      "note": "Supplied by the developer as a known real discrepancy. The hybrid pipeline ranked it 502nd to 822nd and Sonnet rejected it; Fable's direct run on analysis 16 found it (uncertain_needs_context); Opus's run on 2026-11-03 missed it."
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+                                                                     5
+ 1                      DISTRICT COURT, PELLHAM COUNTY
+ 2              FERREIRA v. BRIGHTLINE BUILDERS, INC., et al.
+ 3                       Civil Action No. 26-CV-0389
+ 4          DEPOSITION OF ROSALIND ACHTERBERG - September 2, 2026
+ 5            ROSALIND ACHTERBERG, sworn, testified as follows:
+ 6                               EXAMINATION
+ 7    BY MR. DIAZ:
+ 8    Q.   Ms. Achterberg, by whom are you employed?
+ 9    A.   Tallis Scaffold Company. I'm a field supervisor and the
+10    designated competent person for scaffold on the projects I'm
+11    assigned to.
+12    Q.   What training do you have for that role?
+13    A.   An OSHA thirty-hour card, a supported-scaffold competent
+14    person course through the trade association, renewed every three
+15    years, and fourteen years of erecting and inspecting frame
+16    scaffold.
+17    Q.   Were you assigned to the 400 Quarry Street project in March
+18    2026?
+19    A.   Yes. Tallis erected the frame scaffold on the north and east
+20    elevations. I performed the inspections.
+21    Q.   Describe the tag system Tallis used on that job.
+22    A.   Three colors. Green means inspected and safe for use. Yellow
+23    means usable with a stated restriction. Red means do not use.
+24    Every bay carries a tag at its access ladder.
+25    Q.   Who is permitted to change a tag?
+
+                                                                     6
+ 1    A.   Only Tallis's competent person. On that project, that was me.
+ 2    Q.   Directing your attention to March 11, 2026. Did you inspect
+ 3    Bay C on the north elevation that day?
+ 4    A.   Yes. At about four-fifteen in the afternoon.
+ 5    Q.   What did you find?
+ 6    A.   Settlement at the northeast leg. The base plate had dropped
+ 7    about three-quarters of an inch relative to the adjacent legs, and
+ 8    the plank was out of level.
+ 9    Q.   What did you do?
+10    A.   I hung a red tag on Bay C at four-thirty and noted it in the
+11    inspection log.
+12    Q.   When did you next see Bay C?
+13    A.   The next morning, March 12. I was at Bay C from about six
+14    fifty-five until about seven-fifteen.
+15    Q.   What color was the tag on Bay C at seven a.m. on March 12?
+16         MR. VOGEL:  Objection, form.
+17    A.   Red. Bay C carried a red tag at seven a.m. on the twelfth. It
+18    was the tag I'd hung the day before. I checked it when I arrived
+19    and again before I left.
+20    Q.   Was there a mudsill under the northeast leg of Bay C on the
+21    morning of March 12?
+22    A.   No mudsill. No timber of any kind under that leg. The base
+23    plate was bearing directly on soil. I looked at it at about seven
+24    that morning, and that was the cause of the settlement.
+25    Q.   Who installed the base of that scaffold?
+
+                                                                     7
+ 1    A.   Tallis did, in February. The erection drawings called for a
+ 2    two-by-ten mudsill under every leg bearing on soil.
+ 3    Q.   Do you know how it came to be missing?
+ 4         MR. VOGEL:  Objection, calls for speculation.
+ 5    A.   No. I don't know.
+ 6    Q.   Did you take any action on the morning of March 12 regarding
+ 7    Bay C?
+ 8    A.   I confirmed the red tag was in place and requested a crew to
+ 9    reset the base. The crew was scheduled for that afternoon.
+10    Q.   Did Mr. Castellano shut down Bay C at any time on March 12?
+11    A.   Owen didn't shut down Bay C. Nobody from Brightline did.
+12    There was no reason for them to. It was already tagged out.
+13    Q.   When did you leave the site that morning?
+14    A.   At about seven-fifteen. I had an inspection at another
+15    project across town.
+16    Q.   Who was on the Bay C platform when it collapsed?
+17    A.   I wasn't there. As far as I knew, nobody was supposed to be
+18    on Bay C that day. I wasn't told of any work planned there.
+19    Q.   How did you learn of the collapse?
+20    A.   Our office called me at about ten-fifty. I drove back and
+21    arrived around noon.
+22    Q.   Did Tallis measure wind on that site?
+23    A.   Yes. We keep a handheld anemometer in the trailer, and the
+24    reading goes in the daily log.
+25        (Achterberg Exhibit 4 was marked for identification.)
+
+                                                                     8
+ 1    Q.   Exhibit 4 is the Tallis daily scaffold log for March 12. What
+ 2    does it show for wind?
+ 3    A.   The anemometer read twelve miles an hour, gusts to fifteen.
+ 4    That is my entry.
+ 5    Q.   At what time was that reading taken?
+ 6    A.   In the morning. The entry doesn't have a time on it. I would
+ 7    normally take it when I arrive.
+ 8    Q.   Where was the reading taken?
+ 9    A.   At ground level, beside the trailer.
+10    Q.   Does Tallis restrict work on scaffold above a certain wind
+11    speed?
+12    A.   Our policy suspends work on frame scaffold with sustained
+13    wind above twenty-five miles an hour or gusts above thirty-five.
+14    Q.   After the collapse, did you inspect the remaining bays?
+15    A.   Yes. That afternoon I inspected bays A, B, D, E and F. They
+16    remained green.
+17    Q.   Have you discussed this testimony with anyone at Brightline?
+18    A.   No.
+19         MR. DIAZ:  That's all I have.
+20         MR. VOGEL:  No questions from Tallis.
+21        (Deposition concluded at 11:30 a.m.)

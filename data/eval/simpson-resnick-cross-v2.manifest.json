@@ -1,0 +1,80 @@
+{
+  "dataset": "simpson-resnick-cross-v2",
+  "frozenAt": "2026-11-03T15:37:08.923892+00:00",
+  "reviewedBy": "developer (evidence-level review, 2026-11-03)",
+  "labelFile": {
+    "path": "data/eval/simpson-resnick-cross-v2.json",
+    "sha256": "a1dcd7e0bbe73b8c90b64f05e6e67d25a7df7066a3940de3a6a648a0550b6bd7"
+  },
+  "sources": {
+    "simpson-1996-01-23": {
+      "file": "exports/o_j_simpson_january_23_1996_day_2.txt",
+      "sha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+      "verifiedAt": "freeze"
+    },
+    "simpson-1996-02-27": {
+      "file": "exports/o_j_simpson_february_27_1996_day_9.txt",
+      "sha256": "a3ac0014816b3ae716664027b8086881ab61a25a718c92418a818062cc99ba2b",
+      "verifiedAt": "freeze"
+    },
+    "resnick-1996-02-11-direct": {
+      "file": "exports/faye_resnick_february_11_1996_day_9_direct_examination.txt",
+      "sha256": "3b1508dae47393eebdb6e7923bd2f6a69d23cd2c0b02fe2ae3df655ffc0290fb",
+      "verifiedAt": "freeze"
+    },
+    "resnick-1996-02-11-cross": {
+      "file": "exports/faye_resnick_february_11_1996_day_9_cross_examination.txt",
+      "sha256": "57bcf1d4db527b92d4981f7138e394e7c2211654dbe2728a03ee3bb184decae5",
+      "verifiedAt": "freeze"
+    }
+  },
+  "groups": {
+    "established_conflicts": [],
+    "review_worthy_needs_context": [
+      "C01",
+      "C02",
+      "CW-001"
+    ],
+    "verified_negative_controls": [
+      "C03",
+      "C06",
+      "C07",
+      "C08",
+      "N01",
+      "N02",
+      "N03",
+      "N04",
+      "N05",
+      "N07",
+      "N08",
+      "NC-001",
+      "NC-002"
+    ],
+    "exploratory_unscored": [
+      "C04",
+      "C05",
+      "N09",
+      "CW-002"
+    ]
+  },
+  "exclusions": [
+    {
+      "id": "C09",
+      "reason": "Dropped by the reviewer: double hearsay (Reichardt via Simpson), no time frame, likely consistent with Resnick's admitted relapse."
+    },
+    {
+      "id": "N06",
+      "reason": "Dropped by the reviewer: not clear that the Playboy work is the business venture Resnick means."
+    }
+  ],
+  "metrics": {
+    "discoveryRecall": "established + review-worthy pairs surfaced in either lane (contradictions or needs_context), over their count",
+    "strictRecall": "established pairs in the contradictions lane only, over their count; not measurable with 0 established",
+    "falsePositiveRate": "verified negative controls reported in either lane, over their count",
+    "exploratory": "shown per case (surfaced or not), in no rate"
+  },
+  "notes": [
+    "Archive-derived exports, not certified transcripts.",
+    "CW-002's Simpson record 234 merges counsel's instruction and the answer (\"ROBERT BAKER: Don't answer that. THE WITNESS: No. I'm sorry.\"); kept exploratory until reviewed."
+  ]
+}

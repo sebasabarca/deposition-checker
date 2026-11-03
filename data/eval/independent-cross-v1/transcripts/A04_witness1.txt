@@ -1,0 +1,86 @@
+DEPOSITION OF NADIA OKAFOR
+Halvorsen Freight Co. v. Brightloom Systems, Inc.
+August 20, 2025
+
+EXAMINATION BY MR. BELLAMY
+Q: Ms. Okafor, please state your name for the record.
+A: Nadia Okafor.
+Q: Where do you work?
+A: Halvorsen Freight Company. I'm the director of information
+technology.
+Q: How long have you held that title?
+A: Four years.
+Q: Before that?
+A: Systems manager at Halvorsen. Six years.
+Q: Have you been deposed before?
+A: Once. An employment matter. 2021.
+Q: How many people are on your team?
+A: Eleven. Two of them worked on RouteDesk with me.
+Q: What system did Halvorsen use for dispatch before RouteDesk?
+A: A homegrown system. About fifteen years old. Built on a database
+we could no longer get support for.
+Q: Why did Halvorsen choose Brightloom?
+A: Price and timeline. They promised a November go-live.
+Q: Were you involved in the RouteDesk project with Brightloom?
+A: Yes. I was Halvorsen's project lead from contract signing to
+termination.
+Q: When was the contract signed?
+A: March 2024.
+Q: What was the delivery date for version 2.0?
+A: November 1, 2024.
+Q: How was the 2.0 release to be delivered?
+A: Upload to our SFTP server, into a folder named for the release.
+That's in the statement of work.
+Q: Did Brightloom deliver the 2.0 release build to that server by
+November 1?
+A: No. There was nothing from Brightloom on our SFTP server until
+November 6. I checked the server on October 31 and again on November
+1. The 2.0 folder was empty both times.
+Q: How did you check?
+A: Logged in with the admin account and listed the folder. I also
+checked the transfer log.
+Q: Are you aware Brightloom says it uploaded the build on October
+30?
+MS. QUARRIE: Objection, form.
+A: I'm aware they say that. It wasn't there.
+Q: Was there an acceptance test of the 2.0 release?
+A: Yes. November 12, at our office, in our staging environment.
+Brightloom attended. Mr. Thorpe and two engineers.
+Q: What build was tested?
+A: The build uploaded November 6. Version 2.0.0.
+Q: What happened during the test of the route optimization module?
+A: At the acceptance test on November 12 the route optimizer crashed
+every time we loaded more than fifty stops. Every time. We ran the
+200-stop scenario three times. It crashed three times.
+Q: Who was operating the system?
+A: Our dispatcher, Leon Abara. Mr. Thorpe was next to him.
+(Exhibit 21 was marked for identification.)
+Q: Is Exhibit 21 the acceptance test log for November 12?
+A: It's our log. Brightloom kept its own.
+Q: Who prepared it?
+A: I did. Same day.
+Q: Let's talk about change orders. Did you sign change order 4?
+A: Yes. I signed change order 4 for the mobile app on August 9.
+Q: What did it cover?
+A: A driver mobile app. Android only. An added $46,000.
+Q: Let's turn to the CSV export feature. Did it work?
+A: The CSV export never worked for us. We'd click export and get an
+error.
+Q: When was that?
+A: September 2024. Our test environment. Version 1.9.
+Q: Did you test CSV export on any later version?
+A: No. We terminated before 2.0.1 was installed.
+Q: How did the system perform after it went live?
+A: It went live in production on December 2, on 2.0.0, with the
+optimizer turned off. In December, in production, the dispatch
+screen took over thirty seconds to load.
+Q: Every time?
+A: Most mornings. Worse at shift change.
+Q: Did you report that to Brightloom?
+A: Yes. Support tickets and emails. At least nine tickets in
+December.
+Q: When did Halvorsen terminate the contract?
+A: January 15, 2025.
+Q: Nothing further.
+MS. QUARRIE: No questions.
+(Deposition concluded at 2:12 p.m.)

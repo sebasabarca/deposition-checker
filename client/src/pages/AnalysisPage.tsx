@@ -11,7 +11,7 @@ import { api } from "../lib/api";
 import { isActive } from "../lib/insights";
 import { ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, CaseDetail, DiscoveryView, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
+import type { AnalysisView, CaseDetail, DiscoveryView, EvidenceCoverage, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
 import { CheckProgress } from "../components/CheckProgress";
 import { ANALYSIS_TOUR, Tour } from "../components/Tour";
 
@@ -108,6 +108,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
       {analysis.mode === "demo" && <Alert tone="info">This is an example analysis. No model was called for it.</Alert>}
       {active && <CheckProgress analysis={analysis} pages={pagesOf(caseDetail, analysis)} lines={null} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
       {!done && !active && <Progress analysis={analysis} onResume={(budget) => api.resume(analysis.id, budget).then(load).catch((e: Error) => setError(e.message))} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
+      {done && analysis.evidence && <CoverageAlert evidence={analysis.evidence} depositions={analysis.depositions} />}
       {analysis.discovery?.usedFallback && done && <Alert tone="warn" title="The first reading couldn't finish this check">A second reading produced these findings. They were verified the same way.</Alert>}
 
       {groups && (done || findings.length > 0) && (
@@ -122,6 +123,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
       )}
       {done && !groups && <Loading label="Loading findings" />}
       {(groups?.notStored?.length ?? 0) > 0 && <NotStored items={groups!.notStored!} />}
+      {done && analysis.evidence && <WhatItReceived evidence={analysis.evidence} depositions={analysis.depositions} />}
       {!active && analysis.discovery && analysis.discovery.attempts.length > 0 && <HowItRan discovery={analysis.discovery} cost={analysis.cost.actualUsd} />}
       {guiding && reviewable && <Tour steps={ANALYSIS_TOUR} onDone={endGuide} />}
     </>
@@ -142,6 +144,67 @@ function HowItRan({ discovery, cost }: { discovery: DiscoveryView; cost: number 
           </li>
         ))}
       </ul>
+    </details>
+  );
+}
+
+type Sessions = AnalysisView["depositions"];
+const sessionName = (depositions: Sessions, id: number) => {
+  const d = depositions.find((x) => x.id === id);
+  return d ? `Session of ${formatDate(d.takenOn)}` : `Deposition #${id}`;
+};
+
+// Shown above the findings whenever this check didn't receive all of the testimony, or the model said
+// its review was partial: the findings can't speak for what wasn't there.
+function CoverageAlert({ evidence, depositions }: { evidence: EvidenceCoverage; depositions: Sessions }) {
+  const missing = evidence.sessions.map((s) => ({ s, notes: s.notes })).filter((x) => x.notes.length > 0);
+  const partial = evidence.model?.completionStatus === "partial";
+  if (missing.length === 0 && !partial) return null;
+  return (
+    <Alert tone="warn" title="This check didn't cover all of the testimony">
+      <ul className="list-disc space-y-0.5 pl-5">
+        {missing.flatMap(({ s, notes }) => notes.map((n) => <li key={`${s.depositionId}-${n}`}>{sessionName(depositions, s.depositionId)}: {n}</li>))}
+        {partial && <li>The model reported that its review was partial. Its reasons are under “What this check received”.</li>}
+      </ul>
+      <p className="mt-1">No finding speaks for testimony the check didn't receive.</p>
+    </Alert>
+  );
+}
+
+function WhatItReceived({ evidence, depositions }: { evidence: EvidenceCoverage; depositions: Sessions }) {
+  const limitations = evidence.model?.limitations ?? [];
+  return (
+    <details className="rounded-lg border border-line bg-sheet text-sm print:hidden">
+      <summary className="cursor-pointer px-5 py-3.5 font-semibold">What this check received</summary>
+      <div className="space-y-4 border-t border-rule px-5 py-4">
+        <section>
+          <h3 className="font-semibold">Checked by Veridict</h3>
+          <ul className="mt-1 space-y-1.5">
+            {evidence.sessions.map((s) => {
+              const notes = s.notes;
+              return (
+                <li key={s.depositionId}>
+                  <span className="font-medium">{sessionName(depositions, s.depositionId)}</span>: <span className="tabular-nums">{s.linesSent.toLocaleString()}</span> lines sent{s.pageCount !== null && <>, from a {s.pageCount}-page file</>}.{" "}
+                  {notes.length > 0 ? notes.join(" ") : s.numbered ? "No pages missing." : "Its lines aren't numbered by the transcript, so missing passages can't be detected."}
+                  {s.lineSkips.length > 0 && <span className="text-muted"> Line numbers skip in {s.lineSkips.length} {s.lineSkips.length === 1 ? "place" : "places"} within a page, usually blank lines.</span>}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+        <section>
+          <h3 className="font-semibold">Reported by the model</h3>
+          {evidence.model === null ? (
+            <p className="mt-1 text-muted">The model gave no answer, so it reported nothing.</p>
+          ) : (
+            <>
+              <p className="mt-1">{evidence.model.completionStatus === "complete" ? "It said it considered all the testimony it was given." : "It said its review was partial."}{limitations.length === 0 && " It reported no limitations."}</p>
+              {limitations.length > 0 && <ul className="mt-1 list-disc space-y-1 pl-5">{limitations.map((l) => <li key={l}>{l}</li>)}</ul>}
+              <p className="mt-1.5 text-xs text-faint">The model's own account, not checked by Veridict.</p>
+            </>
+          )}
+        </section>
+      </div>
     </details>
   );
 }

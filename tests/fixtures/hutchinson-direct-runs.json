@@ -1,0 +1,124 @@
+{
+  "fable-analysis-16": {
+    "model": "claude-fable-5-1",
+    "promptVersion": "discover-v1",
+    "proposals": [
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "111:18-111:21"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "5:11-5:13"
+        },
+        "modelClassification": "inferential_contradiction"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "6:04-6:07"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "33:07-33:09"
+        },
+        "modelClassification": "uncertain_needs_context"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "9:25-10:03"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "39:02-39:05"
+        },
+        "modelClassification": "uncertain_needs_context"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "158:01-158:11"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "49:24-50:06"
+        },
+        "modelClassification": "uncertain_needs_context"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "158:09-158:10"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "48:05-48:09"
+        },
+        "modelClassification": "uncertain_needs_context"
+      }
+    ]
+  },
+  "opus-2026-11-03": {
+    "model": "claude-opus-5-5",
+    "promptVersion": "discover-v1",
+    "proposals": [
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "159:14"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "50:07-50:08"
+        },
+        "modelClassification": "uncertain_needs_context"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "10:01-10:03"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "39:04-39:05"
+        },
+        "modelClassification": "uncertain_needs_context"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "158:10-158:11"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "50:04-50:06"
+        },
+        "modelClassification": "uncertain_needs_context"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "111:18-111:21"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "5:11-5:13"
+        },
+        "modelClassification": "compatible"
+      },
+      {
+        "a": {
+          "document": "hutchinson-2022-06-20",
+          "citation": "160:02-160:03"
+        },
+        "b": {
+          "document": "hutchinson-2022-09-15",
+          "citation": "43:10-43:12"
+        },
+        "modelClassification": "uncertain_needs_context"
+      }
+    ]
+  }
+}

@@ -46,7 +46,11 @@ export type DiscoveryProvider = {
   cancel(batchId: string): Promise<void>;
 };
 
-export function anthropicDiscovery(client = new Anthropic({ maxRetries: 0 }), maxOutputTokens?: number): DiscoveryProvider {
+// What a discovery request asks for. Defaults to same-witness discovery; cross-witness discovery and
+// benchmark runs pass their own prompt, schema and effort.
+export type DiscoverySpec = { system: string; schema: Record<string, unknown>; effort: "low" | "medium" | "high" | "xhigh" | "max" };
+
+export function anthropicDiscovery(client = new Anthropic({ maxRetries: 0 }), maxOutputTokens?: number, spec: DiscoverySpec = { system: DISCOVERY_SYSTEM, schema: DISCOVERY_JSON_SCHEMA, effort: DISCOVERY_EFFORT }): DiscoveryProvider {
   const batches = client.messages.batches;
   return {
     maxOutputTokens,
@@ -57,8 +61,8 @@ export function anthropicDiscovery(client = new Anthropic({ maxRetries: 0 }), ma
           params: {
             model,
             max_tokens: limit,
-            system: [{ type: "text", text: DISCOVERY_SYSTEM, cache_control: { type: "ephemeral" } }],
-            output_config: { effort: DISCOVERY_EFFORT, format: { type: "json_schema", schema: DISCOVERY_JSON_SCHEMA } },
+            system: [{ type: "text", text: spec.system, cache_control: { type: "ephemeral" } }],
+            output_config: { effort: spec.effort, format: { type: "json_schema", schema: spec.schema } },
             messages: [{ role: "user", content: user }],
           },
         }],
@@ -253,7 +257,7 @@ async function storeFindings(tx: Tx, a: Analysis, llmCallId: number, modelAnswer
       unscoredReason: unscoredReasonOf(lane, p.check.evidenceStatus, strength.score),
       factors: strength.checks, caps: [],
       checks: {
-        source: { status: p.check.evidenceStatus, a: ca.source, b: cb.source }, attribution: { a: ca.attribution, b: cb.attribution }, context: { detail: `${CONTEXT_LINES} lines either side of each citation, for reading. The model read both sessions whole.` },
+        source: { status: p.check.evidenceStatus, a: ca.source, b: cb.source }, attribution: { a: ca.attribution, b: cb.attribution }, context: { detail: `${CONTEXT_LINES} lines either side of each citation, for reading. The model was given every stored line of both sessions; see the analysis for pages it never received.` },
         timeCheck: null, notCorroborated: [], reasons: p.check.reasons, consistencyIssues: [],
         direct: { lane, evidenceKey: key, a: p.a, b: p.b, identityIssues: p.check.identityIssues, modelClassification: p.finding.classification, duplicates: copies.map((c) => ({ findingId: c.finding.finding_id, classification: c.finding.classification, a: c.a.citation, b: c.b.citation, explanation: c.finding.explanation })) },
       },
@@ -373,8 +377,8 @@ async function afterAttempt(db: Database, a: Analysis, provider: DiscoveryProvid
 
 // What each attempt did, for the API. Read-only.
 export async function discoveryRunsOf(db: Database, analysisId: number) {
-  return db.execute<{ attempt: number; role: string; model: string; status: string; prompt_version: string; stop_reason: string | null; refusal_category: string | null; error: string | null; latency_ms: number | null; cost_usd: string | null; input_tokens: number | null; output_tokens: number | null; thinking_tokens: number | null; answered_by: string | null; audit: unknown; source_hashes: unknown; batch_id: string | null }>(sql`
-    select r.attempt, r.role, r.model, r.status, r.prompt_version, r.stop_reason, r.refusal_category, r.error, r.latency_ms, r.audit, r.source_hashes, r.batch_id,
+  return db.execute<{ attempt: number; role: string; model: string; status: string; prompt_version: string; stop_reason: string | null; refusal_category: string | null; error: string | null; latency_ms: number | null; cost_usd: string | null; input_tokens: number | null; output_tokens: number | null; thinking_tokens: number | null; answered_by: string | null; audit: unknown; output: unknown; source_hashes: unknown; batch_id: string | null }>(sql`
+    select r.attempt, r.role, r.model, r.status, r.prompt_version, r.stop_reason, r.refusal_category, r.error, r.latency_ms, r.audit, r.output, r.source_hashes, r.batch_id,
       l.cost_usd, l.input_tokens + l.cache_write_5m_tokens + l.cache_write_1h_tokens + l.cache_read_tokens as input_tokens, l.output_tokens, l.thinking_tokens, l.model as answered_by
     from discovery_runs r left join llm_calls l on l.id = r.llm_call_id
     where r.analysis_id = ${analysisId} order by r.attempt

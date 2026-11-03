@@ -154,3 +154,4 @@ export function nextStep(details: CaseDetail[], running: { id: number }[], waiti
   if (lone.length) return { kind: "second_session", ...lone[0] };
   return { kind: "more" };
 }
+

@@ -1,0 +1,348 @@
+{
+  "version": 1,
+  "set": "synthetic-cross-v3",
+  "synthetic": true,
+  "about": "The developer's synthetic parser suite (veridict_synthetic_deposition_parser_suite): five pairs of invented witnesses in case VH-2041-17. Version 3 is the developer's final review of every label (2026-11-03), with three findings added from Phase A that the suite's own key did not list. Label names: \"conflict\" = strict conflict, \"conflict_needs_context\" = review-worthy disagreement, \"no_conflict\" = negative control. synthetic-cross-v1.json and synthetic-cross-v2.json are kept unchanged. Development set: it shaped the cross-witness prompt's wording.",
+  "documents": {
+    "pdf01": {
+      "file": "pdf_deposition_01.pdf",
+      "sha256": "05b581dabbea3ce342d7fd5c5fe382c15e0c3604f185f27ba3c6a647e5ad0539",
+      "witness": "Mara Voss",
+      "takenOn": "2025-01-14",
+      "session": "2025-01-14"
+    },
+    "pdf02": {
+      "file": "pdf_deposition_02.pdf",
+      "sha256": "032beaa2edcb973e5c5f50ab9d6ff39ca65d6630c732e5c76f8aa7cf0619ea4e",
+      "witness": "Jordan Pike",
+      "takenOn": "2025-02-02",
+      "session": "2025-02-02"
+    },
+    "txt01": {
+      "file": "txt_deposition_01.txt",
+      "sha256": "8aaee2dd5493d18615f890f71cf7fc199ac844550f8895ba5f1ff1817ac31f85",
+      "witness": "Elias Rowe",
+      "takenOn": "2025-03-11",
+      "session": "2025-03-11"
+    },
+    "txt02": {
+      "file": "txt_deposition_02.txt",
+      "sha256": "5fc03b6bd935469983369f948454053c3fd1eda7ade0390d35ba5015fa762bd9",
+      "witness": "Nia Calder",
+      "takenOn": "2025-03-12",
+      "session": "2025-03-12"
+    },
+    "asc01": {
+      "file": "asc_deposition_01.asc",
+      "sha256": "1cdd9739306c2da182edfcd635391a9e52aa70a5b34a5f716270f44f562e90fd",
+      "witness": "Priya Sen",
+      "takenOn": "2025-04-01",
+      "session": "2025-04-01"
+    },
+    "asc02": {
+      "file": "asc_deposition_02.asc",
+      "sha256": "df0273cf028cfd58b8cfda765f3b4f9bcc2a3e554a145909bd5014acace1cd70",
+      "witness": "Omar Kline",
+      "takenOn": "2025-04-03",
+      "session": "2025-04-03"
+    },
+    "rtf01": {
+      "file": "rtf_deposition_01.rtf",
+      "sha256": "1ef37493463caa744a4824728ab0d126f90ffa8f0122e9d6f281fe3fb5caa90d",
+      "witness": "Lena Quill",
+      "takenOn": "2025-05-08",
+      "session": "2025-05-08"
+    },
+    "rtf02": {
+      "file": "rtf_deposition_02.rtf",
+      "sha256": "23909fb39ec6e6baf6968f68b0a7c6eb5cb86909b91aa67019cfa71f1b48592c",
+      "witness": "Victor Hale",
+      "takenOn": "2025-05-09",
+      "session": "2025-05-09"
+    },
+    "docx01": {
+      "file": "docx_deposition_01.docx",
+      "sha256": "84bc6c37abc0729d5326dcdcb7292cfb9cc0e414549125803e8393850ba0ea28",
+      "witness": "Tessa Wren",
+      "takenOn": "2025-06-17",
+      "session": "2025-06-17"
+    },
+    "docx02": {
+      "file": "docx_deposition_02.docx",
+      "sha256": "3f85d186148a676810a18e43317b6c792d6011856b81a0061c94098c4422f046",
+      "witness": "Ravi Ortiz",
+      "takenOn": "2025-06-18",
+      "session": "2025-06-18"
+    }
+  },
+  "comparisons": [
+    {
+      "id": "voss-v-pike",
+      "witnessA": "Mara Voss",
+      "witnessB": "Jordan Pike",
+      "pairs": [
+        {
+          "id": "c1",
+          "topic": "Beacon approval",
+          "expected": "no_conflict",
+          "a": {
+            "document": "pdf01",
+            "phrase": "I approved the release candidate, not the production release"
+          },
+          "b": {
+            "document": "pdf02",
+            "phrase": "she was the release approver for that change window"
+          },
+          "note": "Relabelled in v2: Authority versus action: Pike says Voss had authority and was the release approver for that change window; Voss says she approved the release candidate, not the production release. Compatible statements."
+        },
+        {
+          "id": "c2",
+          "topic": "Export flag",
+          "expected": "no_conflict",
+          "a": {
+            "document": "pdf01",
+            "phrase": "The export flag was disabled in the release candidate"
+          },
+          "b": {
+            "document": "pdf02",
+            "phrase": "I saw it enabled in the production console before midnight"
+          },
+          "note": "Relabelled in v2: Different environments and times: Voss says the flag was disabled in the release candidate (at her 18:42 approval); Pike saw it enabled in the production console before midnight. Not a contradiction."
+        },
+        {
+          "id": "v3-video",
+          "topic": "How Pike attended the March 3 release room",
+          "expected": "conflict",
+          "a": {
+            "document": "pdf01",
+            "phrase": "Mr. Pike joined by video"
+          },
+          "b": {
+            "document": "pdf02",
+            "phrase": "No. I was physically at the North Harbor office"
+          },
+          "note": "Added in v3 (found in Phase A; reviewed by the developer): explicit disagreement about whether Pike joined the same March 3 release-room event by video. Pike's 'No' answers 'Did you join the release room by video?' (1:11)."
+        }
+      ]
+    },
+    {
+      "id": "rowe-v-calder",
+      "witnessA": "Elias Rowe",
+      "witnessB": "Nia Calder",
+      "pairs": [
+        {
+          "id": "c3",
+          "topic": "Notice count",
+          "expected": "no_conflict",
+          "a": {
+            "document": "txt01",
+            "phrase": "There were 42 notices, including two duplicates"
+          },
+          "b": {
+            "document": "txt02",
+            "phrase": "Forty notices. I removed two duplicate files from my count"
+          },
+          "note": "Relabelled in v3: Not mutually exclusive: 42 notices including two duplicates and 40 unique notices after removing two duplicates are the same count."
+        },
+        {
+          "id": "c4",
+          "topic": "Duplicate preservation",
+          "expected": "no_conflict",
+          "a": {
+            "document": "txt01",
+            "phrase": "I kept them so the audit trail would remain complete"
+          },
+          "b": {
+            "document": "txt02",
+            "phrase": "I deleted the duplicate copies after checking the names"
+          },
+          "note": "Relabelled in v3: Different actors could have performed different actions in sequence: Rowe did not delete the duplicates; Calder later deleted duplicate copies."
+        }
+      ]
+    },
+    {
+      "id": "sen-v-kline",
+      "witnessA": "Priya Sen",
+      "witnessB": "Omar Kline",
+      "pairs": [
+        {
+          "id": "c5",
+          "topic": "Checklist timing",
+          "expected": "conflict",
+          "a": {
+            "document": "asc01",
+            "phrase": "I signed it at 07:15"
+          },
+          "b": {
+            "document": "asc02",
+            "phrase": "The signed copy was already in the share at 06:58"
+          },
+          "note": "Kept as a strict conflict in v3: same checklist and the same signing; 'signed it at 07:15' against the signed copy already in the share at 06:58. Sen signed at 07:15; Kline saw the signed copy in the share at 06:58."
+        }
+      ]
+    },
+    {
+      "id": "quill-v-hale",
+      "witnessA": "Lena Quill",
+      "witnessB": "Victor Hale",
+      "pairs": [
+        {
+          "id": "c6",
+          "topic": "Settlement signature",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "rtf01",
+            "phrase": "The signature block was blank"
+          },
+          "b": {
+            "document": "rtf02",
+            "phrase": "A digital signature was visible in the copy I opened"
+          },
+          "note": "Relabelled in v3: Review-worthy: Quill describes the 12:04 attachment she received, Hale 'the copy I opened', and Hale sent Quill a link, not an attachment; the same document copy is not established."
+        }
+      ]
+    },
+    {
+      "id": "wren-v-ortiz",
+      "witnessA": "Tessa Wren",
+      "witnessB": "Ravi Ortiz",
+      "pairs": [
+        {
+          "id": "c7",
+          "topic": "Access device",
+          "expected": "no_conflict",
+          "a": {
+            "document": "docx01",
+            "phrase": "I used the company laptop assigned to me"
+          },
+          "b": {
+            "document": "docx02",
+            "phrase": "I saw her use a personal laptop in the visitor room"
+          },
+          "note": "Relabelled in v3: Using a personal laptop in the visitor room (Ortiz) does not establish accessing the vault with it, which is what Wren denies."
+        },
+        {
+          "id": "c8",
+          "topic": "External sharing",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "docx01",
+            "phrase": "I saved it in the restricted case folder"
+          },
+          "b": {
+            "document": "docx02",
+            "phrase": "She sent the second report to a vendor contact"
+          },
+          "note": "Relabelled in v3: Review-worthy: Wren denies sharing 'the CSV report'; Ortiz says 'the second report' went to a vendor. If two reports existed, Wren's denial need not cover the second."
+        },
+        {
+          "id": "v3-csv",
+          "topic": "Number of CSV reports downloaded",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "docx01",
+            "phrase": "I downloaded one CSV report"
+          },
+          "b": {
+            "document": "docx02",
+            "phrase": "She downloaded two CSV reports"
+          },
+          "note": "Added in v3 as review-worthy: Wren is asked about the access report, Ortiz counts CSV reports around an unidentified meeting; the accounts may describe different report types or downloads."
+        },
+        {
+          "id": "v3-mfa",
+          "topic": "Second factor the vault required",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "docx01",
+            "phrase": "every access required a hardware key"
+          },
+          "b": {
+            "document": "docx02",
+            "phrase": "not a hardware key"
+          },
+          "note": "Added in v3 as review-worthy: the methods appear incompatible, but it is not established that both witnesses describe the same system configuration at the same time."
+        }
+      ]
+    }
+  ],
+  "supersedes": "synthetic-cross-v2",
+  "changelog": [
+    {
+      "id": "c1",
+      "from": "conflict",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Authority versus action: Pike says Voss had authority and was the release approver for that change window; Voss says she approved the release candidate, not the production release. Compatible statements."
+    },
+    {
+      "id": "c2",
+      "from": "conflict",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Different environments and times: Voss says the flag was disabled in the release candidate (at her 18:42 approval); Pike saw it enabled in the production console before midnight. Not a contradiction."
+    },
+    {
+      "id": "c3",
+      "from": "conflict_needs_context",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Not mutually exclusive: 42 notices including two duplicates and 40 unique notices after removing two duplicates are the same count."
+    },
+    {
+      "id": "c4",
+      "from": "conflict",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Different actors could have performed different actions in sequence: Rowe did not delete the duplicates; Calder later deleted duplicate copies."
+    },
+    {
+      "id": "c6",
+      "from": "conflict",
+      "to": "conflict_needs_context",
+      "date": "2026-11-03",
+      "reason": "Review-worthy: Quill describes the 12:04 attachment she received, Hale 'the copy I opened', and Hale sent Quill a link, not an attachment; the same document copy is not established."
+    },
+    {
+      "id": "c7",
+      "from": "conflict",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Using a personal laptop in the visitor room (Ortiz) does not establish accessing the vault with it, which is what Wren denies."
+    },
+    {
+      "id": "c8",
+      "from": "conflict",
+      "to": "conflict_needs_context",
+      "date": "2026-11-03",
+      "reason": "Review-worthy: Wren denies sharing 'the CSV report'; Ortiz says 'the second report' went to a vendor. If two reports existed, Wren's denial need not cover the second."
+    },
+    {
+      "id": "v3-video",
+      "from": null,
+      "to": "conflict",
+      "date": "2026-11-03",
+      "reason": "New label from a Phase A finding the suite's key did not list; accepted as a strict conflict by the developer."
+    },
+    {
+      "id": "v3-csv",
+      "from": null,
+      "to": "conflict_needs_context",
+      "date": "2026-11-03",
+      "reason": "New label from a Phase A finding; accepted as review-worthy (possibly different report types or downloads)."
+    },
+    {
+      "id": "v3-mfa",
+      "from": null,
+      "to": "conflict_needs_context",
+      "date": "2026-11-03",
+      "reason": "New label from a Phase A finding; accepted as review-worthy (same configuration at the same time not established)."
+    }
+  ],
+  "policy": [
+    "A strict conflict requires mutually incompatible claims about the same event or proposition under the same relevant conditions.",
+    "Exact matching timestamps are not always necessary, but if different times or configurations could materially explain the difference, aligned scope must be shown before a pair is labelled a strict conflict.",
+    "An otherwise strict conflict is not downgraded only because a witness might misremember: that is a generic possibility, not an evidence-based alternative explanation.",
+    "Different actors performing different actions in sequence, different report types or copies, and authority versus action are not contradictions unless the testimony establishes the same act, item and scope."
+  ]
+}

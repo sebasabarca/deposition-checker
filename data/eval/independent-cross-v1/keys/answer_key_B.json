@@ -1,0 +1,485 @@
+{
+  "author": "Claude agent (AI-generated), author B",
+  "pairs": [
+    {
+      "pair": "B01",
+      "case": "Pruett v. Castellane Freight Lines, Inc. (multi-vehicle collision, State Route 9, October 14, 2025)",
+      "witness1": {
+        "name": "Dana Okafor",
+        "file": "B01_witness1.txt",
+        "date": "2026-03-10"
+      },
+      "witness2": {
+        "name": "Gerald Thibault",
+        "file": "B01_witness2.txt",
+        "date": "2026-03-24"
+      },
+      "items": [
+        {
+          "id": "B01-S1",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Truck turn signal during the lane change into the center lane",
+          "witness1": {
+            "lines": "page 6, lines 8-9",
+            "quote": "There was no signal on the cab or the trailer when it came over."
+          },
+          "witness2": {
+            "lines": "page 2, lines 20-22 (from 03:12:21PM)",
+            "quote": "Left blinker was on before I moved over"
+          },
+          "scope_alignment": "Both questions fix the same moment: the truck's move from the right lane into the center lane immediately before contact with Okafor's sedan. Okafor was watching the front corner of the cab beside her window at that moment; Thibault says the blinker was on before and during that same move.",
+          "rationale": "Okafor: no signal on cab or trailer when it came over. Thibault: left blinker on before and while moving over. Same vehicle, same maneuver, same instant; both cannot be true."
+        },
+        {
+          "id": "B01-S2",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Rain at the moment of the collision",
+          "witness1": {
+            "lines": "page 6, lines 22-24",
+            "quote": "The pavement was dry when the truck hit me."
+          },
+          "witness2": {
+            "lines": "page 3, lines 7-10 (from 03:14:21PM)",
+            "quote": "It was coming down pretty good right when it happened."
+          },
+          "scope_alignment": "Both are asked about conditions at the time of the collision itself. Okafor: pavement dry when the truck hit her, rain began about forty minutes later after the ambulance left. Thibault: raining hard 'right when it happened', wipers on high at the moment of contact, rain having started 10-15 minutes earlier.",
+          "rationale": "Same place, same moment, incompatible weather. Phrased with different vocabulary (pavement dry vs. coming down pretty good / wipers on high)."
+        },
+        {
+          "id": "B01-R1",
+          "category": "review_worthy",
+          "control_type": null,
+          "topic": "Speed of the tractor-trailer",
+          "witness1": {
+            "lines": "page 5, lines 20-22",
+            "quote": "I'd say the truck was over seventy."
+          },
+          "witness2": {
+            "lines": "page 2, lines 6-8 (from 03:10:20PM)",
+            "quote": "On that stretch I was at fifty-eight."
+          },
+          "scope_alignment": "Okafor's estimate is tied to when she first noticed the truck in her mirror, about a mile before the interchange and a quarter mile back. Thibault's fifty-eight is 'on that stretch' with cruise usually at fifty-eight; neither pins his speed to the moment Okafor describes.",
+          "rationale": "The numbers look incompatible (over 70 vs 58) but the time windows are not shown to be the same, and Okafor's figure is an inference from closing speed. Worth a lawyer's attention, not a proven conflict."
+        },
+        {
+          "id": "B01-N1",
+          "category": "negative_control",
+          "control_type": "different actors performing different actions in sequence",
+          "topic": "Who put out warning devices",
+          "witness1": {
+            "lines": "page 7, lines 20-21",
+            "quote": "The man driving the pickup was the one who put out flares."
+          },
+          "witness2": {
+            "lines": "page 3, lines 15-18 (from 03:15:39PM)",
+            "quote": "I put the triangles out. That was me."
+          },
+          "scope_alignment": "Okafor says the pickup driver put out flares behind the pickup in the left lane. Thibault says he put out triangles behind the trailer on the right shoulder, and that the pickup driver then lit flares in the left lane.",
+          "rationale": "Two different people placed two different devices in different places, in sequence. Thibault's account even confirms Okafor's. Not a contradiction."
+        },
+        {
+          "id": "B01-N2",
+          "category": "negative_control",
+          "control_type": "non-recollection against a specific memory",
+          "topic": "Lane position of the pickup before the collision",
+          "witness1": {
+            "lines": "page 5, lines 13-15",
+            "quote": "The pickup was in the left lane, a little ahead of me."
+          },
+          "witness2": {
+            "lines": "page 3 line 24 to page 4 line 1 (from 03:17:21PM)",
+            "quote": "I don't recall which lane the pickup was in before all this."
+          },
+          "scope_alignment": "Okafor specifically places the pickup in the left lane ahead of her; Thibault says he does not recall which lane it was in.",
+          "rationale": "Policy rule 5: 'I don't recall' never conflicts with another witness's specific memory."
+        }
+      ]
+    },
+    {
+      "pair": "B02",
+      "case": "Linden et al. v. Saffron Table LLC (restaurant food-poisoning outbreak, June 6, 2025)",
+      "witness1": {
+        "name": "Priya Wendell",
+        "file": "B02_witness1.txt",
+        "date": "2025-11-18"
+      },
+      "witness2": {
+        "name": "Marco Tellez",
+        "file": "B02_witness2.txt",
+        "date": "2025-12-02"
+      },
+      "items": [
+        {
+          "id": "B02-S1",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Walk-in cooler temperature at opening on June 6",
+          "witness1": {
+            "lines": "page 7, lines 11-12",
+            "quote": "At six-thirty the dial inside the walk-in door read 38 degrees."
+          },
+          "witness2": {
+            "lines": "file line 50",
+            "quote": "Fifty-one. The dial said fifty-one."
+          },
+          "scope_alignment": "Both opened together on Friday June 6, both at the walk-in at 6:30 a.m., and both identify the same instrument: the dial thermometer inside the walk-in door, which both say was the only thermometer in the walk-in then.",
+          "rationale": "Same thermometer, same time, 38 vs 51 degrees. Mutually incompatible readings."
+        },
+        {
+          "id": "B02-S2",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Who prepared the chicken salad on Thursday June 5",
+          "witness1": {
+            "lines": "page 6, lines 25-27",
+            "quote": "Marco Tellez made it."
+          },
+          "witness2": {
+            "lines": "file line 28",
+            "quote": "I didn't touch the chicken salad Thursday."
+          },
+          "scope_alignment": "Both testify there was a single batch of chicken salad that week, made Thursday. Wendell says Tellez made it while she watched; Tellez says he did not touch the chicken salad that Thursday and was on grill all shift.",
+          "rationale": "One batch, one occasion; Wendell's first-hand claim that Tellez made it is incompatible with Tellez's first-hand denial."
+        },
+        {
+          "id": "B02-R1",
+          "category": "review_worthy",
+          "control_type": null,
+          "topic": "Sanitizer concentration in the week of June 2",
+          "witness1": {
+            "lines": "page 8, lines 4-6",
+            "quote": "The sanitizer tested at two hundred parts per million."
+          },
+          "witness2": {
+            "lines": "file line 60",
+            "quote": "The strips barely changed color. Like it was water."
+          },
+          "scope_alignment": "Wendell tested the prep and line buckets at the start of each shift she worked and got 200 ppm. Tellez says on some unidentified day that week, on a bucket he cannot identify ('one on the line, I think'), the strip barely changed color.",
+          "rationale": "Looks contradictory, but the day, time within the shift, and bucket are not aligned; sanitizer buckets are remixed and deplete during a shift. Deserves follow-up, not a strict label."
+        },
+        {
+          "id": "B02-N1",
+          "category": "negative_control",
+          "control_type": "different documents or copies",
+          "topic": "Number of violations in the inspection report",
+          "witness1": {
+            "lines": "page 8, line 20",
+            "quote": "The county's report listed four violations."
+          },
+          "witness2": {
+            "lines": "file line 79",
+            "quote": "The one I saw had two violations."
+          },
+          "scope_alignment": "Wendell describes the county environmental health report (June 9 inspection): four violations. Tellez, asked which report he saw, says the corporate internal audit posted in the office; he was not present for the county inspection.",
+          "rationale": "Two different reports by different bodies. The two items Tellez names (door gasket, labels) are among the county's four. No contradiction."
+        },
+        {
+          "id": "B02-N2",
+          "category": "negative_control",
+          "control_type": "arithmetic or definitional differences that reconcile",
+          "topic": "Number of guests who became ill",
+          "witness1": {
+            "lines": "page 8, lines 14-15",
+            "quote": "Thirty-one in total."
+          },
+          "witness2": {
+            "lines": "file line 71",
+            "quote": "Twenty-four. That's what Priya said Friday night."
+          },
+          "scope_alignment": "Wendell: thirty-one total, twenty-four by end of Friday night plus seven over the weekend. Tellez: twenty-four, the figure announced to the crew Friday night; he heard no later number.",
+          "rationale": "24 is the Friday-night count and 31 the final total (24 + 7). The figures reconcile."
+        }
+      ]
+    },
+    {
+      "pair": "B03",
+      "case": "Ferreira v. Brightline Builders, Inc. and Tallis Scaffold Co. (scaffold collapse, 400 Quarry Street, March 12, 2026)",
+      "witness1": {
+        "name": "Owen Castellano",
+        "file": "B03_witness1.txt",
+        "date": "2026-08-19"
+      },
+      "witness2": {
+        "name": "Rosalind Achterberg",
+        "file": "B03_witness2.txt",
+        "date": "2026-09-02"
+      },
+      "items": [
+        {
+          "id": "B03-S1",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Color of the Bay C inspection tag at 7 a.m. on March 12",
+          "witness1": {
+            "lines": "page 4, lines 12-14",
+            "quote": "It was green. The tag on Bay C was green at seven."
+          },
+          "witness2": {
+            "lines": "page 6, lines 17-19",
+            "quote": "Red. Bay C carried a red tag at seven a.m. on the twelfth."
+          },
+          "scope_alignment": "Both are asked about the tag on Bay C, north elevation, at 7:00 a.m. on March 12. Castellano walked the north side at about seven; Achterberg was at Bay C from about 6:55 to 7:15 and checked the tag on arrival and departure.",
+          "rationale": "Same tag, same bay, same minutes: green vs red. Castellano's hedged delivery does not downgrade it (policy rule 3)."
+        },
+        {
+          "id": "B03-S2",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Mudsill / timber pad under the northeast leg of Bay C",
+          "witness1": {
+            "lines": "page 4, lines 20-22",
+            "quote": "it had a two-by-ten pad under it."
+          },
+          "witness2": {
+            "lines": "page 6, lines 22-24",
+            "quote": "No mudsill. No timber of any kind under that leg."
+          },
+          "scope_alignment": "Both looked at the northeast leg of Bay C at about seven on March 12. Castellano: a two-by-ten pad under it. Achterberg: no mudsill, no timber of any kind; base plate bearing directly on soil. Her testimony that the drawings call for a two-by-ten mudsill shows the 'pad' and the 'mudsill' are the same item.",
+          "rationale": "Subtle: different vocabulary (pad vs mudsill) for the same component on the same leg at the same time. Incompatible."
+        },
+        {
+          "id": "B03-R1",
+          "category": "review_worthy",
+          "control_type": null,
+          "topic": "Wind speed on the morning of the collapse",
+          "witness1": {
+            "lines": "page 5, lines 21-22",
+            "quote": "It was gusting pretty hard, I'd guess thirty, thirty-five."
+          },
+          "witness2": {
+            "lines": "page 8, lines 3-4",
+            "quote": "The anemometer read twelve miles an hour, gusts to fifteen."
+          },
+          "scope_alignment": "Castellano estimates gusts of 30-35 mph 'up on the deck' at an unspecified time before the collapse. Achterberg's anemometer entry (12 mph, gusts to 15) was taken at ground level beside the trailer at an untimed point in the morning, normally when she arrived around 6:55.",
+          "rationale": "Different heights and possibly different times; one is a guess, one a measurement. Looks like a conflict but scope is not aligned."
+        },
+        {
+          "id": "B03-N1",
+          "category": "negative_control",
+          "control_type": "authority versus action",
+          "topic": "Castellano shutting down Bay C",
+          "witness1": {
+            "lines": "page 5, lines 15-17",
+            "quote": "Yes, I had the authority to shut down any scaffold on that site."
+          },
+          "witness2": {
+            "lines": "page 7, lines 11-12",
+            "quote": "Owen didn't shut down Bay C. Nobody from Brightline did."
+          },
+          "scope_alignment": "Castellano says he had authority to shut down any scaffold; Achterberg says he did not shut down Bay C. Castellano himself agrees he did not stop work on Bay C.",
+          "rationale": "Having authority and exercising it are different propositions. No contradiction."
+        },
+        {
+          "id": "B03-N2",
+          "category": "negative_control",
+          "control_type": "incomplete knowledge (witness not present or did not know)",
+          "topic": "Whether anyone was on Bay C",
+          "witness1": {
+            "lines": "page 5, lines 7-9",
+            "quote": "Three. There were three masons on the Bay C platform when it went."
+          },
+          "witness2": {
+            "lines": "page 7, lines 17-18",
+            "quote": "As far as I knew, nobody was supposed to be on Bay C that day."
+          },
+          "scope_alignment": "Castellano: three masons were on the Bay C platform when it collapsed around 10:40. Achterberg left the site at 7:15, was not there at the collapse, and says only that as far as she knew nobody was supposed to be on Bay C.",
+          "rationale": "Her statement concerns what she knew about planned work, not who was actually on the platform. Not a conflict."
+        }
+      ]
+    },
+    {
+      "pair": "B04",
+      "case": "Nakashima v. Corvel Medical Devices, Inc. (whistleblower retaliation and termination)",
+      "witness1": {
+        "name": "Darren Holloway",
+        "file": "B04_witness1.txt",
+        "date": "2026-02-11"
+      },
+      "witness2": {
+        "name": "Grace Obuya",
+        "file": "B04_witness2.txt",
+        "date": "2026-02-25"
+      },
+      "items": [
+        {
+          "id": "B04-S1",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Holloway's attendance at the September 9, 2025 meeting",
+          "witness1": {
+            "lines": "page 2, lines 21-23 (from 10:11:25AM)",
+            "quote": "I was not at that meeting."
+          },
+          "witness2": {
+            "lines": "page 4, lines 20-22",
+            "quote": "Darren Holloway was there."
+          },
+          "scope_alignment": "Both refer to the September 9, 2025 meeting at which Nakashima raised concerns about sterilization load records. Holloway: not present, in Denver September 8-11, no phone or video participation. Obuya: Holloway was in the room, at the far end by the window, typing notes.",
+          "rationale": "Same meeting; present vs absent. Mutually incompatible."
+        },
+        {
+          "id": "B04-S2",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Whether a written plan was handed to Nakashima at the July 14 meeting",
+          "witness1": {
+            "lines": "page 2, lines 4-8 (from 10:08:24AM)",
+            "quote": "I handed him the written plan"
+          },
+          "witness2": {
+            "lines": "page 4, lines 5-10",
+            "quote": "Nobody handed Kenji anything in that meeting."
+          },
+          "scope_alignment": "Both describe the 2 p.m. July 14, 2025 meeting in Conference Room 2B attended by Nakashima, Obuya and Holloway; Obuya was there start to finish. Holloway: handed him the three-page written plan, he read the first page and took it with him. Obuya: nobody handed him anything, no paper on the table, he left with only his coffee mug.",
+          "rationale": "Expressed over several answers on each side. Same meeting, same people; the document either was or was not handed over."
+        },
+        {
+          "id": "B04-R1",
+          "category": "review_worthy",
+          "control_type": null,
+          "topic": "Signatures required by SOP-114",
+          "witness1": {
+            "lines": "page 3, lines 9-11 (from 10:13:30AM)",
+            "quote": "SOP-114 required two signatures on every load record."
+          },
+          "witness2": {
+            "lines": "page 5, lines 2-5",
+            "quote": "One signature. The procedure only needed the operator's signature."
+          },
+          "scope_alignment": "Holloway reads from 'the version in the binder HR pulled for the investigation' and does not know the revision letter. Obuya speaks from training experience, says the SOP is revised roughly yearly, and cannot say which revision was in effect in September 2025.",
+          "rationale": "Two signatures vs one looks contradictory, but the testimony does not establish that both describe the same revision of SOP-114."
+        },
+        {
+          "id": "B04-N1",
+          "category": "negative_control",
+          "control_type": "different times",
+          "topic": "Whether Nakashima's badge worked",
+          "witness1": {
+            "lines": "page 3, lines 22-23 (from 10:15:34AM)",
+            "quote": "As of September 30 his badge was active."
+          },
+          "witness2": {
+            "lines": "page 5, lines 17-20",
+            "quote": "His badge didn't work at the front door that morning."
+          },
+          "scope_alignment": "Holloway: badge active as of September 30; deactivation set for start of business October 3. Obuya: badge did not work at the front door on the morning of October 3.",
+          "rationale": "Different dates; both accounts fit the deactivation timeline Holloway describes."
+        },
+        {
+          "id": "B04-N2",
+          "category": "negative_control",
+          "control_type": "hearsay consistent with first-hand testimony",
+          "topic": "Time allowed to consider the separation agreement",
+          "witness1": {
+            "lines": "page 4, lines 7-8 (from 10:16:57AM)",
+            "quote": "It gave him twenty-one days to consider it"
+          },
+          "witness2": {
+            "lines": "page 5, lines 26-28",
+            "quote": "he got a severance paper and had three weeks to think about it."
+          },
+          "scope_alignment": "Holloway (first-hand): he gave the agreement on October 3 with twenty-one days to consider it. Obuya (hearsay from Nakashima that evening): he got a severance paper and had three weeks to think about it.",
+          "rationale": "Twenty-one days is three weeks; the hearsay matches the first-hand account. 'Severance paper' and 'separation agreement' name the same document."
+        }
+      ]
+    },
+    {
+      "pair": "B05",
+      "case": "Harrowgate Supply Co. v. First Meridian Community Bank (fraudulent $486,000 wire, April 17, 2026)",
+      "witness1": {
+        "name": "Teresa Vukovic",
+        "file": "B05_witness1.txt",
+        "date": "2026-09-15"
+      },
+      "witness2": {
+        "name": "Samuel Prentiss",
+        "file": "B05_witness2.txt",
+        "date": "2026-09-29"
+      },
+      "items": [
+        {
+          "id": "B05-S1",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Callback to Vukovic on April 17",
+          "witness1": {
+            "lines": "file lines 51-53",
+            "quote": "Nobody from the bank called me that day."
+          },
+          "witness2": {
+            "lines": "page 6, lines 12-14",
+            "quote": "I placed the callback to Ms. Vukovic at 10:52 a.m. on April 17."
+          },
+          "scope_alignment": "Both address April 17, 2026 and the Kessler wire. Prentiss says he called Ms. Vukovic at 10:52 a.m. on her direct desk line and she confirmed. Vukovic says nobody from the bank called her that day on her desk line or cell.",
+          "rationale": "Same person, same day, same phone line: a call to her that she answered vs no call at all. Incompatible."
+        },
+        {
+          "id": "B05-S2",
+          "category": "strict_conflict",
+          "control_type": null,
+          "topic": "Approval setting on Harrowgate's account as of April 17",
+          "witness1": {
+            "lines": "file lines 26-29",
+            "quote": "As of April 17, our account required two approvers for any wire."
+          },
+          "witness2": {
+            "lines": "page 5, lines 4-6",
+            "quote": "As of April 17, Harrowgate's profile was set to single approval."
+          },
+          "scope_alignment": "Both testify expressly 'as of April 17' about the same account: Vukovic says it required two approvers for any wire; Prentiss says the profile was single approval with dual control disabled before that date.",
+          "rationale": "Same account, same date, opposite configuration. Vukovic may be mistaken, but that does not downgrade a strict conflict (policy rule 3)."
+        },
+        {
+          "id": "B05-R1",
+          "category": "review_worthy",
+          "control_type": null,
+          "topic": "Wire limit on the account",
+          "witness1": {
+            "lines": "file lines 31-32",
+            "quote": "Our wire limit was two hundred fifty thousand."
+          },
+          "witness2": {
+            "lines": "page 5, lines 12-13",
+            "quote": "The limit was five hundred thousand."
+          },
+          "scope_alignment": "Vukovic recalls $250,000 'when we set it up'. Prentiss reads $500,000 as the daily company limit in the profile as reviewed for the deposition, notes separate individual user limits he did not check, and says limits changed at some undated point.",
+          "rationale": "Could be different limit types (user vs company) or different dates (account opening vs now). Scope not aligned."
+        },
+        {
+          "id": "B05-N1",
+          "category": "negative_control",
+          "control_type": "different environments, systems or versions",
+          "topic": "Whether the wire was pending at about 10:45",
+          "witness1": {
+            "lines": "file lines 46-48",
+            "quote": "When I looked at the portal, there was no wire pending."
+          },
+          "witness2": {
+            "lines": "page 6, lines 1-4",
+            "quote": "At 10:45 the wire was sitting in pending status"
+          },
+          "scope_alignment": "Vukovic looked at the client portal around 10:45 and saw no pending wire. Prentiss says that at 10:45 the wire was pending in the bank's back-office queue, and that the client portal does not show callback holds as pending.",
+          "rationale": "Two different systems showing different statuses for the same wire; Prentiss's explanation reconciles them."
+        },
+        {
+          "id": "B05-N2",
+          "category": "negative_control",
+          "control_type": "arithmetic or definitional differences that reconcile",
+          "topic": "When the fraud was reported",
+          "witness1": {
+            "lines": "file lines 67-68",
+            "quote": "I reported it to the bank the next business day."
+          },
+          "witness2": {
+            "lines": "page 7, lines 5-6",
+            "quote": "The fraud claim was opened on Monday, April 20"
+          },
+          "scope_alignment": "Vukovic: reported the next business day, on the fraud line at 8 a.m. Prentiss: claim opened Monday, April 20 at 8:06 a.m., three days after the Friday April 17 wire.",
+          "rationale": "April 17, 2026 was a Friday, so the next business day is Monday April 20: three calendar days later. Consistent."
+        }
+      ]
+    }
+  ]
+}

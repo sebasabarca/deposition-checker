@@ -1,0 +1,529 @@
+{
+  "version": 1,
+  "set": "simpson-resnick-cross-v2",
+  "synthetic": false,
+  "about": "Reviewed Simpson-Resnick cross-witness set (developer's evidence-level review, 2026-11-03). Four groups: established conflicts (expected \"conflict\"; none in this set), review-worthy disagreements needing context (\"conflict_needs_context\"; never strict positives), verified negative controls (\"no_conflict\"), and exploratory cases (\"exploratory\"; never scored). Candidates were drafted from the transcripts by a Claude agent and every one was decided by the developer. Archive-derived exports, not certified transcripts; lines are the archive's statement numbers, with the part for the Jan 23, 1996 file.",
+  "documents": {
+    "simpson-1996-01-23": {
+      "file": "exports/o_j_simpson_january_23_1996_day_2.txt",
+      "sha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+      "witness": "O.J. Simpson",
+      "takenOn": "1996-01-23",
+      "session": "Jan 23, 1996 (Day 2)"
+    },
+    "simpson-1996-02-27": {
+      "file": "exports/o_j_simpson_february_27_1996_day_9.txt",
+      "sha256": "a3ac0014816b3ae716664027b8086881ab61a25a718c92418a818062cc99ba2b",
+      "witness": "O.J. Simpson",
+      "takenOn": "1996-02-27",
+      "session": "Feb 27, 1996 (Day 9)"
+    },
+    "resnick-1996-02-11-direct": {
+      "file": "exports/faye_resnick_february_11_1996_day_9_direct_examination.txt",
+      "sha256": "3b1508dae47393eebdb6e7923bd2f6a69d23cd2c0b02fe2ae3df655ffc0290fb",
+      "witness": "Faye Resnick",
+      "takenOn": "1996-02-11",
+      "session": "Feb 11, 1996, direct examination"
+    },
+    "resnick-1996-02-11-cross": {
+      "file": "exports/faye_resnick_february_11_1996_day_9_cross_examination.txt",
+      "sha256": "57bcf1d4db527b92d4981f7138e394e7c2211654dbe2728a03ee3bb184decae5",
+      "witness": "Faye Resnick",
+      "takenOn": "1996-02-11",
+      "session": "Feb 11, 1996, cross-examination"
+    }
+  },
+  "comparisons": [
+    {
+      "id": "simpson-v-resnick",
+      "witnessA": "O.J. Simpson",
+      "witnessB": "Faye Resnick",
+      "pairs": [
+        {
+          "id": "C01",
+          "topic": "June 5, 1994 dog incident at Bundy: how Kato got out (front gate vs garage)",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              494,
+              495,
+              496,
+              497,
+              532,
+              533,
+              551,
+              552,
+              553,
+              554,
+              555,
+              561,
+              562,
+              563
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              782,
+              788,
+              789,
+              790,
+              791
+            ]
+          },
+          "note": "Reviewer: review-worthy, not established. Front gate (Simpson) vs garage door (Resnick) for the same June 5 visit; not established that two distinct openings are impossible. Anchors widened to the location statements."
+        },
+        {
+          "id": "C02",
+          "topic": "June 5, 1994: whether Simpson went down Nicole's side alleyway",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              587,
+              588,
+              589,
+              590
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              802,
+              803
+            ]
+          },
+          "note": "Reviewer: review-worthy. They disagree on whether Simpson entered the side alleyway; visibility and observation limits matter."
+        },
+        {
+          "id": "CW-001",
+          "topic": "nervous breakdown and Puerto Rico calls",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              1654,
+              1658,
+              1662,
+              1664
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              298,
+              304,
+              320,
+              322,
+              323,
+              325
+            ]
+          },
+          "note": "Reviewer: retained provisionally as a review-worthy disagreement. Simpson says Nicole reported a nervous breakdown and that he discussed it with Faye, who blamed Cora. Resnick denies knowledge of a nervous breakdown and denies that Simpson discussed that subject with her. Both accounts support that calls occurred; do not label as proven contradiction. (source label: conflicting_accounts / candidate_conflict_with_context)"
+        },
+        {
+          "id": "C03",
+          "topic": "Funeral: 'I loved her too much' remark to Faye Resnick",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              3019,
+              3020
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              1215
+            ]
+          },
+          "note": "Reviewer: no-recollection control. Simpson's answer begins \"I don't recall\"."
+        },
+        {
+          "id": "C06",
+          "topic": "May 1994 breakup: who ended the relationship",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              2070,
+              2076,
+              2078,
+              2088
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              532
+            ]
+          },
+          "note": "Reviewer: control. The conversations may have occurred on different dates (Resnick about May 2-3; Simpson May 7-9)."
+        },
+        {
+          "id": "C07",
+          "topic": "June 12, 1994 recital: whether Nicole told Simpson to leave her alone",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              2848,
+              2849,
+              2893,
+              2894,
+              2895,
+              2896
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              1198
+            ]
+          },
+          "note": "Reviewer: control. The accounts may describe different times or settings (Resnick relays Nicole; Simpson speaks to the recital and the 8:45 call)."
+        },
+        {
+          "id": "C08",
+          "topic": "Nicole 'in trouble' in January 1994",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              289,
+              291,
+              293,
+              295
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              281,
+              283,
+              290,
+              291
+            ]
+          },
+          "note": "Reviewer: knowledge-difference control. Resnick speaks to her general impression and could not know of the call."
+        },
+        {
+          "id": "N01",
+          "topic": "When Resnick entered treatment after the intervention",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              413,
+              414,
+              415,
+              416
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              719,
+              720
+            ]
+          },
+          "note": "Reviewer: negative control (secondhand_consistent)."
+        },
+        {
+          "id": "N02",
+          "topic": "Who called the intervention",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              261,
+              262
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              1327,
+              1328
+            ]
+          },
+          "note": "Reviewer: negative control (secondhand_consistent)."
+        },
+        {
+          "id": "N03",
+          "topic": "Resnick's condition on June 5, 1994",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              601,
+              602
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              1266,
+              1267,
+              1270,
+              1271
+            ]
+          },
+          "note": "Reviewer: negative control (compatible)."
+        },
+        {
+          "id": "N04",
+          "topic": "Last encounter between Simpson and Resnick before the murder",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              476,
+              477,
+              481,
+              482,
+              483
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              773,
+              774,
+              775,
+              776,
+              777,
+              778,
+              779,
+              780
+            ]
+          },
+          "note": "Reviewer: negative control (compatible)."
+        },
+        {
+          "id": "N05",
+          "topic": "Socializing as couples (Simpson/Nicole with Resnick/Reichardt)",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              1141
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              587
+            ]
+          },
+          "note": "Reviewer: negative control (compatible)."
+        },
+        {
+          "id": "N07",
+          "topic": "Simpson caring for Nicole during her pneumonia (mid-May 1994)",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              2187,
+              2189
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              1144
+            ]
+          },
+          "note": "Reviewer: negative control (secondhand_consistent)."
+        },
+        {
+          "id": "N08",
+          "topic": "October 1993 Gretna Green door incident",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              3023,
+              3024
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              961
+            ]
+          },
+          "note": "Reviewer: negative control (secondhand_consistent)."
+        },
+        {
+          "id": "NC-001",
+          "topic": "telephone calls while Simpson in Puerto Rico",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              1629,
+              1637,
+              1650,
+              1654
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              310,
+              316,
+              318,
+              319
+            ]
+          },
+          "note": "Reviewer: retained as a negative control. Both accounts support that Simpson was in Puerto Rico and calls with Faye occurred. The content of the calls is tested separately by CW-001. (source label: compatible_context / no_conflict)"
+        },
+        {
+          "id": "NC-002",
+          "topic": "different time periods for drug use",
+          "expected": "no_conflict",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              224,
+              225,
+              231,
+              232
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              123,
+              124,
+              135,
+              139,
+              143
+            ]
+          },
+          "note": "Reviewer: retained as a negative control. Simpson's answers concern January-June 1994; Resnick's observations concern October and December 1993. Do not infer a conflict across non-overlapping periods. (source label: non_overlapping_time_scope / no_conflict)"
+        },
+        {
+          "id": "C04",
+          "topic": "Toscana dinner, March 1994: Resnick's pills",
+          "expected": "exploratory",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              371,
+              373,
+              378,
+              382,
+              384,
+              386
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              193,
+              195,
+              197
+            ]
+          },
+          "note": "Reviewer: exploratory, unscored. Resnick does not clearly deny that pills were taken from her."
+        },
+        {
+          "id": "C05",
+          "topic": "Return of the bracelet and earrings (May 1994): why Nicole gave them back",
+          "expected": "exploratory",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              2370,
+              2376,
+              2438,
+              2439
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              1149
+            ]
+          },
+          "note": "Reviewer: exploratory, unscored. The different explanations for returning the jewelry are not necessarily mutually exclusive."
+        },
+        {
+          "id": "N09",
+          "topic": "Resnick at Nicole's house in May 1994: different weeks",
+          "expected": "exploratory",
+          "a": {
+            "document": "simpson-1996-02-27",
+            "lines": [
+              2240,
+              2241
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              712
+            ]
+          },
+          "note": "Reviewer: exploratory, excluded from scored controls: imprecise dates, and presence is not the same as observation."
+        },
+        {
+          "id": "CW-002",
+          "topic": "cocaine use in 1993",
+          "expected": "exploratory",
+          "a": {
+            "document": "simpson-1996-01-23",
+            "part": 1,
+            "lines": [
+              233,
+              234,
+              236,
+              237
+            ]
+          },
+          "b": {
+            "document": "resnick-1996-02-11-direct",
+            "lines": [
+              108,
+              114,
+              115,
+              117,
+              123,
+              125,
+              127,
+              130,
+              135,
+              139,
+              143
+            ]
+          },
+          "note": "Reviewer: exploratory discovery target, not an established contradiction until the complete denial and counsel's interruption are reviewed; unscored. Resnick gives affirmative firsthand observations in October and December 1993. Simpson's relevant answer was interrupted by counsel and he refused the follow-up question; this is not a clean denial and must not be scored as an unqualified contradiction. (source label: potential_conflict_procedural_qualification / needs_context_not_clean_positive)"
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "C09",
+      "reason": "Dropped by the reviewer: double hearsay (Reichardt via Simpson), no time frame, likely consistent with Resnick's admitted relapse."
+    },
+    {
+      "id": "N06",
+      "reason": "Dropped by the reviewer: not clear that the Playboy work is the business venture Resnick means."
+    }
+  ]
+}

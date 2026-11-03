@@ -1,0 +1,92 @@
+DEPOSITION OF GAVIN THORPE
+Halvorsen Freight Co. v. Brightloom Systems, Inc.
+Taken August 27, 2025
+
+                                                      1
+ 1                     EXAMINATION
+ 2       BY MS. QUARRIE:
+ 3       Q.  Mr. Thorpe, please state your name.
+ 4       A.  Gavin Thorpe.
+ 5       Q.  Who is your employer?
+ 6       A.  Brightloom Systems. I'm a senior project manager,
+ 7       or I was, I think my title changed in the spring to
+ 8       delivery manager, but it's essentially the same job.
+ 9       Q.  Were you the project manager for the Halvorsen
+10       RouteDesk project?
+11       A.  Yes, from about April 2024 on, I believe.
+12       Q.  What did you do before Brightloom?
+13       A.  I was at a logistics consultancy for, let me
+14       think, about five years, mostly implementations of
+15       warehouse systems. Before that I did some QA work.
+16       Q.  How large was the Brightloom team on this project?
+17       A.  It varied. At the peak maybe seven people,
+18       including two contractors. Toward the end it was three
+19       or four.
+20       Q.  Who was your main contact at Halvorsen?
+21       A.  Ms. Okafor, mostly. Sometimes their CFO, on
+22       billing questions.
+23       Q.  What was the delivery date for version 2.0?
+24       A.  November 1, 2024, under the statement of work, as
+25       I understand it.
+26       Q.  How was 2.0 delivered?
+27       A.  We uploaded the 2.0 release build to Halvorsen's
+28       SFTP server on October 30. I'm fairly confident of
+
+                                                      2
+ 1       that date. One of our engineers, Priya Danforth, did
+ 2       the upload, and she messaged me when it finished.
+ 3       Q.  Did you see the file on Halvorsen's server
+ 4       yourself?
+ 5       A.  I didn't log in myself, no. I relied on Priya's
+ 6       message.
+ 7       Q.  Was a second upload made on November 6?
+ 8       A.  There was a re-upload, I believe, on the 6th,
+ 9       because Halvorsen said they couldn't find it. Same
+10       build, as far as I know.
+11       Q.  Did you attend the acceptance test on November 12?
+12       A.  Yes. At Halvorsen's office, on their staging
+13       environment.
+14       Q.  Which build was tested?
+15       A.  2.0.0. The same build.
+16       Q.  What happened during the route optimizer tests
+17       that day?
+18       A.  On November 12 the route optimizer ran every test
+19       scenario, including the 200-stop scenario, without a
+20       crash. It was slow on the big one, I'll grant that,
+21       maybe four minutes, but it completed.
+22       Q.  Who was operating?
+23       A.  Their dispatcher. Leon, I think. I was beside him.
+24       Q.  Did anyone from Brightloom keep notes?
+25       A.  Our engineer kept a log. I'd have to see it.
+26            (Exhibit 22 was marked for identification.)
+27       Q.  Mr. Thorpe, Exhibit 22 is a document titled
+28       "Brightloom Acceptance Test Notes, November 12, 2024."
+
+                                                      3
+ 1       Have you seen it?
+ 2       A.  Yes. That appears to be the log our engineer kept.
+ 3       Q.  Who wrote it?
+ 4       A.  Marcus Ilunga, one of our engineers, I believe.
+ 5       Q.  Did Halvorsen sign change order 4?
+ 6       A.  I don't recall whether Ms. Okafor signed the
+ 7       change order for the mobile app. I know we started
+ 8       work on it, so I assume someone authorized it.
+ 9       Q.  Did the RouteDesk system include CSV export?
+10       A.  Yes. The CSV export works. I demonstrated it
+11       myself in January, on version 2.0.1, on our demo
+12       server.
+13       Q.  Was 2.0.1 ever installed at Halvorsen?
+14       A.  No. They terminated before we could install it.
+15       Q.  How fast did the dispatch screen load?
+16       A.  In my experience the dispatch screen loaded in
+17       under two seconds. That was consistently the case
+18       whenever I saw it.
+19       Q.  Did Halvorsen complain to you about load times?
+20       A.  There were some emails in December, I think. Our
+21       support team would have handled those.
+22       Q.  Did Brightloom receive the final milestone
+23       payment?
+24       A.  No. I suppose that's more or less why we're here.
+25       Q.  Nothing further.
+26            MR. BELLAMY:  Nothing from me.
+27            (Deposition concluded at 4:05 p.m.)

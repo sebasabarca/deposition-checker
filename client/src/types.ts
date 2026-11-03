@@ -135,6 +135,7 @@ export type AnalysisView = {
   mode: "demo" | "live";
   retrieval: "direct_fable" | "hybrid" | "pair";
   discovery: DiscoveryView | null;
+  evidence: EvidenceCoverage | null; // direct analyses: what testimony the check received
   resumable: boolean; // whether resuming can make progress
   status: AnalysisStatus;
   error: string | null;
@@ -154,6 +155,12 @@ export type AnalysisView = {
   finishedAt: string | null;
   updatedAt: string;
 };
+
+// Mirrors server/src/verify/coverage.ts: worked out by code from what ingestion stored.
+export type CoverageGap = { after: string; before: string; missingPages: number[] };
+export type SessionCoverage = { depositionId: number; linesSent: number; pageCount: number | null; blankPages: number[]; unreadPages: number[]; gaps: CoverageGap[]; lineSkips: CoverageGap[]; numbered: boolean; notes: string[] }; // notes: the server's sentences for what's missing
+// model: what the model itself said limited its review; null when it gave no answer.
+export type EvidenceCoverage = { sessions: SessionCoverage[]; model: { completionStatus: "complete" | "partial"; limitations: string[] } | null };
 
 export type FindingSummary = {
   id: number;

@@ -37,5 +37,5 @@ export const ELLISON_DOJ_V1: LayoutProfile = {
 // Stored on every deposition and used to detect duplicate ingestion. Bump PARSER_REVISION whenever
 // extraction, validation, speaker attribution or exchange building changes what a file produces
 // (including a pdfjs-dist upgrade), so re-ingesting the same file is a new parse, not a duplicate.
-const PARSER_REVISION = 6; // 4: ASCII page numbers and timestamps, RTF and DOCX, "Q:" markers; 5: gutterless PDFs by physical line; 6: bracketed rows and page markers are parentheticals
+const PARSER_REVISION = 7; // 4: ASCII page numbers and timestamps, RTF and DOCX, "Q:" markers; 5: gutterless PDFs by physical line; 6: bracketed rows and page markers are parentheticals; 7: archive utterance numbers (in parts), PDF text layers by printed line numbers, a label naming the witness is the witness
 export const PARSER_VERSION = `pdfjs-${ELLISON_DOJ_V1.name}-r${PARSER_REVISION}`;

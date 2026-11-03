@@ -1,0 +1,88 @@
+                  SUPERIOR COURT, DUNMORE COUNTY
+      HARROWGATE SUPPLY CO. v. FIRST MERIDIAN COMMUNITY BANK
+                       Case No. 26-CV-2214
+         Deposition of Teresa Vukovic, September 15, 2026
+TERESA VUKOVIC, having been duly sworn, was examined and testified as follows:
+                           EXAMINATION
+BY MR. BRANNIGAN:
+Q: Ms. Vukovic, what is your position at Harrowgate Supply?
+A: I'm the controller. I've been controller for, it'll be five
+years in January, and before that I was the accounting manager
+there for about three years, so I've been there eight years, give
+or take.
+Q: What are your duties as controller?
+A: Pretty much everything on the accounting side. Month-end close,
+payables oversight, the bank relationship, I sign off on payment
+runs, I deal with the auditors. We're a small shop, there's me and
+three people under me.
+Q: Who are those three people?
+A: Jordan Mills does payables. Alicia Fenn does receivables and
+payroll. And we have a part-time staff accountant, Ben Ostrow.
+Q: Who had access to the bank's online portal in April 2026?
+A: Me, Jordan, and our CFO, Martin Keel. Alicia had view-only, I
+think, I'd have to check that.
+Q: Was the account set up to require more than one person to
+approve a wire?
+A: Yes. As of April 17, our account required two approvers for any
+wire. Two. Always. That's how we set it up when we opened the
+account, and I never asked anyone to change it, and I'm the one
+who would have.
+Q: What was the wire limit on the account?
+A: Our wire limit was two hundred fifty thousand. That's what I
+remember being told when we set it up, I think, two-fifty.
+Q: Let's talk about April 17, 2026. What happened that morning?
+A: Jordan got an email, what looked like an email from Kessler
+Polymer, one of our resin suppliers, saying they'd changed banks
+and giving new wire instructions. And there was an invoice
+attached, a real-looking invoice, four hundred eighty-six thousand
+dollars, which is about right for a quarter's resin.
+Q: Did you see that email before the wire went out?
+A: No. I didn't see it until after. Jordan forwarded it to me that
+afternoon.
+Q: What were you doing between ten and eleven that morning?
+A: I was at my desk, mostly, working on the quarterly sales tax
+filings. I had the bank portal open in a tab because I always do.
+Q: Did you look at the portal during that hour?
+A: Yes, around ten forty-five, I'd say, I went in to check our
+balance. When I looked at the portal, there was no wire pending. I
+looked at the pending tab and the balance, that's all.
+Q: Did anyone from First Meridian call you on April 17?
+MS. OKONJO: Objection, form.
+A: No. Nobody from the bank called me that day. Not on my desk
+line, not on my cell. I've gone through it, our IT pulled the desk
+line log, and I have my cell bill. Nothing from the bank that day.
+Q: Did you approve the Kessler wire?
+A: No. I never approved it. I didn't know it existed until it was
+gone.
+Q: When did you learn the wire had gone out?
+A: Late that afternoon, maybe four-thirty. Jordan came into my
+office and said Kessler's real receivables person had called
+asking about payment, and that's when, that's when my stomach
+dropped.
+Q: What did you do?
+A: I called our relationship manager at the bank, but it was
+nearly five by then, and I got voicemail. I left a message. Then I
+called Martin.
+Q: When did you report the wire as fraudulent to the bank?
+A: I reported it to the bank the next business day. First thing. I
+was on the phone with their fraud line at eight a.m.
+Q: Did you get a reference number?
+A: Yes. I have it in my notes, it's in the documents we produced.
+    (Vukovic Exhibit 2 was marked for identification.)
+Q: Exhibit 2 is the email Mr. Mills received on April 17. Is that
+the email you saw that afternoon?
+A: Yes. That's it. You can see the domain is off by one letter,
+it's kesslerpolyrner, with an r and an n instead of the m. I
+didn't catch that at first either.
+Q: Has any of the money been recovered?
+A: About sixty-two thousand. The rest is gone, as far as we know.
+Q: Has Harrowgate changed any procedures since then?
+MS. OKONJO: Objection, relevance.
+A: We call vendors at a known number now before any change in bank
+instructions. We should have been doing that before. I'll admit
+that.
+Q: Was Mr. Mills disciplined?
+A: He got a written warning. He's still with us.
+MR. BRANNIGAN: I have nothing further.
+MS. OKONJO: Nothing from me.
+    (Deposition concluded at 3:12 p.m.)

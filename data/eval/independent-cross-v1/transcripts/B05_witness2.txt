@@ -1,0 +1,103 @@
+                                - 4 -
+ 1                     SUPERIOR COURT, DUNMORE COUNTY
+ 2   HARROWGATE SUPPLY CO., Plaintiff, v. FIRST MERIDIAN COMMUNITY BANK,
+ 3                    Defendant.  Case No. 26-CV-2214
+ 4           DEPOSITION OF SAMUEL PRENTISS - September 29, 2026
+ 5     SAMUEL PRENTISS, having been duly sworn, testified as follows:
+ 6                              EXAMINATION
+ 7   BY MS. OKONJO:
+ 8   MS. OKONJO:  Mr. Prentiss, what is your position with First
+ 9   Meridian Community Bank?
+10   THE WITNESS:  Treasury Services Officer. I support commercial
+11   clients who use our online banking and wire services.
+12   MS. OKONJO:  How long have you been in that role?
+13   THE WITNESS:  Six years. Before that I spent four years in deposit
+14   operations at the bank.
+15   MS. OKONJO:  Was Harrowgate Supply one of the clients you
+16   supported in April 2026?
+17   THE WITNESS:  Yes. I have supported the Harrowgate relationship
+18   since 2022.
+19   MS. OKONJO:  Describe how an outgoing wire is processed through
+20   the portal.
+21   THE WITNESS:  A user enters the wire in the client portal. If the
+22   client's profile requires a second approver, the wire waits in the
+23   portal for that approval. Once approved, or immediately if the
+24   profile is single approval, the wire passes to our back-office
+25   payment system. Wires above a threshold are held there for a
+
+                                - 5 -
+ 1   callback before release.
+ 2   MS. OKONJO:  What approval setting did Harrowgate's profile have
+ 3   on April 17, 2026?
+ 4   THE WITNESS:  As of April 17, Harrowgate's profile was set to
+ 5   single approval. Dual control had been disabled in our system
+ 6   before that date.
+ 7   MS. OKONJO:  Who disabled it?
+ 8   MR. BRANNIGAN:  Objection, foundation.
+ 9   THE WITNESS:  The change was entered by bank staff in response to
+10   a request. I don't have the request in front of me.
+11   MS. OKONJO:  What was the wire limit for Harrowgate?
+12   THE WITNESS:  The limit was five hundred thousand. That is the
+13   figure in the profile as I reviewed it for this deposition.
+14   MS. OKONJO:  Is that a per-wire limit or a daily limit?
+15   THE WITNESS:  It is labeled the daily company limit. Users can
+16   also have individual limits. I did not review the individual user
+17   limits.
+18   MS. OKONJO:  Had the limit ever been changed?
+19   THE WITNESS:  The limits on the account were updated at some point
+20   during the relationship. I can't give you dates without the change
+21   history.
+22   MS. OKONJO:  Let's turn to the Kessler wire. When was it entered?
+23   THE WITNESS:  The portal shows it was entered at 10:31 a.m. on
+24   April 17 under Jordan Mills's credentials.
+25   MS. OKONJO:  What happened to it after it was entered?
+
+                                - 6 -
+ 1   THE WITNESS:  Because the profile was single approval, it passed
+ 2   directly to our back-office system. At 10:45 the wire was sitting
+ 3   in pending status in our back-office queue, held for callback
+ 4   because it exceeded our callback threshold.
+ 5   MS. OKONJO:  Would the wire have been visible in the client portal
+ 6   at that time?
+ 7   THE WITNESS:  Not as pending. The client portal does not display
+ 8   wires that are held for callback. That status exists only in our
+ 9   back-office system. In the portal it would have appeared under
+10   completed submissions.
+11   MS. OKONJO:  Was a callback made?
+12   THE WITNESS:  Yes. I placed the callback to Ms. Vukovic at 10:52
+13   a.m. on April 17. I called the number on file for her, her direct
+14   desk line, and she verbally confirmed the wire.
+15   MS. OKONJO:  How do you know you spoke with Ms. Vukovic?
+16   THE WITNESS:  The person who answered identified herself as Teresa
+17   Vukovic and correctly gave the verification code associated with
+18   the profile.
+19   MS. OKONJO:  Is the callback recorded?
+20   THE WITNESS:  It is logged in the back-office system with my user
+21   ID and the time. Calls on that line were not audio recorded in
+22   April.
+23       (Prentiss Exhibit 14 was marked for identification.)
+24   MS. OKONJO:  Is Exhibit 14 the callback log entry?
+25   THE WITNESS:  Yes. It shows the callback at 10:52 a.m., my user
+
+                                - 7 -
+ 1   ID, the number dialed, and the result, confirmed.
+ 2   MS. OKONJO:  When was the wire released?
+ 3   THE WITNESS:  At 10:58 a.m.
+ 4   MS. OKONJO:  When did Harrowgate report the wire as fraudulent?
+ 5   THE WITNESS:  The fraud claim was opened on Monday, April 20,
+ 6   three days after the wire. The claim record shows 8:06 a.m.
+ 7   MS. OKONJO:  Was there any contact from Harrowgate before that?
+ 8   THE WITNESS:  There was a voicemail to the relationship manager
+ 9   late on the seventeenth. I was told about it on Monday.
+10   MS. OKONJO:  Did the bank attempt a recall?
+11   THE WITNESS:  Yes. A recall request went to the receiving bank on
+12   Monday morning. About sixty-two thousand dollars was returned.
+13   MS. OKONJO:  Did you have any contact with Ms. Vukovic between
+14   April 17 and April 20?
+15   THE WITNESS:  No.
+16   MS. OKONJO:  Have you spoken with Ms. Vukovic since?
+17   THE WITNESS:  Once, in May, at a meeting with the relationship
+18   manager about the claim.
+19   MS. OKONJO:  Nothing further.
+20   MR. BRANNIGAN:  No questions.
+21       (Deposition concluded at 10:40 a.m.)

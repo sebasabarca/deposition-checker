@@ -1,0 +1,30 @@
+{
+  "run": "diagnostic after Phase A",
+  "frozenAt": "2026-11-03T15:48:44.088220+00:00",
+  "gitHead": "1a273a324e4b8affcb2d5f93a25ef71815c78769",
+  "uncommittedWork": true,
+  "approvedBy": "developer, option 2",
+  "comparison": "voss-v-pike (synthetic-cross-v1)",
+  "model": "claude-fable-5-1",
+  "effort": "xhigh",
+  "maxOutputTokens": 64000,
+  "promptVersion": "discover-cross-v2",
+  "capUsd": 1.7,
+  "worstCaseUsd": 1.651,
+  "retries": "none",
+  "fallbackModel": "none",
+  "compareWith": "Phase A voss-v-pike: discover-cross-v1, effort high, 20,000 cap",
+  "files": {
+    "server/src/adjudicate/discoverCrossPrompt.ts": "0b98f189852a89f434d67d63d3bbbc7b4cb074a7c5048df254ea95f3c8a71b18",
+    "server/src/adjudicate/discoverCrossSchema.ts": "ba1b5eec981ed69cd02fd268212d82db595754d0933df9236b7d61f46fbc2edd",
+    "server/src/verify/cross.ts": "f093c617fbe3fd7298cd6a5a24f5c22d5a38dbfbff361198fedefdf6fffd4818",
+    "server/src/verify/direct.ts": "3845f85c5a851ecb618782c97d2730ce414fd53cec601884df2c57ed1a0492b1",
+    "server/src/score/evidenceStrengthCross.ts": "6bbdb39caec473b71acd61322b1a2d431c6b20020af1bd207400b8b92eaa62f5",
+    "server/src/eval/crossBenchmark.ts": "1e35513988743bbece10255e03d9e5f534b8d8aee382db720c795f2c6026214b",
+    "server/src/eval/crossLabels.ts": "3daf63417c660b65cf98aea01ff8f09b6519e7ca642818b15edffd725ffa9b1c",
+    "server/src/ingest/text.ts": "eb510380a404c9c643f6b399364f010de4483b533f679200661c1cea19159c1b",
+    "server/src/ingest/exchanges.ts": "3fb9b3b2142b468c5ff26462a95f1ac38b534add4cf0de6682cf3fa770fdadc9",
+    "scripts/cross-benchmark.ts": "1ba5f95a820ff125fe2ae391cf7b5b287da9cac950b09313f1c5d46f4d9d59e0",
+    "data/eval/synthetic-cross-v1.json": "338ed120ec54de71c52fdcd3ff866f29b00e28880b7b22ac4b53cad45195b947"
+  }
+}

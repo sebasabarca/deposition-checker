@@ -34,7 +34,7 @@ export {
 } from "./store";
 export { inferPageNumbers, LOW_WORD_CONFIDENCE, MAX_OCR_PAGES, ocrDocument, parseTsv, readOcrPage, SCANNED_25_V1, type OcrPage, type OcrReader, type OcrResult, type OcrWord } from "./ocr";
 export { isPdf, readUpload, storeUpload, UPLOADS_DIR } from "./uploads";
-export { decodeText, isText, readText, readTextPages, readTextTranscript, TEXT_NUMBERED_V1, TEXT_UNNUMBERED_V1, UNNUMBERED_PAGE } from "./text";
+export { decodeText, isText, readArchiveRecords, readText, readTextPages, readTextTranscript, TEXT_ARCHIVE_V1, TEXT_NUMBERED_V1, TEXT_UNNUMBERED_V1, UNNUMBERED_PAGE } from "./text";
 export { hasPhysicalLines, PDF_PHYSICAL_V1, PHYSICAL_LINES_WARNING, readPhysicalPages, readPhysicalPdf } from "./physical";
 export { findSessionDate, type DateFound } from "./sessionDate";
 export { detectFormat, UNSUPPORTED_EXTENSIONS, type SourceFormat } from "./formats";

@@ -14,9 +14,10 @@ import { analyses, budgets, candidates, depositions, discoveryRuns, exchangeLine
 import { analysisCost, candidateSetOf, DIRECT_FABLE, enqueueAnalysis } from "../jobs";
 import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claims";
 import { hasPhysicalLines } from "../ingest";
+import { sessionCoverage } from "../verify";
 import { caseDetail, caseSummaries } from "./cases";
 import { estimateDiscovery } from "../adjudicate/estimateDiscovery";
-import { candidateCoverage, compareFindings, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
+import { candidateCoverage, compareFindings, coverageNotes, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
 export const MAX_BUDGET_USD = 20;
@@ -82,6 +83,7 @@ export async function analysisView(db: Database, id: number) {
     mode: a.mode,
     retrieval: a.retrieval,
     discovery: a.retrieval === DIRECT_FABLE ? discoveryView(runs) : null,
+    evidence: a.retrieval === DIRECT_FABLE ? await evidenceCoverage(db, a, runs) : null,
     resumable: a.retrieval === DIRECT_FABLE ? directCanResume(a.status, runs.length) : RESUMABLE.includes(a.status),
     status: a.status,
     error: a.error,
@@ -102,6 +104,22 @@ export async function analysisView(db: Database, id: number) {
     finishedAt: a.finishedAt,
     updatedAt: a.updatedAt,
   };
+}
+
+// What testimony a direct analysis received, from code (pages and lines stored), and what the model
+// itself said limited its review, kept apart and named as the model's. Read-only.
+export async function evidenceCoverage(db: Database, a: typeof analyses.$inferSelect, runs: Awaited<ReturnType<typeof discoveryRunsOf>>) {
+  const docs = await db.select({ id: depositions.id, validation: depositions.validation }).from(depositions).where(inArray(depositions.id, [a.depositionA, a.depositionB]));
+  const sessions = await Promise.all(
+    [a.depositionA, a.depositionB].map(async (depositionId) => {
+      const rows = await db.select({ page: lines.printedPage, line: lines.lineNo }).from(lines).where(eq(lines.depositionId, depositionId)).orderBy(lines.printedPage, lines.lineNo);
+      const coverage = sessionCoverage(rows, (docs.find((d) => d.id === depositionId)?.validation ?? null) as Parameters<typeof sessionCoverage>[1]);
+      return { depositionId, ...coverage, notes: coverageNotes(coverage) };
+    }),
+  );
+  const answered = [...runs].reverse().find((r) => r.status === "succeeded");
+  const summary = (answered?.output as { summary?: { completion_status: "complete" | "partial"; limitations: string[] } } | null)?.summary ?? null;
+  return { sessions, model: summary ? { completionStatus: summary.completion_status, limitations: summary.limitations } : null };
 }
 
 // What each paid attempt did, and which model's results these are, in fields a lawyer can read.

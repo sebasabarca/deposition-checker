@@ -7,7 +7,7 @@ import { Router } from "express";
 import PDFDocument from "pdfkit";
 import { z } from "zod";
 import type { Database } from "../db/client";
-import { analysisFindings, findingDetail } from "./analyses";
+import { analysisFindings, analysisView, findingDetail } from "./analyses";
 import { caseDetail } from "./cases";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof findingDetail>>>;
@@ -46,7 +46,12 @@ export async function reportData(db: Database, caseId: number, analysisIds: numb
   const witness = new Map(detail.witnesses.map((w) => [w.id, w.name]));
   const taken = new Map(detail.depositions.map((d) => [d.id, d.takenOn]));
   const covered = done.map((a) => `${witness.get(a.witnessId) ?? "Witness"}: ${day(taken.get(a.depositionA) ?? null)} and ${day(taken.get(a.depositionB) ?? null)}`);
-  return { name: detail.case.name, witnesses: detail.witnesses.map((w) => w.name), covered, kept, context, withContext, entries };
+  // Testimony a check never received, so the report doesn't read as covering it.
+  const views = await Promise.all(done.map((a) => analysisView(db, a.id)));
+  const gaps = views.flatMap((v) => (v?.evidence?.sessions ?? []).flatMap((s) => s.notes.map((n) => `${witness.get(v!.witnessId) ?? "Witness"}, session of ${day(taken.get(s.depositionId) ?? null)}: ${n}`)));
+  const partial = views.filter((v) => v?.evidence?.model?.completionStatus === "partial").length;
+  if (partial > 0) gaps.push(`${partial === 1 ? "One analysis's" : `${partial} analyses'`} model reported a partial review.`);
+  return { name: detail.case.name, witnesses: detail.witnesses.map((w) => w.name), covered, gaps, kept, context, withContext, entries };
 }
 
 type Report = NonNullable<Awaited<ReturnType<typeof reportData>>>;
@@ -83,6 +88,11 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
   doc.y = metaY + 40;
   doc.font("Helvetica").fontSize(8).fillColor(FAINT).text(r.covered.length === 1 ? "SESSIONS COMPARED" : `ANALYSES INCLUDED (${r.covered.length})`, left, doc.y, { characterSpacing: 0.6 });
   doc.font("Helvetica").fontSize(10).fillColor(INK).text(r.covered.join("\n") || "None", { width });
+  if (r.gaps.length > 0) {
+    doc.moveDown(0.6);
+    doc.font("Helvetica").fontSize(8).fillColor(FAINT).text("TESTIMONY NOT CHECKED", left, doc.y, { characterSpacing: 0.6 });
+    doc.font("Helvetica").fontSize(10).fillColor(INK).text(r.gaps.join("\n"), { width });
+  }
   doc.moveDown(0.8);
   doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(2).strokeColor(NAVY).stroke();
   doc.moveDown(1);

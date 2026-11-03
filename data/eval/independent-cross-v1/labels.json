@@ -1,0 +1,946 @@
+{
+  "version": 1,
+  "set": "independent-cross-v1",
+  "synthetic": true,
+  "about": "Independent synthetic cross-witness benchmark: 10 witness pairs in 10 fictional cases, written by two Claude agent authors from a written specification, with an instructed (not technically enforced) information boundary excluding Veridict's prompts, outputs, code and earlier test sets; AI-generated, same model family as the evaluated model. Labels were blind-reviewed by two further Claude agents (opaque IDs, shuffled order, categories removed) and disagreements resolved by the developer. Each label is anchored to the witness's quoted answer and resolved to the whole answer. Label names: conflict = strict conflict, conflict_needs_context = review-worthy, no_conflict = negative control. Transcripts are paths relative to data/eval/independent-cross-v1/.",
+  "policy": [
+    "A strict conflict requires mutually incompatible claims about the same event or proposition under the same relevant conditions.",
+    "Exact matching timestamps are not always necessary, but if different times or configurations could materially explain the difference, aligned scope must be shown before a pair is labelled a strict conflict.",
+    "An otherwise strict conflict is not downgraded only because a witness might misremember: that is a generic possibility, not an evidence-based alternative explanation.",
+    "Different actors performing different actions in sequence, different report types or copies, and authority versus action are not contradictions unless the testimony establishes the same act, item and scope.",
+    "\"I don't recall\" never conflicts with another witness's specific memory."
+  ],
+  "documents": {
+    "A01_witness1": {
+      "file": "transcripts/A01_witness1.txt",
+      "sha256": "3ba58ab3e33b6d69aa95eb23064bfd2495c41465d95a34af9a6c41d807835e0c",
+      "witness": "Raymond Oduya",
+      "takenOn": "2025-10-07",
+      "session": "2025-10-07"
+    },
+    "A01_witness2": {
+      "file": "transcripts/A01_witness2.txt",
+      "sha256": "8e374ed1b6e96eb2d9991b2adc789be4febae623c5011829f295c90e01839fff",
+      "witness": "Carla J. Brennick",
+      "takenOn": "2025-10-09",
+      "session": "2025-10-09"
+    },
+    "A02_witness1": {
+      "file": "transcripts/A02_witness1.txt",
+      "sha256": "c5b047b632e8b10d75a96313af7367fef6dac21cb940d878b88f0648fe37ad36",
+      "witness": "Jenna M. Morrow, R.N.",
+      "takenOn": "2025-06-12",
+      "session": "2025-06-12"
+    },
+    "A02_witness2": {
+      "file": "transcripts/A02_witness2.txt",
+      "sha256": "f4dd710e81d24c7114c5a0e3c2dd0d9a63636ee40d7bb510039d690f66a2b19e",
+      "witness": "Arvind Sethi, PharmD",
+      "takenOn": "2025-06-19",
+      "session": "2025-06-19"
+    },
+    "A03_witness1": {
+      "file": "transcripts/A03_witness1.txt",
+      "sha256": "2440b49ec71ba6ff4b958f0119808eba6ea247a9603ed597ec9b5a1f65aae940",
+      "witness": "Gloria Vantongeren",
+      "takenOn": "2025-03-04",
+      "session": "2025-03-04"
+    },
+    "A03_witness2": {
+      "file": "transcripts/A03_witness2.txt",
+      "sha256": "bd9679a09ac6d0b58551f5509106a83de0783bc3552bde8b2e4870db8dc0824d",
+      "witness": "Peter A. Szalai",
+      "takenOn": "2025-03-11",
+      "session": "2025-03-11"
+    },
+    "A04_witness1": {
+      "file": "transcripts/A04_witness1.txt",
+      "sha256": "6c5e6bac293eff12881cbc6c895827281ac737823ae32bd541200136a7bcee84",
+      "witness": "Nadia Okafor",
+      "takenOn": "2025-08-20",
+      "session": "2025-08-20"
+    },
+    "A04_witness2": {
+      "file": "transcripts/A04_witness2.txt",
+      "sha256": "6204ac6530584d44f38c55828be1f245adbd07cd1ebaf4cc985a64f94578009f",
+      "witness": "Gavin Thorpe",
+      "takenOn": "2025-08-27",
+      "session": "2025-08-27"
+    },
+    "A05_witness1": {
+      "file": "transcripts/A05_witness1.txt",
+      "sha256": "7fef16578485948011d4da5ab519f98bed20319a061d7591fc0f9170c06bb16e",
+      "witness": "Henrik Lindqvist",
+      "takenOn": "2025-09-16",
+      "session": "2025-09-16"
+    },
+    "A05_witness2": {
+      "file": "transcripts/A05_witness2.txt",
+      "sha256": "788db143b28213a336e0c7f2bd115a51ceedccd68276e74c08651f1f5dda1b61",
+      "witness": "Marisol Achterberg",
+      "takenOn": "2025-09-23",
+      "session": "2025-09-23"
+    },
+    "B01_witness1": {
+      "file": "transcripts/B01_witness1.txt",
+      "sha256": "b169e06a3ee84fbaeac53be45ee4268beaa70a42c88298e840e116589d00d2b1",
+      "witness": "Dana Okafor",
+      "takenOn": "2026-03-10",
+      "session": "2026-03-10"
+    },
+    "B01_witness2": {
+      "file": "transcripts/B01_witness2.txt",
+      "sha256": "750d1df95b83f979373aa8907cc0adc60dfdc32df0155a21904e2cb9188c6ff2",
+      "witness": "Gerald Thibault",
+      "takenOn": "2026-03-24",
+      "session": "2026-03-24"
+    },
+    "B02_witness1": {
+      "file": "transcripts/B02_witness1.txt",
+      "sha256": "26ba9c7f28d1bd7a44e09208d3d8686e61db46872104dcaa26c253608a2f0506",
+      "witness": "Priya Wendell",
+      "takenOn": "2025-11-18",
+      "session": "2025-11-18"
+    },
+    "B02_witness2": {
+      "file": "transcripts/B02_witness2.txt",
+      "sha256": "2a653a22de194d2d473fae6bbf7c37d6dfda44954bdc2ee7a4faf281619f864a",
+      "witness": "Marco Tellez",
+      "takenOn": "2025-12-02",
+      "session": "2025-12-02"
+    },
+    "B03_witness1": {
+      "file": "transcripts/B03_witness1.txt",
+      "sha256": "6f67ae2adf8c1b011351c1c0329c7ebfdc524ed7ff2710e7fdcf74be1c77dbf6",
+      "witness": "Owen Castellano",
+      "takenOn": "2026-08-19",
+      "session": "2026-08-19"
+    },
+    "B03_witness2": {
+      "file": "transcripts/B03_witness2.txt",
+      "sha256": "96cfbdda61f64b5fc09cd38ec7800e9c3ca8b7cc30b64e390fa00ae92e6231c4",
+      "witness": "Rosalind Achterberg",
+      "takenOn": "2026-09-02",
+      "session": "2026-09-02"
+    },
+    "B04_witness1": {
+      "file": "transcripts/B04_witness1.txt",
+      "sha256": "4a91c0d622896103114eb607c94d098306a3f81bfb013727a3529d5192043d9c",
+      "witness": "Darren Holloway",
+      "takenOn": "2026-02-11",
+      "session": "2026-02-11"
+    },
+    "B04_witness2": {
+      "file": "transcripts/B04_witness2.txt",
+      "sha256": "0779c1ba2cda940787b5c48cbc26a5c3e2ad6baf8155cb7a0721496f16339b14",
+      "witness": "Grace Obuya",
+      "takenOn": "2026-02-25",
+      "session": "2026-02-25"
+    },
+    "B05_witness1": {
+      "file": "transcripts/B05_witness1.txt",
+      "sha256": "83c97c0e4b4845e4f089878816e625bba0d1533bccdcd4188f4913cb204e0193",
+      "witness": "Teresa Vukovic",
+      "takenOn": "2026-09-15",
+      "session": "2026-09-15"
+    },
+    "B05_witness2": {
+      "file": "transcripts/B05_witness2.txt",
+      "sha256": "57894b3f906284932b938cf7de1eb131c249b3007e61cdf3a2ca0113807878ee",
+      "witness": "Samuel Prentiss",
+      "takenOn": "2026-09-29",
+      "session": "2026-09-29"
+    }
+  },
+  "comparisons": [
+    {
+      "id": "A01",
+      "witnessA": "Raymond Oduya",
+      "witnessB": "Carla J. Brennick",
+      "pairs": [
+        {
+          "id": "A01-S1",
+          "topic": "Whether Unit 22's backup alarm sounded when it reversed into Mr. Delgado",
+          "expected": "conflict",
+          "a": {
+            "document": "A01_witness1",
+            "phrase": "The backup alarm was beeping the whole time I was reversing."
+          },
+          "b": {
+            "document": "A01_witness2",
+            "phrase": "When he reversed out of the bay there was no alarm. I didn't hear a single beep"
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Whether Unit 22's backup alarm sounded when it reversed into Mr. Delgado."
+        },
+        {
+          "id": "A01-S2",
+          "topic": "Whether the operator was told at the 2:00 p.m. huddle that aisle 14 was closed",
+          "expected": "conflict",
+          "a": {
+            "document": "A01_witness1",
+            "phrase": "No. Nobody said a word about aisle 14 at that huddle."
+          },
+          "b": {
+            "document": "A01_witness2",
+            "phrase": "I said aisle 14 was closed to all forklift traffic because the order pickers were restocking it by hand. I said it to the whole group, and I said it to Ray directly, by name"
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Whether the operator was told at the 2:00 p.m. huddle that aisle 14 was closed."
+        },
+        {
+          "id": "A01-R1",
+          "topic": "Condition of Unit 22's brakes on March 14",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A01_witness1",
+            "phrase": "Soft. Pedal went most of the way to the floor before it grabbed."
+          },
+          "b": {
+            "document": "A01_witness2",
+            "phrase": "Unit 22 passed its pre-shift inspection. The brakes were checked and marked satisfactory."
+          },
+          "note": "developer resolution of a reviewer disagreement. Author: review_worthy. Condition of Unit 22's brakes on March 14."
+        },
+        {
+          "id": "A01-N1",
+          "topic": "Whether the operator had a spotter",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A01_witness1",
+            "phrase": "I had a spotter that day. Luis Ferro."
+          },
+          "b": {
+            "document": "A01_witness2",
+            "phrase": "As far as I know, no spotter was assigned to him. But I didn't make the assignments, Dana did, and I didn't see her sheet that day."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (incomplete knowledge). Whether the operator had a spotter."
+        },
+        {
+          "id": "A01-N2",
+          "topic": "Visibility of the yellow walkway lines in aisle 14",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A01_witness1",
+            "phrase": "On the 14th the yellow walkway lines in that aisle were faded. You could barely see them."
+          },
+          "b": {
+            "document": "A01_witness2",
+            "phrase": "The walkway lines in aisle 14 are bright yellow. They were repainted in April 2025, along with the rest of that zone."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different times). Visibility of the yellow walkway lines in aisle 14."
+        }
+      ]
+    },
+    {
+      "id": "B01",
+      "witnessA": "Dana Okafor",
+      "witnessB": "Gerald Thibault",
+      "pairs": [
+        {
+          "id": "B01-S1",
+          "topic": "Truck turn signal during the lane change into the center lane",
+          "expected": "conflict",
+          "a": {
+            "document": "B01_witness1",
+            "phrase": "There was no signal on the cab or the trailer when it came over."
+          },
+          "b": {
+            "document": "B01_witness2",
+            "phrase": "Left blinker was on before I moved over"
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Truck turn signal during the lane change into the center lane."
+        },
+        {
+          "id": "B01-S2",
+          "topic": "Rain at the moment of the collision",
+          "expected": "conflict",
+          "a": {
+            "document": "B01_witness1",
+            "phrase": "The pavement was dry when the truck hit me."
+          },
+          "b": {
+            "document": "B01_witness2",
+            "phrase": "It was coming down pretty good right when it happened."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Rain at the moment of the collision."
+        },
+        {
+          "id": "B01-N1",
+          "topic": "Who put out warning devices",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B01_witness1",
+            "phrase": "The man driving the pickup was the one who put out flares."
+          },
+          "b": {
+            "document": "B01_witness2",
+            "phrase": "I put the triangles out. That was me."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different actors performing different actions in sequence). Who put out warning devices."
+        },
+        {
+          "id": "B01-N2",
+          "topic": "Lane position of the pickup before the collision",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B01_witness1",
+            "phrase": "The pickup was in the left lane, a little ahead of me."
+          },
+          "b": {
+            "document": "B01_witness2",
+            "phrase": "I don't recall which lane the pickup was in before all this."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (non-recollection against a specific memory). Lane position of the pickup before the collision."
+        }
+      ]
+    },
+    {
+      "id": "A02",
+      "witnessA": "Jenna M. Morrow, R.N.",
+      "witnessB": "Arvind Sethi, PharmD",
+      "pairs": [
+        {
+          "id": "A02-S1",
+          "topic": "Whether the nurse phoned the pharmacist about the dose before giving it",
+          "expected": "conflict",
+          "a": {
+            "document": "A02_witness1",
+            "phrase": "I called before I gave it, at about 9:30, and I spoke to Dr. Sethi himself, and he told me the dose was fine."
+          },
+          "b": {
+            "document": "A02_witness2",
+            "phrase": "Ms. Morrow did not call me that night. I received no call from 4 West about Mrs. Pettibone's insulin, before or after the dose."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Whether the nurse phoned the pharmacist about the dose before giving it."
+        },
+        {
+          "id": "A02-S2",
+          "topic": "What insulin was in the patient's cabinet pocket",
+          "expected": "conflict",
+          "a": {
+            "document": "A02_witness1",
+            "phrase": "The vial I pulled from her pocket was the U-500, the concentrated one, with the striped label. That's the only thing that was in there."
+          },
+          "b": {
+            "document": "A02_witness2",
+            "phrase": "Her pocket in the refrigerated drawer on 4 West contained only U-100 vials that night. Regular insulin, U-100. There was no U-500 in her pocket."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. What insulin was in the patient's cabinet pocket."
+        },
+        {
+          "id": "A02-R1",
+          "topic": "Dose stated on the insulin order",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A02_witness1",
+            "phrase": "The order on the screen said forty units."
+          },
+          "b": {
+            "document": "A02_witness2",
+            "phrase": "The order I verified read four units."
+          },
+          "note": "developer resolution of a reviewer disagreement. Author: review_worthy. Dose stated on the insulin order."
+        },
+        {
+          "id": "A02-N1",
+          "topic": "Time the dose was given",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A02_witness1",
+            "phrase": "I gave it at 9:52."
+          },
+          "b": {
+            "document": "A02_witness2",
+            "phrase": "I was told by the night house supervisor that the dose went in just before ten."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (hearsay consistent with first-hand testimony). Time the dose was given."
+        },
+        {
+          "id": "A02-N2",
+          "topic": "Number of insulin withdrawals for the patient that night",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A02_witness1",
+            "phrase": "I pulled insulin for her four times"
+          },
+          "b": {
+            "document": "A02_witness2",
+            "phrase": "The system logged six insulin withdrawals for her from that cabinet during the night shift. Two of the six were cancelled transactions, where the drawer opened and the nurse cancelled without"
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (arithmetic or definitional difference that reconciles). Number of insulin withdrawals for the patient that night."
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "witnessA": "Priya Wendell",
+      "witnessB": "Marco Tellez",
+      "pairs": [
+        {
+          "id": "B02-S1",
+          "topic": "Walk-in cooler temperature at opening on June 6",
+          "expected": "conflict",
+          "a": {
+            "document": "B02_witness1",
+            "phrase": "At six-thirty the dial inside the walk-in door read 38 degrees."
+          },
+          "b": {
+            "document": "B02_witness2",
+            "phrase": "Fifty-one. The dial said fifty-one."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Walk-in cooler temperature at opening on June 6."
+        },
+        {
+          "id": "B02-S2",
+          "topic": "Who prepared the chicken salad on Thursday June 5",
+          "expected": "conflict",
+          "a": {
+            "document": "B02_witness1",
+            "phrase": "Marco Tellez made it."
+          },
+          "b": {
+            "document": "B02_witness2",
+            "phrase": "I didn't touch the chicken salad Thursday."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Who prepared the chicken salad on Thursday June 5."
+        },
+        {
+          "id": "B02-R1",
+          "topic": "Sanitizer concentration in the week of June 2",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "B02_witness1",
+            "phrase": "The sanitizer tested at two hundred parts per million."
+          },
+          "b": {
+            "document": "B02_witness2",
+            "phrase": "The strips barely changed color. Like it was water."
+          },
+          "note": "author and both blind reviewers agreed. Author: review_worthy. Sanitizer concentration in the week of June 2."
+        },
+        {
+          "id": "B02-N1",
+          "topic": "Number of violations in the inspection report",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B02_witness1",
+            "phrase": "The county's report listed four violations."
+          },
+          "b": {
+            "document": "B02_witness2",
+            "phrase": "The one I saw had two violations."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different documents or copies). Number of violations in the inspection report."
+        },
+        {
+          "id": "B02-N2",
+          "topic": "Number of guests who became ill",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B02_witness1",
+            "phrase": "Thirty-one in total."
+          },
+          "b": {
+            "document": "B02_witness2",
+            "phrase": "Twenty-four. That's what Priya said Friday night."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (arithmetic or definitional differences that reconcile). Number of guests who became ill."
+        }
+      ]
+    },
+    {
+      "id": "A03",
+      "witnessA": "Gloria Vantongeren",
+      "witnessB": "Peter A. Szalai",
+      "pairs": [
+        {
+          "id": "A03-S1",
+          "topic": "Hand delivery of the June 3 leak letter to the property manager",
+          "expected": "conflict",
+          "a": {
+            "document": "A03_witness1",
+            "phrase": "I handed the June 3 letter to Peter in person, at the management office, on June 3."
+          },
+          "b": {
+            "document": "A03_witness2",
+            "phrase": "Ms. Vantongeren did not hand me anything on June 3. I was not in the office that day. I was in Tucson the entire week of June 3"
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Hand delivery of the June 3 leak letter to the property manager."
+        },
+        {
+          "id": "A03-S2",
+          "topic": "Whether the ceiling was leaking during the July 18 walkthrough",
+          "expected": "conflict",
+          "a": {
+            "document": "A03_witness1",
+            "phrase": "On the walkthrough on July 18 water was coming through the ceiling tiles over the proofing area, we had buckets out, three buckets"
+          },
+          "b": {
+            "document": "A03_witness2",
+            "phrase": "During the July 18 walkthrough the ceiling over the proofing area was dry. No buckets, no drips."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Whether the ceiling was leaking during the July 18 walkthrough."
+        },
+        {
+          "id": "A03-R1",
+          "topic": "Which party the lease makes responsible for the roof",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "A03_witness1",
+            "phrase": "The lease says the landlord is responsible for the roof."
+          },
+          "b": {
+            "document": "A03_witness2",
+            "phrase": "The lease makes the tenant responsible for roof repairs."
+          },
+          "note": "author and both blind reviewers agreed. Author: review_worthy. Which party the lease makes responsible for the roof."
+        },
+        {
+          "id": "A03-N1",
+          "topic": "Manager's approval of the roof repair",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A03_witness1",
+            "phrase": "Peter never approved the roof repair."
+          },
+          "b": {
+            "document": "A03_witness2",
+            "phrase": "I have authority to approve any repair under $5,000 without the owner's approval."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (authority versus action). Manager's approval of the roof repair."
+        },
+        {
+          "id": "A03-N2",
+          "topic": "Whether the tenant ledger shows August rent paid",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A03_witness1",
+            "phrase": "My copy of the ledger shows the August rent paid on August 6."
+          },
+          "b": {
+            "document": "A03_witness2",
+            "phrase": "The ledger shows August rent unpaid."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different documents or copies). Whether the tenant ledger shows August rent paid."
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "witnessA": "Owen Castellano",
+      "witnessB": "Rosalind Achterberg",
+      "pairs": [
+        {
+          "id": "B03-S1",
+          "topic": "Color of the Bay C inspection tag at 7 a.m. on March 12",
+          "expected": "conflict",
+          "a": {
+            "document": "B03_witness1",
+            "phrase": "It was green. The tag on Bay C was green at seven."
+          },
+          "b": {
+            "document": "B03_witness2",
+            "phrase": "Red. Bay C carried a red tag at seven a.m. on the twelfth."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Color of the Bay C inspection tag at 7 a.m. on March 12."
+        },
+        {
+          "id": "B03-S2",
+          "topic": "Mudsill / timber pad under the northeast leg of Bay C",
+          "expected": "conflict",
+          "a": {
+            "document": "B03_witness1",
+            "phrase": "it had a two-by-ten pad under it."
+          },
+          "b": {
+            "document": "B03_witness2",
+            "phrase": "No mudsill. No timber of any kind under that leg."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Mudsill / timber pad under the northeast leg of Bay C."
+        },
+        {
+          "id": "B03-R1",
+          "topic": "Wind speed on the morning of the collapse",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B03_witness1",
+            "phrase": "It was gusting pretty hard, I'd guess thirty, thirty-five."
+          },
+          "b": {
+            "document": "B03_witness2",
+            "phrase": "The anemometer read twelve miles an hour, gusts to fifteen."
+          },
+          "note": "developer resolution of a reviewer disagreement. Author: review_worthy. Wind speed on the morning of the collapse."
+        },
+        {
+          "id": "B03-N1",
+          "topic": "Castellano shutting down Bay C",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B03_witness1",
+            "phrase": "Yes, I had the authority to shut down any scaffold on that site."
+          },
+          "b": {
+            "document": "B03_witness2",
+            "phrase": "Owen didn't shut down Bay C. Nobody from Brightline did."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (authority versus action). Castellano shutting down Bay C."
+        },
+        {
+          "id": "B03-N2",
+          "topic": "Whether anyone was on Bay C",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B03_witness1",
+            "phrase": "Three. There were three masons on the Bay C platform when it went."
+          },
+          "b": {
+            "document": "B03_witness2",
+            "phrase": "As far as I knew, nobody was supposed to be on Bay C that day."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (incomplete knowledge (witness not present or did not know)). Whether anyone was on Bay C."
+        }
+      ]
+    },
+    {
+      "id": "A04",
+      "witnessA": "Nadia Okafor",
+      "witnessB": "Gavin Thorpe",
+      "pairs": [
+        {
+          "id": "A04-S2",
+          "topic": "Whether the route optimizer crashed at the November 12 acceptance test",
+          "expected": "conflict",
+          "a": {
+            "document": "A04_witness1",
+            "phrase": "At the acceptance test on November 12 the route optimizer crashed every time we loaded more than fifty stops. Every time. We ran the 200-stop scenario three times. It crashed three times."
+          },
+          "b": {
+            "document": "A04_witness2",
+            "phrase": "On November 12 the route optimizer ran every test scenario, including the 200-stop scenario, without a crash."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Whether the route optimizer crashed at the November 12 acceptance test."
+        },
+        {
+          "id": "A04-R1",
+          "topic": "Dispatch screen load time",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "A04_witness1",
+            "phrase": "In December, in production, the dispatch screen took over thirty seconds to load."
+          },
+          "b": {
+            "document": "A04_witness2",
+            "phrase": "In my experience the dispatch screen loaded in under two seconds."
+          },
+          "note": "author and both blind reviewers agreed. Author: review_worthy. Dispatch screen load time."
+        },
+        {
+          "id": "A04-N1",
+          "topic": "Whether CSV export works",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A04_witness1",
+            "phrase": "The CSV export never worked for us. We'd click export and get an error."
+          },
+          "b": {
+            "document": "A04_witness2",
+            "phrase": "Yes. The CSV export works. I demonstrated it myself in January, on version 2.0.1, on our demo server."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different environments/systems/versions). Whether CSV export works."
+        },
+        {
+          "id": "A04-N2",
+          "topic": "Signing of change order 4",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A04_witness1",
+            "phrase": "I signed change order 4 for the mobile app on August 9."
+          },
+          "b": {
+            "document": "A04_witness2",
+            "phrase": "I don't recall whether Ms. Okafor signed the change order for the mobile app."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (non-recollection against a specific memory). Signing of change order 4."
+        }
+      ]
+    },
+    {
+      "id": "B04",
+      "witnessA": "Darren Holloway",
+      "witnessB": "Grace Obuya",
+      "pairs": [
+        {
+          "id": "B04-S1",
+          "topic": "Holloway's attendance at the September 9, 2025 meeting",
+          "expected": "conflict",
+          "a": {
+            "document": "B04_witness1",
+            "phrase": "I was not at that meeting."
+          },
+          "b": {
+            "document": "B04_witness2",
+            "phrase": "Darren Holloway was there."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Holloway's attendance at the September 9, 2025 meeting."
+        },
+        {
+          "id": "B04-S2",
+          "topic": "Whether a written plan was handed to Nakashima at the July 14 meeting",
+          "expected": "conflict",
+          "a": {
+            "document": "B04_witness1",
+            "phrase": "I handed him the written plan"
+          },
+          "b": {
+            "document": "B04_witness2",
+            "phrase": "Nobody handed Kenji anything in that meeting."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Whether a written plan was handed to Nakashima at the July 14 meeting."
+        },
+        {
+          "id": "B04-R1",
+          "topic": "Signatures required by SOP-114",
+          "expected": "conflict_needs_context",
+          "a": {
+            "document": "B04_witness1",
+            "phrase": "SOP-114 required two signatures on every load record."
+          },
+          "b": {
+            "document": "B04_witness2",
+            "phrase": "One signature. The procedure only needed the operator's signature."
+          },
+          "note": "author and both blind reviewers agreed. Author: review_worthy. Signatures required by SOP-114."
+        },
+        {
+          "id": "B04-N1",
+          "topic": "Whether Nakashima's badge worked",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B04_witness1",
+            "phrase": "As of September 30 his badge was active."
+          },
+          "b": {
+            "document": "B04_witness2",
+            "phrase": "His badge didn't work at the front door that morning."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different times). Whether Nakashima's badge worked."
+        },
+        {
+          "id": "B04-N2",
+          "topic": "Time allowed to consider the separation agreement",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B04_witness1",
+            "phrase": "It gave him twenty-one days to consider it"
+          },
+          "b": {
+            "document": "B04_witness2",
+            "phrase": "he got a severance paper and had three weeks to think about it."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (hearsay consistent with first-hand testimony). Time allowed to consider the separation agreement."
+        }
+      ]
+    },
+    {
+      "id": "A05",
+      "witnessA": "Henrik Lindqvist",
+      "witnessB": "Marisol Achterberg",
+      "pairs": [
+        {
+          "id": "A05-S1",
+          "topic": "Pry marks on the back door frame at the adjuster's inspection",
+          "expected": "conflict",
+          "a": {
+            "document": "A05_witness1",
+            "phrase": "She looked right at the pry marks on the back door frame. She took pictures of them. There were gouges right next to the strike plate"
+          },
+          "b": {
+            "document": "A05_witness2",
+            "phrase": "When I inspected the back door on February 21 there were no pry marks on the frame or on the strike plate."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Pry marks on the back door frame at the adjuster's inspection."
+        },
+        {
+          "id": "A05-S2",
+          "topic": "What the homeowner told the adjuster about the alarm",
+          "expected": "conflict",
+          "a": {
+            "document": "A05_witness1",
+            "phrase": "I told her the alarm was not on that night, I'd forgotten to set it. I never said it was set."
+          },
+          "b": {
+            "document": "A05_witness2",
+            "phrase": "During the February 21 inspection Mr. Lindqvist told me the alarm was armed when he left the house that evening."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. What the homeowner told the adjuster about the alarm."
+        },
+        {
+          "id": "A05-R1",
+          "topic": "Claimed value of the watch",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A05_witness1",
+            "phrase": "The watch was worth about eleven thousand dollars."
+          },
+          "b": {
+            "document": "A05_witness2",
+            "phrase": "The claim listed the watch at four thousand two hundred dollars."
+          },
+          "note": "developer resolution of a reviewer disagreement. Author: review_worthy. Claimed value of the watch."
+        },
+        {
+          "id": "A05-N1",
+          "topic": "Who called 911",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A05_witness1",
+            "phrase": "I called 911 myself as soon as I walked in, about 11:40"
+          },
+          "b": {
+            "document": "A05_witness2",
+            "phrase": "The first 911 call about the house came from a neighbor, Mrs. Odell, at 11:25 p.m., reporting a man in the backyard."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different actors performing different actions in sequence). Who called 911."
+        },
+        {
+          "id": "A05-N2",
+          "topic": "Number of items claimed",
+          "expected": "no_conflict",
+          "a": {
+            "document": "A05_witness1",
+            "phrase": "They took nineteen things."
+          },
+          "b": {
+            "document": "A05_witness2",
+            "phrase": "The inventory lists twenty-two line items. Three of those were entered twice on the form, so it is nineteen distinct items."
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (arithmetic or definitional difference that reconciles). Number of items claimed."
+        }
+      ]
+    },
+    {
+      "id": "B05",
+      "witnessA": "Teresa Vukovic",
+      "witnessB": "Samuel Prentiss",
+      "pairs": [
+        {
+          "id": "B05-S1",
+          "topic": "Callback to Vukovic on April 17",
+          "expected": "conflict",
+          "a": {
+            "document": "B05_witness1",
+            "phrase": "Nobody from the bank called me that day."
+          },
+          "b": {
+            "document": "B05_witness2",
+            "phrase": "I placed the callback to Ms. Vukovic at 10:52 a.m. on April 17."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Callback to Vukovic on April 17."
+        },
+        {
+          "id": "B05-S2",
+          "topic": "Approval setting on Harrowgate's account as of April 17",
+          "expected": "conflict",
+          "a": {
+            "document": "B05_witness1",
+            "phrase": "As of April 17, our account required two approvers for any wire."
+          },
+          "b": {
+            "document": "B05_witness2",
+            "phrase": "As of April 17, Harrowgate's profile was set to single approval."
+          },
+          "note": "author and both blind reviewers agreed. Author: strict_conflict. Approval setting on Harrowgate's account as of April 17."
+        },
+        {
+          "id": "B05-R1",
+          "topic": "Wire limit on the account",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B05_witness1",
+            "phrase": "Our wire limit was two hundred fifty thousand."
+          },
+          "b": {
+            "document": "B05_witness2",
+            "phrase": "The limit was five hundred thousand."
+          },
+          "note": "developer resolution of a reviewer disagreement. Author: review_worthy. Wire limit on the account."
+        },
+        {
+          "id": "B05-N1",
+          "topic": "Whether the wire was pending at about 10:45",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B05_witness1",
+            "phrase": "When I looked at the portal, there was no wire pending."
+          },
+          "b": {
+            "document": "B05_witness2",
+            "phrase": "At 10:45 the wire was sitting in pending status"
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (different environments, systems or versions). Whether the wire was pending at about 10:45."
+        },
+        {
+          "id": "B05-N2",
+          "topic": "When the fraud was reported",
+          "expected": "no_conflict",
+          "a": {
+            "document": "B05_witness1",
+            "phrase": "I reported it to the bank the next business day."
+          },
+          "b": {
+            "document": "B05_witness2",
+            "phrase": "The fraud claim was opened on Monday, April 20"
+          },
+          "note": "author and both blind reviewers agreed. Author: negative_control (arithmetic or definitional differences that reconcile). When the fraud was reported."
+        }
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "A04-S1",
+      "reason": "Excluded at review: reviewers split (strict vs review-worthy). Thorpe's Oct 30 upload is second-hand (an engineer's message) and where that upload went is not established; developer accepted exclusion."
+    },
+    {
+      "id": "B01-R1",
+      "reason": "Excluded at review: reviewers split (strict vs review-worthy). Okafor's 'over seventy' is an estimate from closing speed and may not describe the same moment or stretch as Thibault's 58; developer accepted exclusion."
+    }
+  ],
+  "changelog": [
+    {
+      "id": "A01-R1",
+      "from": "conflict_needs_context",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Both blind reviewers classified it a negative control (scope difference explains it); the developer accepted their classification over the author's review-worthy label."
+    },
+    {
+      "id": "A02-R1",
+      "from": "conflict_needs_context",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Both blind reviewers classified it a negative control (scope difference explains it); the developer accepted their classification over the author's review-worthy label."
+    },
+    {
+      "id": "A05-R1",
+      "from": "conflict_needs_context",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Both blind reviewers classified it a negative control (scope difference explains it); the developer accepted their classification over the author's review-worthy label."
+    },
+    {
+      "id": "B03-R1",
+      "from": "conflict_needs_context",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Both blind reviewers classified it a negative control (scope difference explains it); the developer accepted their classification over the author's review-worthy label."
+    },
+    {
+      "id": "B05-R1",
+      "from": "conflict_needs_context",
+      "to": "no_conflict",
+      "date": "2026-11-03",
+      "reason": "Both blind reviewers classified it a negative control (scope difference explains it); the developer accepted their classification over the author's review-worthy label."
+    }
+  ]
+}

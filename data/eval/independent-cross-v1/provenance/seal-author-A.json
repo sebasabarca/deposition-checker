@@ -1,0 +1,17 @@
+{
+  "sealedAt": "2026-11-03T16:20:52.429936+00:00",
+  "root": "/private/tmp/claude-501/-Users-sebastianabarca-Developer-deposition-checker/2b13ca21-5680-4512-b560-495988054545/scratchpad/independent-suite/author-A",
+  "files": {
+    "A01_witness1.txt": "3ba58ab3e33b6d69aa95eb23064bfd2495c41465d95a34af9a6c41d807835e0c",
+    "A01_witness2.txt": "8e374ed1b6e96eb2d9991b2adc789be4febae623c5011829f295c90e01839fff",
+    "A02_witness1.txt": "c5b047b632e8b10d75a96313af7367fef6dac21cb940d878b88f0648fe37ad36",
+    "A02_witness2.txt": "f4dd710e81d24c7114c5a0e3c2dd0d9a63636ee40d7bb510039d690f66a2b19e",
+    "A03_witness1.txt": "2440b49ec71ba6ff4b958f0119808eba6ea247a9603ed597ec9b5a1f65aae940",
+    "A03_witness2.txt": "bd9679a09ac6d0b58551f5509106a83de0783bc3552bde8b2e4870db8dc0824d",
+    "A04_witness1.txt": "6c5e6bac293eff12881cbc6c895827281ac737823ae32bd541200136a7bcee84",
+    "A04_witness2.txt": "6204ac6530584d44f38c55828be1f245adbd07cd1ebaf4cc985a64f94578009f",
+    "A05_witness1.txt": "7fef16578485948011d4da5ab519f98bed20319a061d7591fc0f9170c06bb16e",
+    "A05_witness2.txt": "788db143b28213a336e0c7f2bd115a51ceedccd68276e74c08651f1f5dda1b61",
+    "answer_key_A.json": "16f3aff067575dc27e55aeaf9112ff52ca75d3aceacd73a94c1a0bd69dd2adcb"
+  }
+}

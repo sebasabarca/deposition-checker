@@ -3,3 +3,4 @@
 export { LabelFile, LABELS, readLabelFile } from "./labels";
 export { discoveryMetrics, distractors, runDiscovery, withDistractors, type DiscoveryMetrics, type DiscoveryRun, type TargetPair } from "./discovery";
 export { mockCardModel, mockTopicModel } from "./mockCards";
+export { DISCREPANCY_CLASSES, DiscrepancyFile, readDiscrepancyFile, scoreDiscrepancies, type DiscrepancyClass, type DiscrepancyResult, type Proposal } from "./discrepancies";

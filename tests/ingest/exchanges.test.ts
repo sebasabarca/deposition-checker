@@ -53,6 +53,13 @@ describe("markLine", () => {
     expect(mark("BY MR. SCOTT:", null)).toEqual({ turn: "examiner", name: "MR. SCOTT" });
   });
 
+  it("reads a label naming the witness as the witness, and nobody else's label", () => {
+    const named = (text: string) => markLine(text, PARA, LAYOUT, "simpson");
+    expect(named("O.J. SIMPSON: Out of the Bronco.")).toEqual({ turn: "A", name: null });
+    expect(named("ROBERT BAKER: You just said Bentley.")).toEqual({ turn: "unrecognized", name: "ROBERT BAKER" });
+    expect(markLine("O.J. SIMPSON: Out of the Bronco.", PARA, LAYOUT)).toEqual({ turn: "unrecognized", name: "O.J. SIMPSON" }); // no witness known
+  });
+
   it("reads bracketed notes and page markers as the record's notes, never as the speaker's words", () => {
     for (const row of ["[STAMP: CHECKLIST-RED | SYNTHETIC ONLY]", "[Recess. ]", "END PAGE", "END OF PAGE 1 / SYNTHETIC", "PAGE 2", "Page 2 of 9", "SYNTHETIC WORD TRANSCRIPT | PAGE 2", "DEPOSITION OF MARA VOSS (continued)"]) {
       expect(mark(row, PARA), row).toEqual({ turn: "parenthetical", name: null });

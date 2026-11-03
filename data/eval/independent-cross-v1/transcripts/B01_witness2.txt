@@ -1,0 +1,117 @@
+Page 1
+03:05:18PM    1                IN THE CIRCUIT COURT OF HALVERSON COUNTY
+03:05:28PM    2         LYLE PRUETT v. CASTELLANE FREIGHT LINES, INC., et al.
+03:05:39PM    3                          Case No. 25-CV-04417
+03:05:44PM    4             DEPOSITION OF GERALD THIBAULT - March 24, 2026
+03:05:58PM    5                   REALTIME ROUGH DRAFT - UNCERTIFIED
+03:06:11PM    6     GERALD THIBAULT, having been duly sworn, testified as follows:
+03:06:25PM    7                              EXAMINATION
+03:06:30PM    8   BY MS. HADLEY:
+03:06:45PM    9   Q.   Please state your name.
+03:06:55PM   10   A.   Gerald Andre Thibault. Most folks call me Gerry.
+03:07:03PM   11   Q.   Mr. Thibault, who was your employer on October 14, 2025?
+03:07:18PM   12   A.   Castellane Freight Lines. I've driven for them going on
+03:07:23PM   13   eleven years now, and before that I drove for a dairy outfit out
+03:07:36PM   14   of Renfrew for about six years, so all told I've been in a truck
+03:07:41PM   15   seventeen, eighteen years.
+03:07:45PM   16   Q.   Do you hold a commercial driver's license?
+03:07:53PM   17   A.   Yes ma'am, Class A, with a tanker endorsement I don't really
+03:07:58PM   18   use anymore.
+03:08:13PM   19   Q.   What were you hauling that day?
+03:08:29PM   20   A.   Paper goods. Napkins, paper towels, that kind of thing, going
+03:08:40PM   21   up to the distribution center in Ashby. I loaded out of the
+03:08:44PM   22   Renfrew yard around two o'clock.
+03:08:51PM   23   Q.   Were you traveling northbound on Route 9 near the Millbrook
+03:09:02PM   24   interchange that afternoon?
+03:09:11PM   25   A.   I was, yes.
+
+Page 2
+03:09:20PM    1   Q.   About what time did the collision happen?
+03:09:29PM    2   A.   Ten to five, give or take. I know because I'd looked at the
+03:09:43PM    3   dash clock wondering whether I'd make Ashby before the receiving
+03:09:58PM    4   dock closed at six.
+03:10:11PM    5   Q.   How fast were you traveling that afternoon?
+03:10:20PM    6   A.   On that stretch I was at fifty-eight. I keep the cruise at
+03:10:36PM    7   fifty-eight most of the time, it's easier on fuel and the company
+03:10:40PM    8   likes to see that on the reports.
+03:10:46PM    9   Q.   Which lane were you in as you approached mile marker 112?
+03:10:50PM   10   A.   The right lane. I'd been in the right lane a good while.
+03:11:05PM   11   Q.   Why did you move from the right lane to the center lane?
+03:11:21PM   12   A.   There's a merge coming up from the interchange ramp, and a
+03:11:32PM   13   car hauler was coming down that ramp pretty quick, and I wanted to
+03:11:39PM   14   give him room. That's what you do, you move over if you can.
+03:11:43PM   15   Q.   When you began your move from the right lane into the center
+03:11:51PM   16   lane, just before the contact with the sedan, was your turn signal
+03:12:01PM   17   on?
+03:12:06PM   18        MR. CORBIN:  Objection to form.
+03:12:14PM   19        MS. HADLEY:  Go ahead.
+03:12:21PM   20   A.   Yes ma'am. Left blinker was on before I moved over and while
+03:12:36PM   21   I was moving over. I always give it a good few seconds, I count it
+03:12:49PM   22   out, that's how I was trained.
+03:13:00PM   23   Q.   Did you check your mirror before moving?
+03:13:08PM   24   A.   I checked the left mirror. I saw a car back there, I thought
+03:13:17PM   25   it was back further than it was. I'm not going to sit here and say
+
+Page 3
+03:13:25PM    1   different.
+03:13:31PM    2   Q.   Did you feel the contact?
+03:13:45PM    3   A.   I felt a bump, and I heard it, and I saw the car spin out to
+03:13:56PM    4   the left in my mirror.
+03:14:09PM    5   Q.   Let me ask you about the weather. What were the conditions at
+03:14:17PM    6   the time of the collision?
+03:14:21PM    7   A.   Wet. It was coming down pretty good right when it happened. I
+03:14:29PM    8   had my wipers on high at the moment we touched, I remember because
+03:14:44PM    9   I could hear them slapping while I was trying to figure out what
+03:14:57PM   10   I'd hit.
+03:15:03PM   11   Q.   Had it been raining before then?
+03:15:08PM   12   A.   It started maybe ten, fifteen minutes before, south of the
+03:15:13PM   13   interchange. Kind of came out of nowhere.
+03:15:28PM   14   Q.   What did you do after you stopped?
+03:15:39PM   15   A.   I put the flashers on, set the brake, and got down. I put the
+03:15:49PM   16   triangles out. That was me. Three of them, behind the trailer on
+03:15:58PM   17   the right shoulder, like the book says, ten feet, a hundred feet,
+03:16:05PM   18   two hundred feet.
+03:16:19PM   19   Q.   Did anyone else put out warning devices?
+03:16:24PM   20   A.   The fella from the pickup lit some flares further back, in
+03:16:38PM   21   the left lane. That was after I'd done my triangles, I saw him
+03:16:50PM   22   doing it when I walked back up.
+03:17:05PM   23   Q.   Where was the pickup before the collision?
+03:17:21PM   24   A.   I don't recall which lane the pickup was in before all this.
+03:17:31PM   25   I didn't really notice it until after, when the car had gone into
+
+Page 4
+03:17:36PM    1   it.
+03:17:46PM    2       (Thibault Exhibit 5 was marked for identification.)
+03:18:00PM    3   Q.   Mr. Thibault, Exhibit 5 is a printout from the electronic
+03:18:11PM    4   logging device for your truck for October 14. Have you seen it
+03:18:23PM    5   before?
+03:18:35PM    6   A.   I've seen these printouts, yes. That looks like mine, that's
+03:18:45PM    7   my driver ID number at the top.
+03:18:55PM    8   Q.   Does it show you were on duty that afternoon?
+03:19:02PM    9   A.   Shows I went on duty at 1:15 and was driving from 2:05 on.
+03:19:11PM   10   That's about right.
+03:19:23PM   11   Q.   Did you speak with the driver of the sedan?
+03:19:36PM   12   A.   I asked her if she was okay. She said she thought so. Nice
+03:19:40PM   13   lady, she was shook up, we all were.
+03:19:51PM   14   Q.   Did you say anything else to her?
+03:19:55PM   15   A.   I might have said I didn't see her. I don't remember my exact
+03:20:06PM   16   words.
+03:20:16PM   17   Q.   Did a trooper come?
+03:20:24PM   18   A.   Yes, a woman trooper. I gave her my license and my logbook
+03:20:37PM   19   and told her what happened.
+03:20:51PM   20   Q.   Were you issued a citation?
+03:21:00PM   21        MR. CORBIN:  Objection. Relevance.
+03:21:13PM   22        MS. HADLEY:  You can answer.
+03:21:29PM   23   A.   She wrote me for an unsafe lane change. I paid it. The
+03:21:40PM   24   company told me to just pay it.
+03:21:55PM   25        MR. CORBIN:  Move to strike the last sentence.
+
+Page 5
+03:22:02PM    1   Q.   Has Castellane disciplined you for this collision?
+03:22:09PM    2   A.   I had to do a refresher course on lane changes, online, two
+03:22:13PM    3   hours. That's all.
+03:22:19PM    4   Q.   Were you injured?
+03:22:25PM    5   A.   No ma'am. Not a scratch.
+03:22:41PM    6        MS. HADLEY:  That's all I have. Thank you.
+03:22:49PM    7        MR. CORBIN:  No questions.
+03:23:04PM    8       (Deposition concluded at 3:23 p.m.)

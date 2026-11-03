@@ -1,0 +1,111 @@
+Page 1
+10:02:49AM    1               IN THE SUPERIOR COURT OF WESTBRIAR COUNTY
+10:02:56AM    2      KENJI NAKASHIMA, Plaintiff, v. CORVEL MEDICAL DEVICES, INC.,
+10:03:06AM    3                    Defendant.  Case No. 25-CV-7730
+10:03:20AM    4           DEPOSITION OF DARREN HOLLOWAY - February 11, 2026
+10:03:36AM    5                     REALTIME UNEDITED ROUGH DRAFT
+10:03:52AM    6             DARREN HOLLOWAY, sworn, testified as follows:
+10:04:08AM    7                              EXAMINATION
+10:04:24AM    8   BY MS. RAMIREZ-COLE:
+10:04:38AM    9   Q.   Mr. Holloway, what is your title at Corvel Medical Devices?
+10:04:49AM   10   A.   Director of Human Resources for the Westbriar manufacturing
+10:04:57AM   11   site.
+10:05:13AM   12   Q.   How long have you held that position?
+10:05:24AM   13   A.   Since April 2021.
+10:05:39AM   14   Q.   Do you know the plaintiff, Kenji Nakashima?
+10:05:46AM   15   A.   Yes. He was a sterilization technician in the Building 3
+10:05:52AM   16   sterilization department from 2019 until October 3, 2025.
+10:06:01AM   17   Q.   Who was his direct supervisor?
+10:06:16AM   18   A.   Rick Sandoval, the sterilization manager. Grace Obuya was his
+10:06:30AM   19   team lead.
+10:06:42AM   20   Q.   Did there come a time when Mr. Nakashima was placed on a
+10:06:54AM   21   performance improvement plan?
+10:07:07AM   22   A.   Yes. On July 14, 2025.
+10:07:16AM   23   Q.   How was the plan communicated to him?
+10:07:27AM   24   A.   In a meeting at two p.m. on July 14 in Conference Room 2B.
+10:07:42AM   25   Present were Mr. Nakashima, Ms. Obuya, and me.
+
+Page 2
+10:07:51AM    1   Q.   Mr. Sandoval was not there?
+10:07:58AM    2   A.   He was on vacation that week.
+10:08:09AM    3   Q.   What happened in that meeting?
+10:08:24AM    4   A.   I reviewed his attendance and training deficiencies. I handed
+10:08:36AM    5   him the written plan, a three-page document, across the table.
+10:08:42AM    6   Q.   Did he read it in the meeting?
+10:08:48AM    7   A.   He read the first page while we were sitting there. He took
+10:09:02AM    8   the document with him when he left.
+10:09:09AM    9   Q.   Did he sign it?
+10:09:14AM   10   A.   He declined to sign. I noted the refusal on the file copy.
+10:09:25AM   11       (Holloway Exhibit 9 was marked for identification.)
+10:09:37AM   12   Q.   Is Exhibit 9 the file copy you referred to?
+10:09:50AM   13   A.   Yes. The notation "employee declined to sign, 7/14/25, DH" is
+10:10:03AM   14   in my handwriting.
+10:10:19AM   15   Q.   Let me turn to September. Are you aware of a meeting on
+10:10:31AM   16   September 9, 2025, in which Mr. Nakashima raised concerns about
+10:10:47AM   17   sterilization load records?
+10:10:55AM   18   A.   I am aware that a meeting occurred. I learned about it
+10:11:09AM   19   afterward.
+10:11:18AM   20   Q.   Were you present at that meeting?
+10:11:25AM   21   A.   No. I was not at that meeting. I was in Denver at a benefits
+10:11:29AM   22   conference from September 8 through September 11. I flew out on
+10:11:36AM   23   the morning of the eighth.
+10:11:44AM   24   Q.   Did you participate by phone or video?
+10:11:52AM   25   A.   No.
+
+Page 3
+10:11:58AM    1   Q.   When did you first learn of Mr. Nakashima's concerns?
+10:12:07AM    2   A.   On September 15, when Mr. Sandoval forwarded me an email
+10:12:23AM    3   summary.
+10:12:30AM    4   Q.   What procedure governed the load records?
+10:12:40AM    5   A.   SOP-114, Sterilization Load Documentation.
+10:12:47AM    6   Q.   What did SOP-114 require for signatures on a load record?
+10:13:00AM    7        MR. ASHCROFT:  Objection, foundation. He's not a quality
+10:13:15AM    8   witness.
+10:13:30AM    9   A.   I can answer as to what I reviewed. SOP-114 required two
+10:13:37AM   10   signatures on every load record. The operator and a reviewer. That
+10:13:50AM   11   is the version in the binder HR pulled for the investigation.
+10:13:55AM   12   Q.   Do you know what revision that was?
+10:14:09AM   13   A.   I don't recall the revision letter.
+10:14:23AM   14   Q.   Who made the decision to terminate Mr. Nakashima's
+10:14:27AM   15   employment?
+10:14:41AM   16   A.   Mr. Sandoval, with my concurrence and the approval of the
+10:14:47AM   17   site director.
+10:14:52AM   18   Q.   When was that decision made?
+10:15:02AM   19   A.   On September 29, 2025.
+10:15:09AM   20   Q.   Was Mr. Nakashima's building access active as of September
+10:15:22AM   21   30?
+10:15:34AM   22   A.   Yes. As of September 30 his badge was active. Access is
+10:15:42AM   23   deactivated when IT receives a separation notice.
+10:15:55AM   24   Q.   When did IT receive that notice?
+10:16:01AM   25   A.   On October 2, in the afternoon. Deactivation was set for the
+
+Page 4
+10:16:12AM    1   start of business on October 3.
+10:16:19AM    2   Q.   What happened on October 3?
+10:16:29AM    3   A.   Mr. Nakashima came to Building 3 at about seven forty-five.
+10:16:34AM    4   Security escorted him to my office. I informed him of the
+10:16:44AM    5   termination and gave him the separation agreement.
+10:16:48AM    6   Q.   What were the terms regarding time to consider the agreement?
+10:16:57AM    7   A.   It gave him twenty-one days to consider it, and seven days to
+10:17:10AM    8   revoke after signing.
+10:17:19AM    9   Q.   Did he sign?
+10:17:34AM   10   A.   No.
+10:17:47AM   11   Q.   Did anyone else attend that October 3 meeting?
+10:17:59AM   12   A.   A security officer stood outside the door. Inside, only Mr.
+10:18:12AM   13   Nakashima and me.
+10:18:19AM   14        MS. RAMIREZ-COLE:  Let's take a short break.
+10:28:28AM   15       (Recess taken.)
+10:28:37AM   16   Q.   Mr. Holloway, before the termination, had you received any
+10:28:49AM   17   complaint from Mr. Nakashima directly?
+10:29:03AM   18   A.   No. Not directly. The September 15 email from Mr. Sandoval
+10:29:10AM   19   was the first I heard of it.
+10:29:25AM   20   Q.   Was the September 15 email considered in the termination
+10:29:30AM   21   decision?
+10:29:45AM   22        MR. ASHCROFT:  Objection, form.
+10:30:01AM   23   A.   It was not. The decision was based on the results of the
+10:30:15AM   24   performance plan.
+10:30:31AM   25        MS. RAMIREZ-COLE:  I have nothing further.
+
+Page 5
+10:30:46AM    1        MR. ASHCROFT:  No questions.
+10:30:55AM    2       (Deposition concluded at 10:31 a.m.)

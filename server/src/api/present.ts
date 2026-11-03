@@ -14,6 +14,8 @@
 
 import { countsToward, provenanceOf, type Provenance } from "../retrieve/provenance";
 
+import type { SessionCoverage } from "../verify";
+
 export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified";
 export type FindingRow = {
   type: string;
@@ -96,9 +98,32 @@ export type VerdictSource = "model" | "replayed" | "fixture";
 // analysis" and the fallback its "second reading". Stored rows keep the real model IDs.
 const FALLBACK_MODELS = new Set(["claude-opus-5-5"]);
 export const modelName = (model: string) => (FALLBACK_MODELS.has(model) ? "Veridict's second reading" : "Veridict's analysis");
-export const directSourceLabel = (model: string, fallback: boolean) => `Proposed by ${modelName(model)}${fallback ? ", after the first reading declined" : ""}, reading both sessions whole. Citations checked by Veridict against the transcript.`;
+export const directSourceLabel = (model: string, fallback: boolean) => `Proposed by ${modelName(model)}${fallback ? ", after the first reading declined" : ""}, reading every stored line of both sessions. Citations checked by Veridict against the transcript.`;
 export const SOURCE_LABELS: Record<VerdictSource, string> = {
   model: "Veridict's analysis, verified and scored against the transcript",
   replayed: "Example: a stored assessment from an earlier run, replayed without a new analysis",
   fixture: "Demo: a prepared example assessment for synthetic testimony. Not produced by a model",
 };
+
+// Pages as "28" or "28–29" runs, in order.
+export function pageRuns(pages: readonly number[]) {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  const runs: string[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    runs.push(i === j ? `${sorted[i]}` : `${sorted[i]}–${sorted[j]}`);
+    i = j;
+  }
+  return runs.join(", ");
+}
+
+// What a session's coverage means, in sentences a reviewer can act on. Empty when code knows of nothing
+// missing. Skipped line numbers alone aren't listed here: they are often blank lines.
+export function coverageNotes(c: Pick<SessionCoverage, "blankPages" | "unreadPages" | "gaps">): string[] {
+  const notes: string[] = [];
+  if (c.blankPages.length) notes.push(`PDF ${c.blankPages.length === 1 ? "page" : "pages"} ${pageRuns(c.blankPages)} ${c.blankPages.length === 1 ? "has" : "have"} no text, so nothing on ${c.blankPages.length === 1 ? "it" : "them"} was checked.`);
+  if (c.unreadPages.length) notes.push(`PDF ${c.unreadPages.length === 1 ? "page" : "pages"} ${pageRuns(c.unreadPages)} couldn't be read, so ${c.unreadPages.length === 1 ? "it was" : "they were"} not checked.`);
+  for (const g of c.gaps) notes.push(`Transcript ${g.missingPages.length === 1 ? "page" : "pages"} ${pageRuns(g.missingPages)} ${g.missingPages.length === 1 ? "is" : "are"} missing, between ${g.after} and ${g.before}.`);
+  return notes;
+}

@@ -1,0 +1,854 @@
+{
+ "items": [
+  {
+   "id": "ITEM-01",
+   "case": "Lindqvist v. Granite Shield Mutual Insurance Company (residential burglary insurance claim, February 15, 2025)",
+   "topic": "What the homeowner told the adjuster about the alarm",
+   "witness1": {
+    "name": "Henrik Lindqvist",
+    "file": "author-A/A05_witness1.txt",
+    "lines": "page 3 lines 1-2",
+    "quote": "I told her the alarm was not on that night, I'd forgotten to set it. I never said it was set."
+   },
+   "witness2": {
+    "name": "Marisol Achterberg",
+    "file": "author-A/A05_witness2.txt",
+    "lines": "page 2 lines 16-18",
+    "quote": "During the February 21 inspection Mr. Lindqvist told me the alarm was armed when he left the house that evening."
+   }
+  },
+  {
+   "id": "ITEM-02",
+   "case": "Pruett v. Castellane Freight Lines, Inc. (multi-vehicle collision, State Route 9, October 14, 2025)",
+   "topic": "Rain at the moment of the collision",
+   "witness1": {
+    "name": "Dana Okafor",
+    "file": "author-B/B01_witness1.txt",
+    "lines": "page 6, lines 22-24",
+    "quote": "The pavement was dry when the truck hit me."
+   },
+   "witness2": {
+    "name": "Gerald Thibault",
+    "file": "author-B/B01_witness2.txt",
+    "lines": "page 3, lines 7-10 (from 03:14:21PM)",
+    "quote": "It was coming down pretty good right when it happened."
+   }
+  },
+  {
+   "id": "ITEM-03",
+   "case": "Lindqvist v. Granite Shield Mutual Insurance Company (residential burglary insurance claim, February 15, 2025)",
+   "topic": "Who called 911",
+   "witness1": {
+    "name": "Henrik Lindqvist",
+    "file": "author-A/A05_witness1.txt",
+    "lines": "page 1 lines 21-22",
+    "quote": "I called 911 myself as soon as I walked in, about 11:40"
+   },
+   "witness2": {
+    "name": "Marisol Achterberg",
+    "file": "author-A/A05_witness2.txt",
+    "lines": "page 3 lines 2-4",
+    "quote": "The first 911 call about the house came from a neighbor, Mrs. Odell, at 11:25 p.m., reporting a man in the backyard."
+   }
+  },
+  {
+   "id": "ITEM-04",
+   "case": "Kestrel Bakery LLC v. Ardmore Plaza Partners, LP (commercial lease, roof leak, 2024)",
+   "topic": "Whether the tenant ledger shows August rent paid",
+   "witness1": {
+    "name": "Gloria Vantongeren",
+    "file": "author-A/A03_witness1.txt",
+    "lines": "page 4 lines 4-5",
+    "quote": "My copy of the ledger shows the August rent paid on August 6."
+   },
+   "witness2": {
+    "name": "Peter A. Szalai",
+    "file": "author-A/A03_witness2.txt",
+    "lines": "page 3 line 11",
+    "quote": "The ledger shows August rent unpaid."
+   }
+  },
+  {
+   "id": "ITEM-05",
+   "case": "Kestrel Bakery LLC v. Ardmore Plaza Partners, LP (commercial lease, roof leak, 2024)",
+   "topic": "Manager's approval of the roof repair",
+   "witness1": {
+    "name": "Gloria Vantongeren",
+    "file": "author-A/A03_witness1.txt",
+    "lines": "page 2 lines 16-17",
+    "quote": "Peter never approved the roof repair."
+   },
+   "witness2": {
+    "name": "Peter A. Szalai",
+    "file": "author-A/A03_witness2.txt",
+    "lines": "page 1 lines 13-14",
+    "quote": "I have authority to approve any repair under $5,000 without the owner's approval."
+   }
+  },
+  {
+   "id": "ITEM-06",
+   "case": "Kestrel Bakery LLC v. Ardmore Plaza Partners, LP (commercial lease, roof leak, 2024)",
+   "topic": "Hand delivery of the June 3 leak letter to the property manager",
+   "witness1": {
+    "name": "Gloria Vantongeren",
+    "file": "author-A/A03_witness1.txt",
+    "lines": "page 2 lines 3-4",
+    "quote": "I handed the June 3 letter to Peter in person, at the management office, on June 3."
+   },
+   "witness2": {
+    "name": "Peter A. Szalai",
+    "file": "author-A/A03_witness2.txt",
+    "lines": "page 1 line 24 to page 2 line 1",
+    "quote": "Ms. Vantongeren did not hand me anything on June 3. I was not in the office that day. I was in Tucson the entire week of June 3"
+   }
+  },
+  {
+   "id": "ITEM-07",
+   "case": "Estate of Lorraine Pettibone v. St. Calloway Regional Medical Center (hospital insulin error, September 9, 2024)",
+   "topic": "Dose stated on the insulin order",
+   "witness1": {
+    "name": "Jenna M. Morrow, R.N.",
+    "file": "author-A/A02_witness1.txt",
+    "lines": "page 2 line 10",
+    "quote": "The order on the screen said forty units."
+   },
+   "witness2": {
+    "name": "Arvind Sethi, PharmD",
+    "file": "author-A/A02_witness2.txt",
+    "lines": "file line 27",
+    "quote": "The order I verified read four units."
+   }
+  },
+  {
+   "id": "ITEM-08",
+   "case": "Harrowgate Supply Co. v. First Meridian Community Bank (fraudulent $486,000 wire, April 17, 2026)",
+   "topic": "Approval setting on Harrowgate's account as of April 17",
+   "witness1": {
+    "name": "Teresa Vukovic",
+    "file": "author-B/B05_witness1.txt",
+    "lines": "file lines 26-29",
+    "quote": "As of April 17, our account required two approvers for any wire."
+   },
+   "witness2": {
+    "name": "Samuel Prentiss",
+    "file": "author-B/B05_witness2.txt",
+    "lines": "page 5, lines 4-6",
+    "quote": "As of April 17, Harrowgate's profile was set to single approval."
+   }
+  },
+  {
+   "id": "ITEM-09",
+   "case": "Linden et al. v. Saffron Table LLC (restaurant food-poisoning outbreak, June 6, 2025)",
+   "topic": "Who prepared the chicken salad on Thursday June 5",
+   "witness1": {
+    "name": "Priya Wendell",
+    "file": "author-B/B02_witness1.txt",
+    "lines": "page 6, lines 25-27",
+    "quote": "Marco Tellez made it."
+   },
+   "witness2": {
+    "name": "Marco Tellez",
+    "file": "author-B/B02_witness2.txt",
+    "lines": "file line 28",
+    "quote": "I didn't touch the chicken salad Thursday."
+   }
+  },
+  {
+   "id": "ITEM-10",
+   "case": "Ferreira v. Brightline Builders, Inc. and Tallis Scaffold Co. (scaffold collapse, 400 Quarry Street, March 12, 2026)",
+   "topic": "Castellano shutting down Bay C",
+   "witness1": {
+    "name": "Owen Castellano",
+    "file": "author-B/B03_witness1.txt",
+    "lines": "page 5, lines 15-17",
+    "quote": "Yes, I had the authority to shut down any scaffold on that site."
+   },
+   "witness2": {
+    "name": "Rosalind Achterberg",
+    "file": "author-B/B03_witness2.txt",
+    "lines": "page 7, lines 11-12",
+    "quote": "Owen didn't shut down Bay C. Nobody from Brightline did."
+   }
+  },
+  {
+   "id": "ITEM-11",
+   "case": "Nakashima v. Corvel Medical Devices, Inc. (whistleblower retaliation and termination)",
+   "topic": "Signatures required by SOP-114",
+   "witness1": {
+    "name": "Darren Holloway",
+    "file": "author-B/B04_witness1.txt",
+    "lines": "page 3, lines 9-11 (from 10:13:30AM)",
+    "quote": "SOP-114 required two signatures on every load record."
+   },
+   "witness2": {
+    "name": "Grace Obuya",
+    "file": "author-B/B04_witness2.txt",
+    "lines": "page 5, lines 2-5",
+    "quote": "One signature. The procedure only needed the operator's signature."
+   }
+  },
+  {
+   "id": "ITEM-12",
+   "case": "Nakashima v. Corvel Medical Devices, Inc. (whistleblower retaliation and termination)",
+   "topic": "Holloway's attendance at the September 9, 2025 meeting",
+   "witness1": {
+    "name": "Darren Holloway",
+    "file": "author-B/B04_witness1.txt",
+    "lines": "page 2, lines 21-23 (from 10:11:25AM)",
+    "quote": "I was not at that meeting."
+   },
+   "witness2": {
+    "name": "Grace Obuya",
+    "file": "author-B/B04_witness2.txt",
+    "lines": "page 4, lines 20-22",
+    "quote": "Darren Holloway was there."
+   }
+  },
+  {
+   "id": "ITEM-13",
+   "case": "Linden et al. v. Saffron Table LLC (restaurant food-poisoning outbreak, June 6, 2025)",
+   "topic": "Walk-in cooler temperature at opening on June 6",
+   "witness1": {
+    "name": "Priya Wendell",
+    "file": "author-B/B02_witness1.txt",
+    "lines": "page 7, lines 11-12",
+    "quote": "At six-thirty the dial inside the walk-in door read 38 degrees."
+   },
+   "witness2": {
+    "name": "Marco Tellez",
+    "file": "author-B/B02_witness2.txt",
+    "lines": "file line 50",
+    "quote": "Fifty-one. The dial said fifty-one."
+   }
+  },
+  {
+   "id": "ITEM-14",
+   "case": "Ferreira v. Brightline Builders, Inc. and Tallis Scaffold Co. (scaffold collapse, 400 Quarry Street, March 12, 2026)",
+   "topic": "Whether anyone was on Bay C",
+   "witness1": {
+    "name": "Owen Castellano",
+    "file": "author-B/B03_witness1.txt",
+    "lines": "page 5, lines 7-9",
+    "quote": "Three. There were three masons on the Bay C platform when it went."
+   },
+   "witness2": {
+    "name": "Rosalind Achterberg",
+    "file": "author-B/B03_witness2.txt",
+    "lines": "page 7, lines 17-18",
+    "quote": "As far as I knew, nobody was supposed to be on Bay C that day."
+   }
+  },
+  {
+   "id": "ITEM-15",
+   "case": "Estate of Lorraine Pettibone v. St. Calloway Regional Medical Center (hospital insulin error, September 9, 2024)",
+   "topic": "Whether the nurse phoned the pharmacist about the dose before giving it",
+   "witness1": {
+    "name": "Jenna M. Morrow, R.N.",
+    "file": "author-A/A02_witness1.txt",
+    "lines": "page 2 lines 14-16",
+    "quote": "I called before I gave it, at about 9:30, and I spoke to Dr. Sethi himself, and he told me the dose was fine."
+   },
+   "witness2": {
+    "name": "Arvind Sethi, PharmD",
+    "file": "author-A/A02_witness2.txt",
+    "lines": "file lines 37-39",
+    "quote": "Ms. Morrow did not call me that night. I received no call from 4 West about Mrs. Pettibone's insulin, before or after the dose."
+   }
+  },
+  {
+   "id": "ITEM-16",
+   "case": "Pruett v. Castellane Freight Lines, Inc. (multi-vehicle collision, State Route 9, October 14, 2025)",
+   "topic": "Who put out warning devices",
+   "witness1": {
+    "name": "Dana Okafor",
+    "file": "author-B/B01_witness1.txt",
+    "lines": "page 7, lines 20-21",
+    "quote": "The man driving the pickup was the one who put out flares."
+   },
+   "witness2": {
+    "name": "Gerald Thibault",
+    "file": "author-B/B01_witness2.txt",
+    "lines": "page 3, lines 15-18 (from 03:15:39PM)",
+    "quote": "I put the triangles out. That was me."
+   }
+  },
+  {
+   "id": "ITEM-17",
+   "case": "Delgado v. Northbay Logistics, Inc. (warehouse forklift injury, March 14, 2025)",
+   "topic": "Condition of Unit 22's brakes on March 14",
+   "witness1": {
+    "name": "Raymond Oduya",
+    "file": "author-A/A01_witness1.txt",
+    "lines": "page 3 line 25 to page 4 line 1",
+    "quote": "Soft. Pedal went most of the way to the floor before it grabbed."
+   },
+   "witness2": {
+    "name": "Carla J. Brennick",
+    "file": "author-A/A01_witness2.txt",
+    "lines": "page 3 lines 8-9",
+    "quote": "Unit 22 passed its pre-shift inspection. The brakes were checked and marked satisfactory."
+   }
+  },
+  {
+   "id": "ITEM-18",
+   "case": "Estate of Lorraine Pettibone v. St. Calloway Regional Medical Center (hospital insulin error, September 9, 2024)",
+   "topic": "Time the dose was given",
+   "witness1": {
+    "name": "Jenna M. Morrow, R.N.",
+    "file": "author-A/A02_witness1.txt",
+    "lines": "page 2 line 3",
+    "quote": "I gave it at 9:52."
+   },
+   "witness2": {
+    "name": "Arvind Sethi, PharmD",
+    "file": "author-A/A02_witness2.txt",
+    "lines": "file lines 72-73",
+    "quote": "I was told by the night house supervisor that the dose went in just before ten."
+   }
+  },
+  {
+   "id": "ITEM-19",
+   "case": "Estate of Lorraine Pettibone v. St. Calloway Regional Medical Center (hospital insulin error, September 9, 2024)",
+   "topic": "Number of insulin withdrawals for the patient that night",
+   "witness1": {
+    "name": "Jenna M. Morrow, R.N.",
+    "file": "author-A/A02_witness1.txt",
+    "lines": "page 1 lines 26-27",
+    "quote": "I pulled insulin for her four times"
+   },
+   "witness2": {
+    "name": "Arvind Sethi, PharmD",
+    "file": "author-A/A02_witness2.txt",
+    "lines": "file lines 62-65",
+    "quote": "The system logged six insulin withdrawals for her from that cabinet during the night shift. Two of the six were cancelled transactions, where the drawer opened and the nurse cancelled without removing anything. So, four actual removals."
+   }
+  },
+  {
+   "id": "ITEM-20",
+   "case": "Harrowgate Supply Co. v. First Meridian Community Bank (fraudulent $486,000 wire, April 17, 2026)",
+   "topic": "Callback to Vukovic on April 17",
+   "witness1": {
+    "name": "Teresa Vukovic",
+    "file": "author-B/B05_witness1.txt",
+    "lines": "file lines 51-53",
+    "quote": "Nobody from the bank called me that day."
+   },
+   "witness2": {
+    "name": "Samuel Prentiss",
+    "file": "author-B/B05_witness2.txt",
+    "lines": "page 6, lines 12-14",
+    "quote": "I placed the callback to Ms. Vukovic at 10:52 a.m. on April 17."
+   }
+  },
+  {
+   "id": "ITEM-21",
+   "case": "Lindqvist v. Granite Shield Mutual Insurance Company (residential burglary insurance claim, February 15, 2025)",
+   "topic": "Pry marks on the back door frame at the adjuster's inspection",
+   "witness1": {
+    "name": "Henrik Lindqvist",
+    "file": "author-A/A05_witness1.txt",
+    "lines": "page 2 lines 20-22",
+    "quote": "She looked right at the pry marks on the back door frame. She took pictures of them. There were gouges right next to the strike plate"
+   },
+   "witness2": {
+    "name": "Marisol Achterberg",
+    "file": "author-A/A05_witness2.txt",
+    "lines": "page 2 lines 6-8",
+    "quote": "When I inspected the back door on February 21 there were no pry marks on the frame or on the strike plate."
+   }
+  },
+  {
+   "id": "ITEM-22",
+   "case": "Halvorsen Freight Co. v. Brightloom Systems, Inc. (software delivery dispute, RouteDesk 2.0)",
+   "topic": "Whether the route optimizer crashed at the November 12 acceptance test",
+   "witness1": {
+    "name": "Nadia Okafor",
+    "file": "author-A/A04_witness1.txt",
+    "lines": "file lines 52-54",
+    "quote": "At the acceptance test on November 12 the route optimizer crashed every time we loaded more than fifty stops. Every time. We ran the 200-stop scenario three times. It crashed three times."
+   },
+   "witness2": {
+    "name": "Gavin Thorpe",
+    "file": "author-A/A04_witness2.txt",
+    "lines": "page 2 lines 18-20",
+    "quote": "On November 12 the route optimizer ran every test scenario, including the 200-stop scenario, without a crash."
+   }
+  },
+  {
+   "id": "ITEM-23",
+   "case": "Estate of Lorraine Pettibone v. St. Calloway Regional Medical Center (hospital insulin error, September 9, 2024)",
+   "topic": "What insulin was in the patient's cabinet pocket",
+   "witness1": {
+    "name": "Jenna M. Morrow, R.N.",
+    "file": "author-A/A02_witness1.txt",
+    "lines": "page 2 line 28 to page 3 line 2",
+    "quote": "The vial I pulled from her pocket was the U-500, the concentrated one, with the striped label. That's the only thing that was in there."
+   },
+   "witness2": {
+    "name": "Arvind Sethi, PharmD",
+    "file": "author-A/A02_witness2.txt",
+    "lines": "file lines 48-50",
+    "quote": "Her pocket in the refrigerated drawer on 4 West contained only U-100 vials that night. Regular insulin, U-100. There was no U-500 in her pocket."
+   }
+  },
+  {
+   "id": "ITEM-24",
+   "case": "Lindqvist v. Granite Shield Mutual Insurance Company (residential burglary insurance claim, February 15, 2025)",
+   "topic": "Number of items claimed",
+   "witness1": {
+    "name": "Henrik Lindqvist",
+    "file": "author-A/A05_witness1.txt",
+    "lines": "page 3 line 5",
+    "quote": "They took nineteen things."
+   },
+   "witness2": {
+    "name": "Marisol Achterberg",
+    "file": "author-A/A05_witness2.txt",
+    "lines": "page 3 lines 10-12",
+    "quote": "The inventory lists twenty-two line items. Three of those were entered twice on the form, so it is nineteen distinct items."
+   }
+  },
+  {
+   "id": "ITEM-25",
+   "case": "Harrowgate Supply Co. v. First Meridian Community Bank (fraudulent $486,000 wire, April 17, 2026)",
+   "topic": "When the fraud was reported",
+   "witness1": {
+    "name": "Teresa Vukovic",
+    "file": "author-B/B05_witness1.txt",
+    "lines": "file lines 67-68",
+    "quote": "I reported it to the bank the next business day."
+   },
+   "witness2": {
+    "name": "Samuel Prentiss",
+    "file": "author-B/B05_witness2.txt",
+    "lines": "page 7, lines 5-6",
+    "quote": "The fraud claim was opened on Monday, April 20"
+   }
+  },
+  {
+   "id": "ITEM-26",
+   "case": "Ferreira v. Brightline Builders, Inc. and Tallis Scaffold Co. (scaffold collapse, 400 Quarry Street, March 12, 2026)",
+   "topic": "Wind speed on the morning of the collapse",
+   "witness1": {
+    "name": "Owen Castellano",
+    "file": "author-B/B03_witness1.txt",
+    "lines": "page 5, lines 21-22",
+    "quote": "It was gusting pretty hard, I'd guess thirty, thirty-five."
+   },
+   "witness2": {
+    "name": "Rosalind Achterberg",
+    "file": "author-B/B03_witness2.txt",
+    "lines": "page 8, lines 3-4",
+    "quote": "The anemometer read twelve miles an hour, gusts to fifteen."
+   }
+  },
+  {
+   "id": "ITEM-27",
+   "case": "Kestrel Bakery LLC v. Ardmore Plaza Partners, LP (commercial lease, roof leak, 2024)",
+   "topic": "Whether the ceiling was leaking during the July 18 walkthrough",
+   "witness1": {
+    "name": "Gloria Vantongeren",
+    "file": "author-A/A03_witness1.txt",
+    "lines": "page 3 lines 3-5",
+    "quote": "On the walkthrough on July 18 water was coming through the ceiling tiles over the proofing area, we had buckets out, three buckets"
+   },
+   "witness2": {
+    "name": "Peter A. Szalai",
+    "file": "author-A/A03_witness2.txt",
+    "lines": "page 2 lines 24-25",
+    "quote": "During the July 18 walkthrough the ceiling over the proofing area was dry. No buckets, no drips."
+   }
+  },
+  {
+   "id": "ITEM-28",
+   "case": "Delgado v. Northbay Logistics, Inc. (warehouse forklift injury, March 14, 2025)",
+   "topic": "Whether the operator had a spotter",
+   "witness1": {
+    "name": "Raymond Oduya",
+    "file": "author-A/A01_witness1.txt",
+    "lines": "page 2 line 19",
+    "quote": "I had a spotter that day. Luis Ferro."
+   },
+   "witness2": {
+    "name": "Carla J. Brennick",
+    "file": "author-A/A01_witness2.txt",
+    "lines": "page 2 lines 8-10",
+    "quote": "As far as I know, no spotter was assigned to him. But I didn't make the assignments, Dana did, and I didn't see her sheet that day."
+   }
+  },
+  {
+   "id": "ITEM-29",
+   "case": "Nakashima v. Corvel Medical Devices, Inc. (whistleblower retaliation and termination)",
+   "topic": "Whether Nakashima's badge worked",
+   "witness1": {
+    "name": "Darren Holloway",
+    "file": "author-B/B04_witness1.txt",
+    "lines": "page 3, lines 22-23 (from 10:15:34AM)",
+    "quote": "As of September 30 his badge was active."
+   },
+   "witness2": {
+    "name": "Grace Obuya",
+    "file": "author-B/B04_witness2.txt",
+    "lines": "page 5, lines 17-20",
+    "quote": "His badge didn't work at the front door that morning."
+   }
+  },
+  {
+   "id": "ITEM-30",
+   "case": "Delgado v. Northbay Logistics, Inc. (warehouse forklift injury, March 14, 2025)",
+   "topic": "Whether the operator was told at the 2:00 p.m. huddle that aisle 14 was closed",
+   "witness1": {
+    "name": "Raymond Oduya",
+    "file": "author-A/A01_witness1.txt",
+    "lines": "page 2 lines 10-11",
+    "quote": "No. Nobody said a word about aisle 14 at that huddle."
+   },
+   "witness2": {
+    "name": "Carla J. Brennick",
+    "file": "author-A/A01_witness2.txt",
+    "lines": "page 1 lines 21-24",
+    "quote": "I said aisle 14 was closed to all forklift traffic because the order pickers were restocking it by hand. I said it to the whole group, and I said it to Ray directly, by name"
+   }
+  },
+  {
+   "id": "ITEM-31",
+   "case": "Lindqvist v. Granite Shield Mutual Insurance Company (residential burglary insurance claim, February 15, 2025)",
+   "topic": "Claimed value of the watch",
+   "witness1": {
+    "name": "Henrik Lindqvist",
+    "file": "author-A/A05_witness1.txt",
+    "lines": "page 3 lines 9-10",
+    "quote": "The watch was worth about eleven thousand dollars."
+   },
+   "witness2": {
+    "name": "Marisol Achterberg",
+    "file": "author-A/A05_witness2.txt",
+    "lines": "page 3 lines 14-15",
+    "quote": "The claim listed the watch at four thousand two hundred dollars."
+   }
+  },
+  {
+   "id": "ITEM-32",
+   "case": "Harrowgate Supply Co. v. First Meridian Community Bank (fraudulent $486,000 wire, April 17, 2026)",
+   "topic": "Whether the wire was pending at about 10:45",
+   "witness1": {
+    "name": "Teresa Vukovic",
+    "file": "author-B/B05_witness1.txt",
+    "lines": "file lines 46-48",
+    "quote": "When I looked at the portal, there was no wire pending."
+   },
+   "witness2": {
+    "name": "Samuel Prentiss",
+    "file": "author-B/B05_witness2.txt",
+    "lines": "page 6, lines 1-4",
+    "quote": "At 10:45 the wire was sitting in pending status"
+   }
+  },
+  {
+   "id": "ITEM-33",
+   "case": "Pruett v. Castellane Freight Lines, Inc. (multi-vehicle collision, State Route 9, October 14, 2025)",
+   "topic": "Speed of the tractor-trailer",
+   "witness1": {
+    "name": "Dana Okafor",
+    "file": "author-B/B01_witness1.txt",
+    "lines": "page 5, lines 20-22",
+    "quote": "I'd say the truck was over seventy."
+   },
+   "witness2": {
+    "name": "Gerald Thibault",
+    "file": "author-B/B01_witness2.txt",
+    "lines": "page 2, lines 6-8 (from 03:10:20PM)",
+    "quote": "On that stretch I was at fifty-eight."
+   }
+  },
+  {
+   "id": "ITEM-34",
+   "case": "Delgado v. Northbay Logistics, Inc. (warehouse forklift injury, March 14, 2025)",
+   "topic": "Whether Unit 22's backup alarm sounded when it reversed into Mr. Delgado",
+   "witness1": {
+    "name": "Raymond Oduya",
+    "file": "author-A/A01_witness1.txt",
+    "lines": "page 3 lines 8-9",
+    "quote": "The backup alarm was beeping the whole time I was reversing."
+   },
+   "witness2": {
+    "name": "Carla J. Brennick",
+    "file": "author-A/A01_witness2.txt",
+    "lines": "page 2 lines 19-20",
+    "quote": "When he reversed out of the bay there was no alarm. I didn't hear a single beep"
+   }
+  },
+  {
+   "id": "ITEM-35",
+   "case": "Delgado v. Northbay Logistics, Inc. (warehouse forklift injury, March 14, 2025)",
+   "topic": "Visibility of the yellow walkway lines in aisle 14",
+   "witness1": {
+    "name": "Raymond Oduya",
+    "file": "author-A/A01_witness1.txt",
+    "lines": "page 4 lines 20-21",
+    "quote": "On the 14th the yellow walkway lines in that aisle were faded. You could barely see them."
+   },
+   "witness2": {
+    "name": "Carla J. Brennick",
+    "file": "author-A/A01_witness2.txt",
+    "lines": "page 4 lines 2-4",
+    "quote": "The walkway lines in aisle 14 are bright yellow. They were repainted in April 2025, along with the rest of that zone."
+   }
+  },
+  {
+   "id": "ITEM-36",
+   "case": "Kestrel Bakery LLC v. Ardmore Plaza Partners, LP (commercial lease, roof leak, 2024)",
+   "topic": "Which party the lease makes responsible for the roof",
+   "witness1": {
+    "name": "Gloria Vantongeren",
+    "file": "author-A/A03_witness1.txt",
+    "lines": "page 3 lines 14-15",
+    "quote": "The lease says the landlord is responsible for the roof."
+   },
+   "witness2": {
+    "name": "Peter A. Szalai",
+    "file": "author-A/A03_witness2.txt",
+    "lines": "page 2 lines 14-15",
+    "quote": "The lease makes the tenant responsible for roof repairs."
+   }
+  },
+  {
+   "id": "ITEM-37",
+   "case": "Nakashima v. Corvel Medical Devices, Inc. (whistleblower retaliation and termination)",
+   "topic": "Time allowed to consider the separation agreement",
+   "witness1": {
+    "name": "Darren Holloway",
+    "file": "author-B/B04_witness1.txt",
+    "lines": "page 4, lines 7-8 (from 10:16:57AM)",
+    "quote": "It gave him twenty-one days to consider it"
+   },
+   "witness2": {
+    "name": "Grace Obuya",
+    "file": "author-B/B04_witness2.txt",
+    "lines": "page 5, lines 26-28",
+    "quote": "he got a severance paper and had three weeks to think about it."
+   }
+  },
+  {
+   "id": "ITEM-38",
+   "case": "Pruett v. Castellane Freight Lines, Inc. (multi-vehicle collision, State Route 9, October 14, 2025)",
+   "topic": "Lane position of the pickup before the collision",
+   "witness1": {
+    "name": "Dana Okafor",
+    "file": "author-B/B01_witness1.txt",
+    "lines": "page 5, lines 13-15",
+    "quote": "The pickup was in the left lane, a little ahead of me."
+   },
+   "witness2": {
+    "name": "Gerald Thibault",
+    "file": "author-B/B01_witness2.txt",
+    "lines": "page 3 line 24 to page 4 line 1 (from 03:17:21PM)",
+    "quote": "I don't recall which lane the pickup was in before all this."
+   }
+  },
+  {
+   "id": "ITEM-39",
+   "case": "Linden et al. v. Saffron Table LLC (restaurant food-poisoning outbreak, June 6, 2025)",
+   "topic": "Number of guests who became ill",
+   "witness1": {
+    "name": "Priya Wendell",
+    "file": "author-B/B02_witness1.txt",
+    "lines": "page 8, lines 14-15",
+    "quote": "Thirty-one in total."
+   },
+   "witness2": {
+    "name": "Marco Tellez",
+    "file": "author-B/B02_witness2.txt",
+    "lines": "file line 71",
+    "quote": "Twenty-four. That's what Priya said Friday night."
+   }
+  },
+  {
+   "id": "ITEM-40",
+   "case": "Halvorsen Freight Co. v. Brightloom Systems, Inc. (software delivery dispute, RouteDesk 2.0)",
+   "topic": "Dispatch screen load time",
+   "witness1": {
+    "name": "Nadia Okafor",
+    "file": "author-A/A04_witness1.txt",
+    "lines": "file lines 75-76",
+    "quote": "In December, in production, the dispatch screen took over thirty seconds to load."
+   },
+   "witness2": {
+    "name": "Gavin Thorpe",
+    "file": "author-A/A04_witness2.txt",
+    "lines": "page 3 lines 16-17",
+    "quote": "In my experience the dispatch screen loaded in under two seconds."
+   }
+  },
+  {
+   "id": "ITEM-41",
+   "case": "Ferreira v. Brightline Builders, Inc. and Tallis Scaffold Co. (scaffold collapse, 400 Quarry Street, March 12, 2026)",
+   "topic": "Mudsill / timber pad under the northeast leg of Bay C",
+   "witness1": {
+    "name": "Owen Castellano",
+    "file": "author-B/B03_witness1.txt",
+    "lines": "page 4, lines 20-22",
+    "quote": "it had a two-by-ten pad under it."
+   },
+   "witness2": {
+    "name": "Rosalind Achterberg",
+    "file": "author-B/B03_witness2.txt",
+    "lines": "page 6, lines 22-24",
+    "quote": "No mudsill. No timber of any kind under that leg."
+   }
+  },
+  {
+   "id": "ITEM-42",
+   "case": "Ferreira v. Brightline Builders, Inc. and Tallis Scaffold Co. (scaffold collapse, 400 Quarry Street, March 12, 2026)",
+   "topic": "Color of the Bay C inspection tag at 7 a.m. on March 12",
+   "witness1": {
+    "name": "Owen Castellano",
+    "file": "author-B/B03_witness1.txt",
+    "lines": "page 4, lines 12-14",
+    "quote": "It was green. The tag on Bay C was green at seven."
+   },
+   "witness2": {
+    "name": "Rosalind Achterberg",
+    "file": "author-B/B03_witness2.txt",
+    "lines": "page 6, lines 17-19",
+    "quote": "Red. Bay C carried a red tag at seven a.m. on the twelfth."
+   }
+  },
+  {
+   "id": "ITEM-43",
+   "case": "Harrowgate Supply Co. v. First Meridian Community Bank (fraudulent $486,000 wire, April 17, 2026)",
+   "topic": "Wire limit on the account",
+   "witness1": {
+    "name": "Teresa Vukovic",
+    "file": "author-B/B05_witness1.txt",
+    "lines": "file lines 31-32",
+    "quote": "Our wire limit was two hundred fifty thousand."
+   },
+   "witness2": {
+    "name": "Samuel Prentiss",
+    "file": "author-B/B05_witness2.txt",
+    "lines": "page 5, lines 12-13",
+    "quote": "The limit was five hundred thousand."
+   }
+  },
+  {
+   "id": "ITEM-44",
+   "case": "Halvorsen Freight Co. v. Brightloom Systems, Inc. (software delivery dispute, RouteDesk 2.0)",
+   "topic": "Signing of change order 4",
+   "witness1": {
+    "name": "Nadia Okafor",
+    "file": "author-A/A04_witness1.txt",
+    "lines": "file line 63",
+    "quote": "I signed change order 4 for the mobile app on August 9."
+   },
+   "witness2": {
+    "name": "Gavin Thorpe",
+    "file": "author-A/A04_witness2.txt",
+    "lines": "page 3 lines 6-7",
+    "quote": "I don't recall whether Ms. Okafor signed the change order for the mobile app."
+   }
+  },
+  {
+   "id": "ITEM-45",
+   "case": "Halvorsen Freight Co. v. Brightloom Systems, Inc. (software delivery dispute, RouteDesk 2.0)",
+   "topic": "Whether the 2.0 build was on Halvorsen's SFTP server before the November 1 deadline",
+   "witness1": {
+    "name": "Nadia Okafor",
+    "file": "author-A/A04_witness1.txt",
+    "lines": "file lines 36-38",
+    "quote": "There was nothing from Brightloom on our SFTP server until November 6. I checked the server on October 31 and again on November 1. The 2.0 folder was empty both times."
+   },
+   "witness2": {
+    "name": "Gavin Thorpe",
+    "file": "author-A/A04_witness2.txt",
+    "lines": "page 1 lines 27-28",
+    "quote": "We uploaded the 2.0 release build to Halvorsen's SFTP server on October 30."
+   }
+  },
+  {
+   "id": "ITEM-46",
+   "case": "Nakashima v. Corvel Medical Devices, Inc. (whistleblower retaliation and termination)",
+   "topic": "Whether a written plan was handed to Nakashima at the July 14 meeting",
+   "witness1": {
+    "name": "Darren Holloway",
+    "file": "author-B/B04_witness1.txt",
+    "lines": "page 2, lines 4-8 (from 10:08:24AM)",
+    "quote": "I handed him the written plan"
+   },
+   "witness2": {
+    "name": "Grace Obuya",
+    "file": "author-B/B04_witness2.txt",
+    "lines": "page 4, lines 5-10",
+    "quote": "Nobody handed Kenji anything in that meeting."
+   }
+  },
+  {
+   "id": "ITEM-47",
+   "case": "Pruett v. Castellane Freight Lines, Inc. (multi-vehicle collision, State Route 9, October 14, 2025)",
+   "topic": "Truck turn signal during the lane change into the center lane",
+   "witness1": {
+    "name": "Dana Okafor",
+    "file": "author-B/B01_witness1.txt",
+    "lines": "page 6, lines 8-9",
+    "quote": "There was no signal on the cab or the trailer when it came over."
+   },
+   "witness2": {
+    "name": "Gerald Thibault",
+    "file": "author-B/B01_witness2.txt",
+    "lines": "page 2, lines 20-22 (from 03:12:21PM)",
+    "quote": "Left blinker was on before I moved over"
+   }
+  },
+  {
+   "id": "ITEM-48",
+   "case": "Linden et al. v. Saffron Table LLC (restaurant food-poisoning outbreak, June 6, 2025)",
+   "topic": "Sanitizer concentration in the week of June 2",
+   "witness1": {
+    "name": "Priya Wendell",
+    "file": "author-B/B02_witness1.txt",
+    "lines": "page 8, lines 4-6",
+    "quote": "The sanitizer tested at two hundred parts per million."
+   },
+   "witness2": {
+    "name": "Marco Tellez",
+    "file": "author-B/B02_witness2.txt",
+    "lines": "file line 60",
+    "quote": "The strips barely changed color. Like it was water."
+   }
+  },
+  {
+   "id": "ITEM-49",
+   "case": "Linden et al. v. Saffron Table LLC (restaurant food-poisoning outbreak, June 6, 2025)",
+   "topic": "Number of violations in the inspection report",
+   "witness1": {
+    "name": "Priya Wendell",
+    "file": "author-B/B02_witness1.txt",
+    "lines": "page 8, line 20",
+    "quote": "The county's report listed four violations."
+   },
+   "witness2": {
+    "name": "Marco Tellez",
+    "file": "author-B/B02_witness2.txt",
+    "lines": "file line 79",
+    "quote": "The one I saw had two violations."
+   }
+  },
+  {
+   "id": "ITEM-50",
+   "case": "Halvorsen Freight Co. v. Brightloom Systems, Inc. (software delivery dispute, RouteDesk 2.0)",
+   "topic": "Whether CSV export works",
+   "witness1": {
+    "name": "Nadia Okafor",
+    "file": "author-A/A04_witness1.txt",
+    "lines": "file lines 67-68",
+    "quote": "The CSV export never worked for us. We'd click export and get an error."
+   },
+   "witness2": {
+    "name": "Gavin Thorpe",
+    "file": "author-A/A04_witness2.txt",
+    "lines": "page 3 lines 10-12",
+    "quote": "Yes. The CSV export works. I demonstrated it myself in January, on version 2.0.1, on our demo server."
+   }
+  }
+ ]
+}

@@ -1,0 +1,485 @@
+{
+ "author": "Claude agent (AI-generated), author A",
+ "pairs": [
+  {
+   "pair": "A01",
+   "case": "Delgado v. Northbay Logistics, Inc. (warehouse forklift injury, March 14, 2025)",
+   "witness1": {
+    "name": "Raymond Oduya",
+    "file": "A01_witness1.txt",
+    "date": "2025-10-07"
+   },
+   "witness2": {
+    "name": "Carla J. Brennick",
+    "file": "A01_witness2.txt",
+    "date": "2025-10-09"
+   },
+   "items": [
+    {
+     "id": "A01-S1",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Whether Unit 22's backup alarm sounded when it reversed into Mr. Delgado",
+     "witness1": {
+      "lines": "page 3 lines 8-9",
+      "quote": "The backup alarm was beeping the whole time I was reversing."
+     },
+     "witness2": {
+      "lines": "page 2 lines 19-20",
+      "quote": "When he reversed out of the bay there was no alarm. I didn't hear a single beep"
+     },
+     "scope_alignment": "Both questions fix the same moment: the reversal of Unit 22 that struck Mr. Delgado on March 14, 2025 (operator: 'At the moment you backed into Mr. Delgado'; supervisor: 'At the moment Unit 22 reversed into Mr. Delgado'). The supervisor establishes she was about thirty feet away watching Unit 22 back out and that the alarm is audible across the dock.",
+     "rationale": "Alarm sounding continuously during the reversal versus no alarm at all during the same reversal cannot both be true."
+    },
+    {
+     "id": "A01-S2",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Whether the operator was told at the 2:00 p.m. huddle that aisle 14 was closed",
+     "witness1": {
+      "lines": "page 2 lines 10-11",
+      "quote": "No. Nobody said a word about aisle 14 at that huddle."
+     },
+     "witness2": {
+      "lines": "page 1 lines 21-24",
+      "quote": "I said aisle 14 was closed to all forklift traffic because the order pickers were restocking it by hand. I said it to the whole group, and I said it to Ray directly, by name"
+     },
+     "scope_alignment": "Same occasion: the 2:00 p.m. start-of-shift huddle on March 14, 2025, which both witnesses say Oduya attended. The supervisor took attendance and places him in the second row.",
+     "rationale": "One says aisle 14 was not mentioned at all at that huddle; the other says she announced its closure there to the group and to him by name. Different vocabulary ('closed to forklifts' vs 'closed to all forklift traffic'), same proposition."
+    },
+    {
+     "id": "A01-R1",
+     "category": "review_worthy",
+     "control_type": null,
+     "topic": "Condition of Unit 22's brakes on March 14",
+     "witness1": {
+      "lines": "page 3 line 25 to page 4 line 1",
+      "quote": "Soft. Pedal went most of the way to the floor before it grabbed."
+     },
+     "witness2": {
+      "lines": "page 3 lines 8-9",
+      "quote": "Unit 22 passed its pre-shift inspection. The brakes were checked and marked satisfactory."
+     },
+     "scope_alignment": "Not aligned. The operator describes how the brakes felt during his afternoon shift; the supervisor relies on a first-shift pre-shift inspection done around 6:00 a.m. by someone else, and she did not test the brakes herself.",
+     "rationale": "Looks like 'bad brakes' vs 'good brakes' and matters to liability, but a morning checklist result and an afternoon driving experience are different times and different kinds of observation, so the testimony does not establish incompatible claims about the same condition at the same time."
+    },
+    {
+     "id": "A01-N1",
+     "category": "negative_control",
+     "control_type": "incomplete knowledge",
+     "topic": "Whether the operator had a spotter",
+     "witness1": {
+      "lines": "page 2 line 19",
+      "quote": "I had a spotter that day. Luis Ferro."
+     },
+     "witness2": {
+      "lines": "page 2 lines 8-10",
+      "quote": "As far as I know, no spotter was assigned to him. But I didn't make the assignments, Dana did, and I didn't see her sheet that day."
+     },
+     "scope_alignment": "Same day, but the supervisor expressly disclaims knowledge: another person made the spotter assignments and she did not see the assignment sheet.",
+     "rationale": "A qualified 'as far as I know' from a witness who says she lacks the information does not contradict a first-hand account."
+    },
+    {
+     "id": "A01-N2",
+     "category": "negative_control",
+     "control_type": "different times",
+     "topic": "Visibility of the yellow walkway lines in aisle 14",
+     "witness1": {
+      "lines": "page 4 lines 20-21",
+      "quote": "On the 14th the yellow walkway lines in that aisle were faded. You could barely see them."
+     },
+     "witness2": {
+      "lines": "page 4 lines 2-4",
+      "quote": "The walkway lines in aisle 14 are bright yellow. They were repainted in April 2025, along with the rest of that zone."
+     },
+     "scope_alignment": "Different times: the operator describes March 14, 2025; the supervisor describes the lines as shown in her May 2025 photograph, after the April 2025 repainting. The operator also says the paint is new since spring.",
+     "rationale": "Faded lines before the repaint and bright lines after it are both consistent."
+    }
+   ]
+  },
+  {
+   "pair": "A02",
+   "case": "Estate of Lorraine Pettibone v. St. Calloway Regional Medical Center (hospital insulin error, September 9, 2024)",
+   "witness1": {
+    "name": "Jenna M. Morrow, R.N.",
+    "file": "A02_witness1.txt",
+    "date": "2025-06-12"
+   },
+   "witness2": {
+    "name": "Arvind Sethi, PharmD",
+    "file": "A02_witness2.txt",
+    "date": "2025-06-19"
+   },
+   "items": [
+    {
+     "id": "A02-S1",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Whether the nurse phoned the pharmacist about the dose before giving it",
+     "witness1": {
+      "lines": "page 2 lines 14-16",
+      "quote": "I called before I gave it, at about 9:30, and I spoke to Dr. Sethi himself, and he told me the dose was fine."
+     },
+     "witness2": {
+      "lines": "file lines 37-39",
+      "quote": "Ms. Morrow did not call me that night. I received no call from 4 West about Mrs. Pettibone's insulin, before or after the dose."
+     },
+     "scope_alignment": "Same night (September 9, 2024), same patient, same dose (the ~9:52 p.m. dose), and the pharmacist says he alone answered the pharmacy line after 9:00 p.m.",
+     "rationale": "A call to Dr. Sethi himself about this dose before it was given and no call at all about it cannot both be true."
+    },
+    {
+     "id": "A02-S2",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "What insulin was in the patient's cabinet pocket",
+     "witness1": {
+      "lines": "page 2 line 28 to page 3 line 2",
+      "quote": "The vial I pulled from her pocket was the U-500, the concentrated one, with the striped label. That's the only thing that was in there."
+     },
+     "witness2": {
+      "lines": "file lines 48-50",
+      "quote": "Her pocket in the refrigerated drawer on 4 West contained only U-100 vials that night. Regular insulin, U-100. There was no U-500 in her pocket."
+     },
+     "scope_alignment": "Same item and time: Mrs. Pettibone's pocket in the refrigerated drawer of the 4 West dispensing cabinet on the night of September 9, 2024, at the time of the dose (pharmacist: restocked at 8:40 p.m., nothing else loaded before the dose).",
+     "rationale": "The pocket held only U-500 versus only U-100 at the same time; subtle because one witness says 'concentrated ... striped label' and the other names concentrations."
+    },
+    {
+     "id": "A02-R1",
+     "category": "review_worthy",
+     "control_type": null,
+     "topic": "Dose stated on the insulin order",
+     "witness1": {
+      "lines": "page 2 line 10",
+      "quote": "The order on the screen said forty units."
+     },
+     "witness2": {
+      "lines": "file line 27",
+      "quote": "The order I verified read four units."
+     },
+     "scope_alignment": "Not aligned. The pharmacist testifies the order was revised several times that evening by different prescribers and he can speak only to the version in his queue; the nurse describes what her workstation screen showed before the 9:52 dose. Whether these are the same version is not established.",
+     "rationale": "Forty versus four units is a tenfold difference central to the case and deserves review, but the two witnesses may be describing different versions of the order."
+    },
+    {
+     "id": "A02-N1",
+     "category": "negative_control",
+     "control_type": "hearsay consistent with first-hand testimony",
+     "topic": "Time the dose was given",
+     "witness1": {
+      "lines": "page 2 line 3",
+      "quote": "I gave it at 9:52."
+     },
+     "witness2": {
+      "lines": "file lines 72-73",
+      "quote": "I was told by the night house supervisor that the dose went in just before ten."
+     },
+     "scope_alignment": "Same dose. The pharmacist's account is hearsay from the house supervisor.",
+     "rationale": "'Just before ten' is consistent with 9:52; the hearsay agrees with the first-hand account."
+    },
+    {
+     "id": "A02-N2",
+     "category": "negative_control",
+     "control_type": "arithmetic or definitional difference that reconciles",
+     "topic": "Number of insulin withdrawals for the patient that night",
+     "witness1": {
+      "lines": "page 1 lines 26-27",
+      "quote": "I pulled insulin for her four times"
+     },
+     "witness2": {
+      "lines": "file lines 62-65",
+      "quote": "The system logged six insulin withdrawals for her from that cabinet during the night shift. Two of the six were cancelled transactions, where the drawer opened and the nurse cancelled without removing anything. So, four actual removals."
+     },
+     "scope_alignment": "Same patient, cabinet and shift. The pharmacist reconciles the counts himself.",
+     "rationale": "Six logged transactions minus two cancelled ones equals the nurse's four removals."
+    }
+   ]
+  },
+  {
+   "pair": "A03",
+   "case": "Kestrel Bakery LLC v. Ardmore Plaza Partners, LP (commercial lease, roof leak, 2024)",
+   "witness1": {
+    "name": "Gloria Vantongeren",
+    "file": "A03_witness1.txt",
+    "date": "2025-03-04"
+   },
+   "witness2": {
+    "name": "Peter A. Szalai",
+    "file": "A03_witness2.txt",
+    "date": "2025-03-11"
+   },
+   "items": [
+    {
+     "id": "A03-S1",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Hand delivery of the June 3 leak letter to the property manager",
+     "witness1": {
+      "lines": "page 2 lines 3-4",
+      "quote": "I handed the June 3 letter to Peter in person, at the management office, on June 3."
+     },
+     "witness2": {
+      "lines": "page 1 line 24 to page 2 line 1",
+      "quote": "Ms. Vantongeren did not hand me anything on June 3. I was not in the office that day. I was in Tucson the entire week of June 3"
+     },
+     "scope_alignment": "Same act, person and date: personal delivery of the leak letter to Peter Szalai at the plaza management office on June 3, 2024.",
+     "rationale": "She says she handed it to him in person that day; he says she handed him nothing and he was out of state all that week."
+    },
+    {
+     "id": "A03-S2",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Whether the ceiling was leaking during the July 18 walkthrough",
+     "witness1": {
+      "lines": "page 3 lines 3-5",
+      "quote": "On the walkthrough on July 18 water was coming through the ceiling tiles over the proofing area, we had buckets out, three buckets"
+     },
+     "witness2": {
+      "lines": "page 2 lines 24-25",
+      "quote": "During the July 18 walkthrough the ceiling over the proofing area was dry. No buckets, no drips."
+     },
+     "scope_alignment": "Same occasion and place: the July 18, 2024 walkthrough of Unit 6, the ceiling over the proofing area; both witnesses attended.",
+     "rationale": "Water coming through with buckets out versus dry with no buckets during the same walkthrough are incompatible."
+    },
+    {
+     "id": "A03-R1",
+     "category": "review_worthy",
+     "control_type": null,
+     "topic": "Which party the lease makes responsible for the roof",
+     "witness1": {
+      "lines": "page 3 lines 14-15",
+      "quote": "The lease says the landlord is responsible for the roof."
+     },
+     "witness2": {
+      "lines": "page 2 lines 14-15",
+      "quote": "The lease makes the tenant responsible for roof repairs."
+     },
+     "scope_alignment": "Not aligned. The tenant refers to the lease she signed in March 2019 and mentions unspecified 2022 extension paperwork; the manager refers generally to 'the lease file for Unit 6' and cannot identify the page. Which document or version each relies on is not established.",
+     "rationale": "Opposite descriptions of the lease that a lawyer should check, but they may rest on different documents (the 2019 lease versus a later amendment), and it is partly a legal characterization."
+    },
+    {
+     "id": "A03-N1",
+     "category": "negative_control",
+     "control_type": "authority versus action",
+     "topic": "Manager's approval of the roof repair",
+     "witness1": {
+      "lines": "page 2 lines 16-17",
+      "quote": "Peter never approved the roof repair."
+     },
+     "witness2": {
+      "lines": "page 1 lines 13-14",
+      "quote": "I have authority to approve any repair under $5,000 without the owner's approval."
+     },
+     "scope_alignment": "The manager describes the limit of his authority; the repair estimate was $11,800, above that limit, and he testifies he forwarded it to the partnership.",
+     "rationale": "Having authority to approve small repairs is not a claim that he approved this repair; the testimony is consistent."
+    },
+    {
+     "id": "A03-N2",
+     "category": "negative_control",
+     "control_type": "different documents or copies",
+     "topic": "Whether the tenant ledger shows August rent paid",
+     "witness1": {
+      "lines": "page 4 lines 4-5",
+      "quote": "My copy of the ledger shows the August rent paid on August 6."
+     },
+     "witness2": {
+      "lines": "page 3 line 11",
+      "quote": "The ledger shows August rent unpaid."
+     },
+     "scope_alignment": "Different documents: the tenant reads Exhibit 9, the ledger dated September 12, 2024; the manager reads Exhibit 7, the ledger printed July 31, 2024, before August rent was due, and he believes a payment came in early August.",
+     "rationale": "Two ledger printouts from different dates; both readings can be accurate."
+    }
+   ]
+  },
+  {
+   "pair": "A04",
+   "case": "Halvorsen Freight Co. v. Brightloom Systems, Inc. (software delivery dispute, RouteDesk 2.0)",
+   "witness1": {
+    "name": "Nadia Okafor",
+    "file": "A04_witness1.txt",
+    "date": "2025-08-20"
+   },
+   "witness2": {
+    "name": "Gavin Thorpe",
+    "file": "A04_witness2.txt",
+    "date": "2025-08-27"
+   },
+   "items": [
+    {
+     "id": "A04-S1",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Whether the 2.0 build was on Halvorsen's SFTP server before the November 1 deadline",
+     "witness1": {
+      "lines": "file lines 36-38",
+      "quote": "There was nothing from Brightloom on our SFTP server until November 6. I checked the server on October 31 and again on November 1. The 2.0 folder was empty both times."
+     },
+     "witness2": {
+      "lines": "page 1 lines 27-28",
+      "quote": "We uploaded the 2.0 release build to Halvorsen's SFTP server on October 30."
+     },
+     "scope_alignment": "Same item and location: the 2.0 release build on Halvorsen's SFTP server, delivered per the statement of work; the time window (October 30 to November 1, 2024) is explicit in both answers. Thorpe's knowledge is from a colleague's message, but his sworn claim is that the upload happened on October 30.",
+     "rationale": "A completed upload to that server on October 30 is incompatible with nothing being on the server until November 6 and the folder being empty on October 31 and November 1."
+    },
+    {
+     "id": "A04-S2",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Whether the route optimizer crashed at the November 12 acceptance test",
+     "witness1": {
+      "lines": "file lines 52-54",
+      "quote": "At the acceptance test on November 12 the route optimizer crashed every time we loaded more than fifty stops. Every time. We ran the 200-stop scenario three times. It crashed three times."
+     },
+     "witness2": {
+      "lines": "page 2 lines 18-20",
+      "quote": "On November 12 the route optimizer ran every test scenario, including the 200-stop scenario, without a crash."
+     },
+     "scope_alignment": "Same session, environment and build: the November 12, 2024 acceptance test in Halvorsen's staging environment on build 2.0.0, with both witnesses present and the same dispatcher operating. Okafor's statement spans several answers (time, environment and build are given in neighbouring answers).",
+     "rationale": "Crashing on every 200-stop run versus completing every scenario including the 200-stop one without a crash cannot both be true."
+    },
+    {
+     "id": "A04-R1",
+     "category": "review_worthy",
+     "control_type": null,
+     "topic": "Dispatch screen load time",
+     "witness1": {
+      "lines": "file lines 75-76",
+      "quote": "In December, in production, the dispatch screen took over thirty seconds to load."
+     },
+     "witness2": {
+      "lines": "page 3 lines 16-17",
+      "quote": "In my experience the dispatch screen loaded in under two seconds."
+     },
+     "scope_alignment": "Not aligned. Okafor specifies December 2024 in Halvorsen's production system; Thorpe gives no time, environment or version ('whenever I saw it').",
+     "rationale": "Thirty seconds versus under two is a large gap on a performance issue in dispute, but Thorpe may be describing a different environment or period."
+    },
+    {
+     "id": "A04-N1",
+     "category": "negative_control",
+     "control_type": "different environments/systems/versions",
+     "topic": "Whether CSV export works",
+     "witness1": {
+      "lines": "file lines 67-68",
+      "quote": "The CSV export never worked for us. We'd click export and get an error."
+     },
+     "witness2": {
+      "lines": "page 3 lines 10-12",
+      "quote": "Yes. The CSV export works. I demonstrated it myself in January, on version 2.0.1, on our demo server."
+     },
+     "scope_alignment": "Different versions and systems: Okafor's failure was in September 2024 in Halvorsen's test environment on version 1.9; Thorpe's demonstration was in January 2025 on version 2.0.1 on Brightloom's demo server, a version never installed at Halvorsen.",
+     "rationale": "A feature failing on 1.9 and working on 2.0.1 are both consistent."
+    },
+    {
+     "id": "A04-N2",
+     "category": "negative_control",
+     "control_type": "non-recollection against a specific memory",
+     "topic": "Signing of change order 4",
+     "witness1": {
+      "lines": "file line 63",
+      "quote": "I signed change order 4 for the mobile app on August 9."
+     },
+     "witness2": {
+      "lines": "page 3 lines 6-7",
+      "quote": "I don't recall whether Ms. Okafor signed the change order for the mobile app."
+     },
+     "scope_alignment": "Same document, change order 4.",
+     "rationale": "'I don't recall' never conflicts with another witness's specific memory."
+    }
+   ]
+  },
+  {
+   "pair": "A05",
+   "case": "Lindqvist v. Granite Shield Mutual Insurance Company (residential burglary insurance claim, February 15, 2025)",
+   "witness1": {
+    "name": "Henrik Lindqvist",
+    "file": "A05_witness1.txt",
+    "date": "2025-09-16"
+   },
+   "witness2": {
+    "name": "Marisol Achterberg",
+    "file": "A05_witness2.txt",
+    "date": "2025-09-23"
+   },
+   "items": [
+    {
+     "id": "A05-S1",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "Pry marks on the back door frame at the adjuster's inspection",
+     "witness1": {
+      "lines": "page 2 lines 20-22",
+      "quote": "She looked right at the pry marks on the back door frame. She took pictures of them. There were gouges right next to the strike plate"
+     },
+     "witness2": {
+      "lines": "page 2 lines 6-8",
+      "quote": "When I inspected the back door on February 21 there were no pry marks on the frame or on the strike plate."
+     },
+     "scope_alignment": "Same occasion and item: the adjuster's February 21, 2025 inspection of the back door frame and strike plate at 418 Larchmont Lane, with Lindqvist present.",
+     "rationale": "Pry marks that she looked at and photographed versus no pry marks on the frame or strike plate at that inspection are incompatible."
+    },
+    {
+     "id": "A05-S2",
+     "category": "strict_conflict",
+     "control_type": null,
+     "topic": "What the homeowner told the adjuster about the alarm",
+     "witness1": {
+      "lines": "page 3 lines 1-2",
+      "quote": "I told her the alarm was not on that night, I'd forgotten to set it. I never said it was set."
+     },
+     "witness2": {
+      "lines": "page 2 lines 16-18",
+      "quote": "During the February 21 inspection Mr. Lindqvist told me the alarm was armed when he left the house that evening."
+     },
+     "scope_alignment": "Same conversation: the discussion of the alarm during the February 21, 2025 inspection visit (the homeowner is asked about 'that visit'), about the same night.",
+     "rationale": "Each witness gives the opposite content for the same statement in the same conversation."
+    },
+    {
+     "id": "A05-R1",
+     "category": "review_worthy",
+     "control_type": null,
+     "topic": "Claimed value of the watch",
+     "witness1": {
+      "lines": "page 3 lines 9-10",
+      "quote": "The watch was worth about eleven thousand dollars."
+     },
+     "witness2": {
+      "lines": "page 3 lines 14-15",
+      "quote": "The claim listed the watch at four thousand two hundred dollars."
+     },
+     "scope_alignment": "Not aligned. The homeowner says he put the dealer's figure on a revised list and that there was also an earlier first list; the adjuster refers to 'the claim' generally and cannot name the form. Which list or version each refers to is not established.",
+     "rationale": "A large valuation gap relevant to misrepresentation, worth review, but it may reflect the first list versus the revised list, and one statement is about value while the other is about what a document listed."
+    },
+    {
+     "id": "A05-N1",
+     "category": "negative_control",
+     "control_type": "different actors performing different actions in sequence",
+     "topic": "Who called 911",
+     "witness1": {
+      "lines": "page 1 lines 21-22",
+      "quote": "I called 911 myself as soon as I walked in, about 11:40"
+     },
+     "witness2": {
+      "lines": "page 3 lines 2-4",
+      "quote": "The first 911 call about the house came from a neighbor, Mrs. Odell, at 11:25 p.m., reporting a man in the backyard."
+     },
+     "scope_alignment": "Different actors and times: a neighbor's call at 11:25 p.m. and the homeowner's call at about 11:40; the adjuster adds that the report shows a later second call from the homeowner.",
+     "rationale": "Two different people made two different calls in sequence; neither account excludes the other."
+    },
+    {
+     "id": "A05-N2",
+     "category": "negative_control",
+     "control_type": "arithmetic or definitional difference that reconciles",
+     "topic": "Number of items claimed",
+     "witness1": {
+      "lines": "page 3 line 5",
+      "quote": "They took nineteen things."
+     },
+     "witness2": {
+      "lines": "page 3 lines 10-12",
+      "quote": "The inventory lists twenty-two line items. Three of those were entered twice on the form, so it is nineteen distinct items."
+     },
+     "scope_alignment": "Same claim inventory. The adjuster reconciles the totals herself.",
+     "rationale": "Twenty-two line items with three duplicates equals nineteen distinct items."
+    }
+   ]
+  }
+ ]
+}

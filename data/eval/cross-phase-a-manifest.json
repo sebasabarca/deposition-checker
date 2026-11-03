@@ -1,0 +1,33 @@
+{
+  "phase": "A",
+  "frozenAt": "2026-11-03T07:54:31.449624+00:00",
+  "gitHead": "1a273a324e4b8affcb2d5f93a25ef71815c78769",
+  "uncommittedWork": true,
+  "model": "claude-fable-5-1",
+  "effort": "high",
+  "maxOutputTokens": 20000,
+  "promptVersion": "discover-cross-v1",
+  "approvedCapUsd": 8.0,
+  "capSplit": {
+    "synthetic-cross-v1": 2.85,
+    "simpson-resnick-cross-v1": 5.15
+  },
+  "labels": {
+    "simpson-resnick-cross-v1": "CW-001 and CW-002 as conflict_needs_context discovery targets (never counted as contradictions); NC-001 and NC-002 as no_conflict controls. 16 drafted candidates pending review, to be scored later against this run's saved output.",
+    "synthetic-cross-v1": "The suite's own c1-c8."
+  },
+  "testSetting": "archive line citations accepted for scoring (acceptUnofficialLines); product rule unchanged",
+  "files": {
+    "server/src/adjudicate/discoverCrossPrompt.ts": "80f9c58457e0f398509dba24fd16d29ecec75e5fa4c3f169e48e0c7d5e7b4e4d",
+    "server/src/adjudicate/discoverCrossSchema.ts": "ba1b5eec981ed69cd02fd268212d82db595754d0933df9236b7d61f46fbc2edd",
+    "server/src/verify/cross.ts": "a35c252af3b0388168ee8afc5086095a54e2706dc3174d339405224123ed5606",
+    "server/src/verify/direct.ts": "d2119c49f9612684bbe34515dd4f2e7e00753693e444d9509a5b1f4e2b8ec1e1",
+    "server/src/score/evidenceStrengthCross.ts": "1e75c13cd2a70a524b14fdfd335a9f5d63fd75b4347e614d4f1ed4548b0af865",
+    "server/src/eval/crossBenchmark.ts": "c7a2e789d16c7f54ced2962c8dd48ebea0e098b6b3eba027109cd8be04376d45",
+    "server/src/eval/crossLabels.ts": "b25c2a29d09b1921de02210376f387a94c98a527b3ab3ba8e50d922eed27bcc8",
+    "server/src/ingest/text.ts": "eb510380a404c9c643f6b399364f010de4483b533f679200661c1cea19159c1b",
+    "scripts/cross-benchmark.ts": "5ef71fa0c25f1f38cc644cbf03e07415c49a42e9f901d2ca4d13dbec65816abe",
+    "data/eval/simpson-resnick-cross-v1.json": "f90ab45b507b62f5cbe81a1a2140e079dc32e7bd573a539c7f8d3586a0d316cd",
+    "data/eval/synthetic-cross-v1.json": "338ed120ec54de71c52fdcd3ff866f29b00e28880b7b22ac4b53cad45195b947"
+  }
+}

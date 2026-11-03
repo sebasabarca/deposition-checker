@@ -1,6 +1,6 @@
 // Text transcripts: numbered text keeps its page:line, unnumbered text is accepted and cited by line.
 import { describe, expect, it } from "vitest";
-import { isText, readTextPages, TEXT_NUMBERED_V1, TEXT_UNNUMBERED_V1, UNNUMBERED_PAGE } from "../../server/src/ingest";
+import { isText, readArchiveRecords, readTextPages, TEXT_NUMBERED_V1, TEXT_UNNUMBERED_V1, UNNUMBERED_PAGE } from "../../server/src/ingest";
 import { readDeposition } from "../../server/src/ingest";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -52,3 +52,30 @@ describe("text transcripts", () => {
     expect(read.validation.status).toBe("unsupported");
   });
 });
+
+describe("archives that number each statement", () => {
+  const header = ["ARCHIVE-DERIVED TRANSCRIPT EXPORT", "Source URL: https://example.org/", ""];
+  const run = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `${from + i} ${i % 2 ? "A" : "Q"}: statement ${from + i}`);
+
+  it("keeps the archive's own numbers as the line, on page 0, and keeps the header out", () => {
+    const read = readArchiveRecords([...header, ...run(1, 40), "continued words", ...run(41, 60)])!;
+    expect(read.layout.name).toBe("text-archive-lines-v1");
+    expect(read.pages).toHaveLength(1);
+    const lines = read.pages[0].lines;
+    expect([lines[0].printedPage, lines[0].lineNo, lines.at(-1)!.lineNo]).toEqual([0, 1, 60]);
+    expect(lines.find((l) => l.lineNo === 40)!.rawText).toBe("A: statement 40 continued words");
+    expect(read.pages[0].footer).toEqual(["ARCHIVE-DERIVED TRANSCRIPT EXPORT", "Source URL: https://example.org/"]);
+  });
+
+  it("stores a count that starts again as parts, so each number names one statement in its part", () => {
+    const read = readArchiveRecords([...run(1, 50), ...run(1, 32), ...run(1, 45)])!;
+    expect(read.pages.map((p) => [p.printedPage, p.lines.length])).toEqual([[1, 50], [2, 32], [3, 45]]);
+    expect(read.warnings[0]).toMatch(/starts again 2 times.*"Part P, Line N"/);
+  });
+
+  it("isn't used for page-sized numbering, or numbers that go backwards anywhere but to a new start", () => {
+    expect(readArchiveRecords(run(1, 25))).toBeNull();
+    expect(readArchiveRecords([...run(1, 50), ...run(30, 60)])).toBeNull();
+  });
+});
+

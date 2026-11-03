@@ -37,7 +37,7 @@ export function CheckProgress({ analysis, pages, lines, onCancel }: { analysis: 
   const stages = [
     { title: "Check started", detail: `${a.witness}: two sessions, queued at ${time(analysis.createdAt)}.` },
     { title: "Preparing both transcripts", detail: pages ? `${pages.toLocaleString()} pages${lines ? `, ${lines.toLocaleString()} lines` : ""} with their page and line numbers.` : "Gathering every line with its page and line number." },
-    { title: "Reading both sessions in full", detail: backup ? "The first reading couldn't finish, so a second one is running." : "Every answer in one session is compared with the other. This is the long part, usually 4 to 10 minutes." },
+    { title: "Reading both sessions", detail: backup ? "The first reading couldn't finish, so a second one is running." : "Every answer in one session is compared with the other. This is the long part, usually 4 to 10 minutes." },
     { title: "Checking every citation", detail: "Each quotation is matched against the stored transcript at its page and line before you see it." },
   ];
   return (

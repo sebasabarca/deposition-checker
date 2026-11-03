@@ -148,3 +148,4 @@ describe("nextStep", () => {
     expect(nextStep([checked], [], [], []).kind).toBe("more");
   });
 });
+

@@ -21,7 +21,9 @@ export type StoredLine = { id: number; page: number; line: number; pdfPage: numb
 // physicalLines: a PDF without printed line numbers, whose references count rows on the page (ingest/physical.ts).
 export type StoredSession = { label: "A" | "B"; depositionId: number; lines: readonly StoredLine[]; physicalLines?: boolean };
 
-export type QuoteStatus = "exact" | "approximate" | "elsewhere_in_session" | "not_found";
+// fragments: cross-witness only, a quotation stitched from pieces each found word for word, in order, in
+// the cited lines; verified, but never one continuous quotation.
+export type QuoteStatus = "exact" | "fragments" | "approximate" | "elsewhere_in_session" | "not_found";
 export type Speaker = "witness" | "adopted" | "attorney_only" | "mixed" | "unknown" | "none";
 export type Lane = "contradictions" | "needs_context" | "compatible" | "unverified";
 
@@ -64,7 +66,7 @@ export function parseCitation(citation: string): { first: [number, number]; last
 const refOf = (l: StoredLine) => `${l.page}:${String(l.line).padStart(2, "0")}`;
 const position = (page: number, line: number) => page * 1000 + line;
 // Turn markers aren't testimony, so an excerpt may be quoted with or without them.
-const MARKER = /^\s*(?:[QA](?:[._]|\s)\s*|(?:Mr|Ms|Mrs|Dr)\. [A-Z][A-Za-z'-]+\.\s+)/;
+const MARKER = /^\s*(?:[QA](?:[._:]|\s)\s*|(?:Mr|Ms|Mrs|Dr)\. [A-Z][A-Za-z'-]+\.\s+)/;
 const unmarked = (lines: readonly StoredLine[]) => lines.map((l) => l.text.replace(MARKER, "")).join(" ");
 const printed = (lines: readonly StoredLine[]) => lines.map((l) => l.text).join(" ");
 const SPOKEN_BY_ATTORNEY = new Set(["attorney", "colloquy"]);
@@ -92,7 +94,7 @@ function speakerOf(cited: readonly StoredLine[], excerpt: string, following: rea
   return { speaker: "mixed", level: "uncertain", rule: "the citation mixes attorney and witness lines, and the excerpt isn't clearly the witness's" };
 }
 
-export function checkDirectSide(session: StoredSession | undefined, citation: string, excerpt: string): DirectSide {
+export function checkDirectSide(session: Pick<StoredSession, "depositionId" | "lines" | "physicalLines"> | undefined, citation: string, excerpt: string): DirectSide {
   const base = { depositionId: session?.depositionId ?? 0, citation, matchScore: 0, qualifier: null, noRecall: false, reportedSpeech: false, ocr: { read: false, minConfidence: null, lowLines: [] }, lineIds: [], pdfPages: [], physicalLines: session?.physicalLines === true };
   const inSession = session ? quoteMatchScore(excerpt, unmarked(session.lines)) >= 1 || quoteMatchScore(excerpt, printed(session.lines)) >= 1 : false;
   const unresolved: DirectSide = { ...base, resolved: false, quote: inSession ? "elsewhere_in_session" : "not_found", speaker: "none", level: "not_adopted", rule: "the citation doesn't resolve to stored lines" };
@@ -128,7 +130,7 @@ export function checkDirectSide(session: StoredSession | undefined, citation: st
   };
 }
 
-function evidenceStatusOf(sides: QuoteStatus[], identityIssues: string[]): DirectCheck["evidenceStatus"] {
+export function evidenceStatusOf(sides: QuoteStatus[], identityIssues: string[]): DirectCheck["evidenceStatus"] {
   if (identityIssues.length > 0 || sides.includes("not_found")) return "unsupported";
   if (sides.includes("elsewhere_in_session")) return "wrong_reference";
   return sides.includes("approximate") ? "approximate" : "verified";

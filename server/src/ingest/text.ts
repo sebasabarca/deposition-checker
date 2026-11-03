@@ -29,6 +29,12 @@ const TEXT_BASE: Omit<LayoutProfile, "name"> = {
 export const TEXT_NUMBERED_V1: LayoutProfile = { ...TEXT_BASE, name: "text-numbered-v1", pageBreaksContinue: true };
 export const TEXT_UNNUMBERED_V1: LayoutProfile = { ...TEXT_BASE, name: "text-unnumbered-v1", maxLinesPerPage: Number.MAX_SAFE_INTEGER };
 export const UNNUMBERED_PAGE = 0;
+// Archives that number every statement once, in one count with no pages ("1 DANIEL PETROCELLI: ...",
+// "5820 A: ..."). That number is the reference: kept as the line number, never recounted, on page 0 like
+// other text without pages, so it is cited as "Line N" and never as an official page:line. An archive
+// whose count starts again (a page in sections) is stored in parts, one per run of the count, each part
+// in the page field (1, 2, ...), so "Part 3, Line 233" names one statement; still never official.
+export const TEXT_ARCHIVE_V1: LayoutProfile = { ...TEXT_UNNUMBERED_V1, name: "text-archive-lines-v1" };
 
 const MAX_LINE_NO = 30; // a gutter number above this is a page number standing alone
 const NUMBERED = /^(\s*)(\d{1,2})(?:\s+(.*?))?\s*$/;
@@ -120,6 +126,44 @@ function gutterEnd(rows: string[]): number | null {
 
 const listed = (ns: number[]) => (ns.length > 8 ? `${ns.slice(0, 8).join(", ")} and ${ns.length - 8} more` : ns.join(", "));
 
+const RECORD = /^\s*(\d{1,6})\s+(\S.*?)\s*$/;
+const ARCHIVE_SHARE = 0.9;
+
+const RESTART_FROM = 5; // a new run of the count starts at 1 or close to it
+
+// Pure. Null unless nearly every row is a record whose number counts up by one, past what a page holds.
+// A number lower than the one before starts a new part, if it starts near 1; anything else going
+// backwards means the numbers can't name one record each, so the text isn't read this way.
+// Rows before the first record are a header, kept out; a row without a number continues the record above.
+export function readArchiveRecords(rows: string[]): TextPages | null {
+  const content = rows.map((r) => r.replaceAll("\f", "")).filter((r) => r.trim());
+  const ids = content.map((r) => r.match(RECORD)).filter((m) => m !== null).map((m) => Number(m[1]));
+  if (ids.length < content.length * ARCHIVE_SHARE || Math.max(0, ...ids) <= MAX_LINE_NO) return null;
+  if (ids.some((n, i) => i > 0 && n <= ids[i - 1] && n > RESTART_FROM)) return null;
+  if (ids.filter((n, i) => i > 0 && (n === ids[i - 1] + 1 || n < ids[i - 1])).length < (ids.length - 1) * ARCHIVE_SHARE) return null;
+  const records: { part: number; id: number; text: string }[] = [];
+  const header: string[] = [];
+  let continued = 0;
+  for (const row of content) {
+    const m = row.match(RECORD);
+    const last = records.at(-1);
+    if (m) records.push({ part: last && Number(m[1]) <= last.id ? last.part + 1 : (last?.part ?? 1), id: Number(m[1]), text: m[2] });
+    else if (records.length) {
+      records[records.length - 1].text += ` ${row.trim()}`;
+      continued++;
+    } else header.push(row.trim());
+  }
+  const parts = records.at(-1)?.part ?? 1;
+  const pageOf = (part: number) => (parts === 1 ? UNNUMBERED_PAGE : part);
+  const pages = Array.from({ length: parts }, (_, i): PageExtraction => ({ pdfPage: 1, hasText: true, printedPage: pageOf(i + 1), footer: i === 0 ? header : [], unnumbered: [], lines: records.filter((r) => r.part === i + 1).map((r) => textLine(pageOf(i + 1), 1, r.id, r.text)) }));
+  const warnings = parts === 1
+    ? [`This text numbers each statement in one continuous count, with no pages (as public archives do), so references are cited as "Line N" using that number. They are not official page:line citations: check them against the certified transcript.`]
+    : [`This text numbers each statement in a count that starts again ${parts - 1} ${parts === 2 ? "time" : "times"} (as some public archives do), so each run of the count is a part, and references are cited as "Part P, Line N". They are not official page:line citations: check them against the certified transcript.`];
+  if (header.length) warnings.push(`${header.length} ${header.length === 1 ? "row" : "rows"} before the first numbered statement (a title or source note) ${header.length === 1 ? "is" : "are"} kept out of the testimony.`);
+  if (continued) warnings.push(`${continued} ${continued === 1 ? "row without a number was" : "rows without a number were"} joined to the statement above ${continued === 1 ? "it" : "them"}.`);
+  return { layout: TEXT_ARCHIVE_V1, pages, inferredPages: [], warnings };
+}
+
 export function readTextPages(text: string): TextPages {
   const warnings: string[] = [];
   let timedRows = 0;
@@ -128,6 +172,8 @@ export function readTextPages(text: string): TextPages {
     if (t.timed) timedRows++;
     return t.row;
   });
+  const archive = readArchiveRecords(rows);
+  if (archive) return archive;
   if (!looksNumbered(rows)) {
     const content = rows.filter((r) => r.replaceAll("\f", "").trim());
     const lines = content.map((r, i) => textLine(UNNUMBERED_PAGE, 1, i + 1, r.replaceAll("\f", "")));

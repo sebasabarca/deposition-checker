@@ -127,6 +127,10 @@ export function markLine(text: string, indentX: number | null, layout: LayoutPro
   const attorney = t.match(ATTORNEY_QUESTION);
   if (attorney) return { turn: "Q", name: attorney[1] };
   if (WITNESS.test(t)) return { turn: "A", name: null };
+  // A label naming the witness ("O.J. SIMPSON:", as public archives write it) is the witness speaking. Only the
+  // known witness's surname, and never a titled label ("MR. ..."), which the hearing rules above decide.
+  const named = t.match(ANY_LABEL);
+  if (named && witnessSurname && !/^(?:MR|MS|MRS|DR)\.?\s/.test(named[1]) && surnameOf(named[1]) === witnessSurname) return { turn: "A", name: null };
   const colloquy = t.match(COLLOQUY);
   if (colloquy) return { turn: "colloquy", name: colloquy[1] };
   // Parentheses, square brackets ("[EXHIBIT 7 IDENTIFIED]", "[STAMP: ...]") and page markers are the
