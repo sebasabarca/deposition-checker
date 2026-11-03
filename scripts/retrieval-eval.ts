@@ -18,7 +18,7 @@ import { parseArgs } from "node:util";
 import { readCrossLabelFile } from "../server/src/eval/crossLabels";
 import type { EvidenceFixture } from "../server/src/eval/evidenceFixtures";
 import {
-  checkDuplicates, checkItemText, checkManifest, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, fusionDepthOf, heldOutPairs, poolContribution, rankPairs, unlabelledSample,
+  checkDuplicates, checkItemText, checkSegmentation, checkManifest, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, fusionDepthOf, heldOutPairs, poolContribution, rankPairs, unlabelledSample,
   type Counted, type PairRanks, type Problem, type RankCell, type StoredLine,
 } from "../server/src/eval/retrievalEval";
 import { schemeOf } from "../server/src/evidence/references";
@@ -105,7 +105,9 @@ async function evaluate() {
   const fixture = existsSync(manifest.fixture) ? readJson<EvidenceFixture>(manifest.fixture) : null;
   if (fixture) problems.push(...checkSides(items, fixture, design));
   else problems.push({ check: "sides", detail: `fixture ${manifest.fixture} is not here: sides not checked` });
-  problems.push(...checkSessions(items, allPairs, paths), ...checkDuplicates(items, manifest.documents));
+  const segmentation = checkSegmentation(items);
+  problems.push(...checkSessions(items, allPairs, paths), ...checkDuplicates(items, manifest.documents), ...segmentation.problems);
+  const wholeSession = (p: { id: string }) => { const pair = allPairs.find((x) => x.id === p.id)!; return [...pair.left, ...pair.right].some((k) => segmentation.keys.has(k)); };
   const textChecked: Record<string, string> = {};
   if (fixture) for (const [key, d] of Object.entries(fixture.documents)) {
     if (!existsSync(d.local)) { problems.push({ check: "text", detail: `${key}: ${d.local} is not here` }); continue; }
@@ -121,7 +123,7 @@ async function evaluate() {
   const tIntegrity = performance.now();
 
   const depth = fusionDepthOf(paths);
-  const ranked = benchmarks.map((b) => ({ name: b.name, pairs: rankPairs(b.pairs, paths, depth) }));
+  const ranked = benchmarks.map((b) => ({ name: b.name, pairs: rankPairs(b.pairs, paths, depth).map((p) => ({ ...p, wholeSessionSide: wholeSession(p) })) }));
   const tRank = performance.now();
 
   const poolFiles = [...(values["no-frozen-pools"] ? [] : files.filter((f) => f.startsWith("pool-")).map((f) => path.join(dir, f))), ...(values.pools ?? [])];
@@ -154,9 +156,9 @@ async function evaluate() {
   for (const p of problems) out.push(`  [${p.check}] ${p.detail}`);
   for (const [k, v] of Object.entries(textChecked)) out.push(`  text ${k}: ${v}`);
   const names = paths.map((p) => p.path);
-  const line = (p: PairRanks) => `  ${p.id.padEnd(9)} ${p.category.padEnd(23)} ${`${p.left}x${p.right}`.padEnd(6)} ${names.map((n) => `${cell(p.paths[n].ab)}/${cell(p.paths[n].ba)}`.padEnd(14)).join("")}${`${r(p.fused.ab)}/${r(p.fused.ba)}`.padEnd(12)}${names.length > 1 ? names.map((n) => `${r(p.ablation[n].ab)}/${r(p.ablation[n].ba)}`.padEnd(14)).join("") : ""}`;
+  const line = (p: PairRanks & { wholeSessionSide: boolean }) => `  ${(p.id + (p.wholeSessionSide ? "*" : "")).padEnd(9)} ${p.category.padEnd(23)} ${`${p.left}x${p.right}`.padEnd(6)} ${names.map((n) => `${cell(p.paths[n].ab)}/${cell(p.paths[n].ba)}`.padEnd(14)).join("")}${`${r(p.fused.ab)}/${r(p.fused.ba)}`.padEnd(12)}${names.length > 1 ? names.map((n) => `${r(p.ablation[n].ab)}/${r(p.ablation[n].ba)}`.padEnd(14)).join("") : ""}`;
   for (const b of ranked) {
-    out.push(`\n${b.name}: ranks a->b / b->a (best over each side's items; "-" never retrieved, ">depth" beyond the neighbours' depth)`);
+    out.push(`\n${b.name}: ranks a->b / b->a (best over each side's items; "-" never retrieved, ">depth" beyond the neighbours' depth; * a side is a whole-session item, see segmentation)`);
     out.push(`  ${"pair".padEnd(9)} ${"category".padEnd(23)} ${"items".padEnd(6)} ${names.map((n) => n.slice(0, 13).padEnd(14)).join("")}${"fused".padEnd(12)}${names.length > 1 ? names.map((n) => `-${n}`.slice(0, 13).padEnd(14)).join("") : ""}`);
     for (const kind of ["target", "control", "exploratory"] as const) {
       const ps = b.pairs.filter((p) => p.kind === kind);
@@ -169,7 +171,7 @@ async function evaluate() {
     out.push(`\npool ${p.file}: ${p.report.candidates} candidates, ${p.report.perItem} per item, paths ${p.report.paths.join(", ")}`);
     for (const kind of ["target", "control", "exploratory"] as const) {
       const ps = p.report.pairs.filter((x) => x.kind === kind);
-      if (ps.length) out.push(`  ${kind === "exploratory" ? "exploratory pairs" : `${kind}s`} held ${ps.filter((x) => x.held).length}/${ps.length}: ${ps.map((x) => `${x.id}${x.held ? `@${x.poolRank} (item rank ${x.perItemRank})` : " no"}`).join(", ")}`);
+      if (ps.length) out.push(`  ${kind === "exploratory" ? "exploratory pairs" : `${kind}s`} held ${ps.filter((x) => x.held).length}/${ps.length}: ${ps.map((x) => `${x.id}${wholeSession(x) ? "*" : ""}${x.held ? `@${x.poolRank} (item rank ${x.perItemRank})` : " no"}`).join(", ")}`);
     }
     out.push(`  per-item budgets: ${Object.entries(p.report.perItemBudgets).map(([b, c]) => `${b}: ${counted(c)}`).join(" | ")}`);
     out.push(`  pool-size budgets: ${Object.entries(p.report.sizeBudgets).map(([b, c]) => `${b}: ${counted(c)}`).join(" | ")}`);

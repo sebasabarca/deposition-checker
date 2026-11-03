@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CrossLabelFile } from "../../server/src/eval/crossLabels";
-import { checkDuplicates, checkItemText, checkManifest, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, heldOutPairs, kindOf, locatePhrase, poolContribution, rankPairs, unlabelledSample } from "../../server/src/eval/retrievalEval";
+import { checkDuplicates, checkItemText, checkManifest, checkSegmentation, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, heldOutPairs, kindOf, locatePhrase, poolContribution, rankPairs, unlabelledSample } from "../../server/src/eval/retrievalEval";
 import { buildPool, type FrozenItem, type FrozenPair, type PathNeighbours, type PathRankings, type Ranked } from "../../server/src/retrieve/frozen";
 
 // Six items in three sessions: a1 a2 (session A), b1 b2 (B), c1 c2 (C).
@@ -85,6 +85,12 @@ describe("retrieval evaluator", () => {
     expect(checkItemText(ITEMS[0], new Map([["0:1", "Q. Was it"], ["0:2", "A. Yes, it was."]]))).toBeNull();
     expect(checkItemText(ITEMS[0], new Map([["0:1", "Q. Was it"], ["0:2", "A. No."]]))).toMatch(/source lines: yes$/);
     expect(checkItemText(ITEMS[0], new Map([["0:1", "x"]]))).toMatch(/0:2 are not in the source/);
+  });
+
+  it("flags a document read as one exchange", () => {
+    const lines = (n: number, from = 1) => Array.from({ length: n }, (_, i) => `0:${from + i}`);
+    expect(checkSegmentation([item("x", "X", lines(25)), item("y1", "Y", lines(6)), item("y2", "Y", lines(6, 7)), item("y3", "Y", lines(9, 13))]).keys).toEqual(new Set(["x"]));
+    expect(checkSegmentation(ITEMS).problems).toEqual([]);
   });
 
   it("locates a phrase exactly once across wrapped lines and pages, or says why not", () => {

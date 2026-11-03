@@ -241,6 +241,23 @@ export function checkSessions(items: readonly FrozenItem[], pairs: readonly Froz
   return out;
 }
 
+// A document read as one or two exchanges (one item holding at least half its testimony lines, of 20 or more):
+// its pairs are found by a whole session, not an answer. Returns the problems and those items' keys.
+export function checkSegmentation(items: readonly FrozenItem[]): { problems: Problem[]; keys: Set<string> } {
+  const byDoc = new Map<string, FrozenItem[]>();
+  for (const i of items) byDoc.set(i.document, [...(byDoc.get(i.document) ?? []), i]);
+  const problems: Problem[] = [];
+  const keys = new Set<string>();
+  for (const [doc, its] of byDoc) {
+    const total = its.reduce((n, i) => n + i.positions.length, 0);
+    const big = its.reduce((a, b) => (b.positions.length > a.positions.length ? b : a));
+    if (total < 20 || big.positions.length * 2 < total) continue;
+    keys.add(big.key);
+    problems.push({ check: "segmentation", detail: `${doc}: ${its.length} item(s); ${big.key} holds ${big.positions.length} of ${total} lines${big.question ? "" : ", with no attorney question"}` });
+  }
+  return { problems, keys };
+}
+
 // Duplicate copies: two documents with one SHA-256, repeated keys, or many identical substantive answer groups
 // across two documents (a file loaded twice under different names). Short identical groups ("Yes.") are normal.
 export function checkDuplicates(items: readonly FrozenItem[], documents: Record<string, { sha256: string }>, minChars = 80): Problem[] {
