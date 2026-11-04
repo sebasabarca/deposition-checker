@@ -78,12 +78,13 @@ export async function markFailed(db: Database, runId: number, packetId: string, 
   return failed.length > 0;
 }
 
-// Failed entries go back to the queue; the failure note is kept.
-export async function retryFailed(db: Database, runId: number): Promise<number> {
+// Failed entries go back to the queue; the failure note is kept. With uncertain: false, an entry whose failed
+// request may have been billed (failure_billable) stays failed: retrying it could pay twice.
+export async function retryFailed(db: Database, runId: number, { uncertain = true }: { uncertain?: boolean } = {}): Promise<number> {
   const retried = await db
     .update(screeningEntries)
     .set({ adjudicationStatus: "not_started", updatedAt: sql`now()` })
-    .where(and(eq(screeningEntries.runId, runId), eq(screeningEntries.adjudicationStatus, "failed")))
+    .where(and(eq(screeningEntries.runId, runId), eq(screeningEntries.adjudicationStatus, "failed"), ...(uncertain ? [] : [sql`${screeningEntries.failureBillable} is not true`])))
     .returning({ id: screeningEntries.id });
   return retried.length;
 }

@@ -6,13 +6,15 @@ import { anthropicAdjudicator, anthropicDiscovery, type PromptVersion } from "./
 import { anthropicCardModel, anthropicTopicModel } from "./claims";
 import type { Effort } from "./adjudicate/prompt";
 import { connect } from "./db/client";
-import { createAnalysisQueues, createIngestQueues, paidCallsAllowed, startAnalysisWorkers, startBoss, startIngestWorkers } from "./jobs";
+import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
+import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
 
 async function main() {
   const { db, pool } = connect();
   const boss = await startBoss(process.env.DATABASE_URL!, { supervise: true });
   await createIngestQueues(boss);
   await createAnalysisQueues(boss);
+  await createCaseRunQueues(boss);
   await startIngestWorkers(boss, db);
   const shuttingDown = new AbortController();
   await startAnalysisWorkers(boss, db, {
@@ -20,6 +22,11 @@ async function main() {
     liveAdjudicator: (a) => (paidCallsAllowed(process.env) ? anthropicAdjudicator(a.effort as Effort, a.promptVersion as PromptVersion) : null),
     liveCardModels: () => (paidCallsAllowed(process.env) ? { cards: anthropicCardModel(), topics: anthropicTopicModel() } : null),
     discovery: () => (paidCallsAllowed(process.env) ? anthropicDiscovery() : null),
+  });
+  // Whole-case runs: packet-v1 only, so the worker never sends an experimental contract.
+  await startCaseRunWorkers(boss, db, pool, {
+    signal: shuttingDown.signal,
+    adjudicator: () => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator()) : null),
   });
   console.log(`Worker running (ingest and analysis; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"})`);
 

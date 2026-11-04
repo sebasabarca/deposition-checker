@@ -5,13 +5,17 @@ import type { Job, JobWithMetadata, PgBoss } from "pg-boss";
 import type { Database } from "../db/client";
 import { UPLOADS_DIR } from "../ingest";
 import { and, eq, notInArray } from "drizzle-orm";
-import { analyses } from "../db/schema";
+import type { Pool } from "pg";
+import { analyses, caseRuns } from "../db/schema";
+import { CASE_RUN_TERMINAL, runCaseRun, type CaseRunDeps } from "./caseRun";
 import { runAnalysis, TERMINAL, type AnalysisDeps } from "./analysis";
 import { failureMessage, recordIngestFailure, runIngestJob } from "./ingest";
-import { ANALYSIS_FAILED_QUEUE, ANALYSIS_QUEUE, enqueueAnalysis, INGEST_FAILED_QUEUE, INGEST_QUEUE, parseAnalysisJob, parseIngestJob, DISCOVERY_POLL_SECONDS, PARSING_RECHECK_SECONDS } from "./queue";
+import { CASE_RUN_FAILED_QUEUE, CASE_RUN_QUEUE, enqueueCaseRun, parseCaseRunJob, ANALYSIS_FAILED_QUEUE, ANALYSIS_QUEUE, enqueueAnalysis, INGEST_FAILED_QUEUE, INGEST_QUEUE, parseAnalysisJob, parseIngestJob, DISCOVERY_POLL_SECONDS, PARSING_RECHECK_SECONDS } from "./queue";
 
 export { failureMessage, recordIngestFailure, runIngestJob, type IngestJobResult } from "./ingest";
 export { analysisCost, candidateSetOf, DIRECT_FABLE, interruptAnalysis, MAX_CONSECUTIVE_FAILURES, paidCallsAllowed, RUNNER_STALE_MS, runAnalysis, TERMINAL, type Analysis, type AnalysisDeps, type AnalysisProgress, type RunOutcome } from "./analysis";
+export { CASE_RUN_TERMINAL, caseRunFindings, caseRunReport, caseRunSetOf, createCaseRun, fromPacketAdjudicator, mockCaseModel, resumeCaseRun, runCaseRun, type CaseRunDeps } from "./caseRun";
+export { CASE_RUN_QUEUE, createCaseRunQueues, enqueueCaseRun } from "./queue";
 export {
   ANALYSIS_FAILED_QUEUE,
   ANALYSIS_QUEUE,
@@ -71,6 +75,26 @@ export async function startAnalysisWorkers(boss: PgBoss, db: Database, deps: Ana
         .update(analyses)
         .set({ status: "failed", error: `The analysis job failed after every attempt: ${failureMessage(job.sourceOutput).replace(/^Ingestion failed after every attempt: /, "")}`.slice(0, 2000), finishedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(analyses.id, analysisId), notInArray(analyses.status, TERMINAL)));
+    }
+  });
+}
+
+// The case-run workers. A run that stops for any reason records it on its row; only a thrown error
+// (database, bug) is retried by pg-boss and, after the last attempt, marked failed here.
+export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool, deps: CaseRunDeps, { pollingIntervalSeconds = 2 } = {}): Promise<void> {
+  await boss.work(CASE_RUN_QUEUE, { pollingIntervalSeconds }, async (jobs: Job<unknown>[]) => {
+    for (const job of jobs) {
+      const { caseRunId } = parseCaseRunJob(job.data);
+      console.log(`case run ${caseRunId}: ${await runCaseRun(db, pool, caseRunId, deps)}`);
+    }
+  });
+  await boss.work(CASE_RUN_FAILED_QUEUE, { pollingIntervalSeconds, includeMetadata: true }, async (jobs: JobWithMetadata<unknown>[]) => {
+    for (const job of jobs) {
+      const { caseRunId } = parseCaseRunJob(job.data);
+      await db
+        .update(caseRuns)
+        .set({ status: "failed", error: `The case-run job failed after every attempt: ${failureMessage(job.sourceOutput).replace(/^Ingestion failed after every attempt: /, "")}`.slice(0, 2000), finishedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(caseRuns.id, caseRunId), notInArray(caseRuns.status, CASE_RUN_TERMINAL)));
     }
   });
 }

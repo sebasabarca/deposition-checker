@@ -99,3 +99,24 @@ export async function enqueueAnalysis(boss: PgBoss, job: AnalysisJob, { client, 
     ...(client ? { db: { executeSql: (text, values) => client.query(text, values) } } : {}),
   });
 }
+
+// Whole-case runs (jobs/caseRun.ts): one job per run (singletonKey). A job that throws is a system failure:
+// retried twice, then the run is marked failed by its dead-letter worker. Model failures don't throw.
+export const CASE_RUN_QUEUE = "run-case";
+export const CASE_RUN_FAILED_QUEUE = "run-case-failed";
+const CaseRunJobData = z.object({ caseRunId: z.number().int().positive() });
+export type CaseRunJob = z.infer<typeof CaseRunJobData>;
+export const parseCaseRunJob = (data: unknown): CaseRunJob => CaseRunJobData.parse(data);
+
+export async function createCaseRunQueues(boss: PgBoss, overrides: QueueOptions = {}): Promise<void> {
+  const ensure = async (name: string, options: QueueOptions & { deadLetter?: string }) => {
+    if (await boss.getQueue(name)) await boss.updateQueue(name, options);
+    else await boss.createQueue(name, options);
+  };
+  await ensure(CASE_RUN_FAILED_QUEUE, { ...INGEST_FAILED_QUEUE_OPTIONS, ...overrides });
+  await ensure(CASE_RUN_QUEUE, { ...ANALYSIS_QUEUE_OPTIONS, expireInSeconds: 6 * 60 * 60, ...overrides, deadLetter: CASE_RUN_FAILED_QUEUE });
+}
+
+export async function enqueueCaseRun(boss: PgBoss, job: CaseRunJob): Promise<void> {
+  await boss.send(CASE_RUN_QUEUE, job, { singletonKey: `case-run-${job.caseRunId}` });
+}

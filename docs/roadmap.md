@@ -10,7 +10,7 @@ Seven milestones. A milestone is complete only when its acceptance criteria pass
 | 3 | Cheap evidence screening | In preparation: screening contract, deferred-evidence ledger (migration 0035) and offline benchmark built and merged; experimental, not used by normal analyses. No strategy reached more than 2 of 4 real targets in the first 500 of 3,320 packets; all packets project to $59.70, so the under-$10 target is not met. No strategy selected. See `docs/milestone-3-screening.md` |
 | 4 | Independent audit of deferred evidence | Design ready, not started: `docs/milestone-4-evaluation-design.md` (held-out real testimony, blinded independent labels, stage-by-stage miss attribution). Needs approval |
 | 5 | Cost optimization: under $10 per corpus-1-sized case | Not started |
-| 6 | Whole-case workflow and lawyer-facing UI | Not started |
+| 6 | Whole-case workflow and lawyer-facing UI | Backend pipeline built (November 2026, uncommitted): `case_runs` (migration 0036), case-wide multi-path retrieval, the ledger linked to database IDs, restart-safe packet-v1 adjudication with budget stop and resume, coverage and cost reporting, API and CLI; tested end to end with the mock model on a synthetic two-witness case. No paid run yet; no UI |
 | 7 | Deployment and independent end-to-end validation | Not started |
 
 Open decisions carried forward:

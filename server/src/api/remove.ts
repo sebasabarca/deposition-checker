@@ -9,7 +9,7 @@ import path from "node:path";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { withTransaction, type Database } from "../db/client";
-import { adjudicationRequests, analyses, candidates, cases, depositions, exchanges, findings, lines, witnesses } from "../db/schema";
+import { adjudicationRequests, analyses, candidates, caseRuns, cases, depositions, exchanges, findings, lines, screeningEntries, screeningRuns, witnesses } from "../db/schema";
 import { UPLOADS_DIR } from "../ingest";
 
 const ACTIVE = ["queued", "parsing", "retrieving", "adjudicating"] as const;
@@ -28,6 +28,10 @@ export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analys
     .for("update");
   const running = used.filter((a) => (ACTIVE as readonly string[]).includes(a.status)).map((a) => a.id);
   if (running.length > 0) return { running };
+  // A whole-case run reading these depositions right now keeps them too.
+  const caseIds = [...new Set((await tx.select({ caseId: depositions.caseId }).from(depositions).where(inArray(depositions.id, ids))).map((d) => d.caseId))];
+  const caseRunning = caseIds.length ? await tx.select({ id: caseRuns.id }).from(caseRuns).where(and(inArray(caseRuns.caseId, caseIds), inArray(caseRuns.status, ["queued", "retrieving", "adjudicating"]))) : [];
+  if (caseRunning.length > 0) return { running: caseRunning.map((r) => r.id) };
 
   const analysisIds = used.map((a) => a.id);
   // Candidates first: their verdicts, findings and topic links go with them (cascade), and a verdict
@@ -99,6 +103,18 @@ export async function deleteCase(db: Database, pool: Pool, id: number, uploadsDi
       await tx.delete(candidates).where(inArray(candidates.jobId, left));
       await tx.delete(adjudicationRequests).where(inArray(adjudicationRequests.analysisId, left));
       await tx.delete(analyses).where(inArray(analyses.id, left));
+    }
+    // Whole-case runs: their ledger, requests and rows (their candidates went with the depositions).
+    const runIds = (await tx.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, id))).map((r) => r.id);
+    if (runIds.length) {
+      const ledgers = (await tx.select({ id: screeningRuns.id }).from(screeningRuns).where(inArray(screeningRuns.caseRunId, runIds))).map((r) => r.id);
+      if (ledgers.length) {
+        await tx.delete(screeningEntries).where(inArray(screeningEntries.runId, ledgers));
+        await tx.delete(screeningRuns).where(inArray(screeningRuns.id, ledgers));
+      }
+      await tx.delete(candidates).where(inArray(candidates.candidateSet, runIds.map((r) => `case-run-${r}`)));
+      await tx.delete(adjudicationRequests).where(inArray(adjudicationRequests.candidateSet, runIds.map((r) => `case-run-${r}`)));
+      await tx.delete(caseRuns).where(inArray(caseRuns.id, runIds));
     }
     await tx.delete(findings).where(eq(findings.caseId, id));
     await tx.delete(witnesses).where(eq(witnesses.caseId, id));

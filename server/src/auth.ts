@@ -11,7 +11,7 @@ import { Router, type NextFunction, type Request, type RequestHandler, type Resp
 import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "./db/client";
-import { analyses, authTokens, cases, depositions, findings, orgs, sessions, users } from "./db/schema";
+import { analyses, authTokens, caseRuns, cases, depositions, findings, orgs, sessions, users } from "./db/schema";
 import { alreadyRegistered, emailChanged, passwordChanged, resendMailer, resetPassword, verifyEmail, type Email as EmailMessage, type Mailer } from "./email";
 
 const scrypt = (password: string, salt: Buffer, keylen: number, options: ScryptOptions) =>
@@ -104,6 +104,7 @@ const OWNERS: [RegExp, (db: Database, id: number) => Promise<number | undefined>
   [/^\/cases\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(cases).where(eq(cases.id, id)))[0]?.org],
   [/^\/depositions\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(depositions).innerJoin(cases, eq(cases.id, depositions.caseId)).where(eq(depositions.id, id)))[0]?.org],
   [/^\/analyses\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(analyses).innerJoin(cases, eq(cases.id, analyses.caseId)).where(eq(analyses.id, id)))[0]?.org],
+  [/^\/case-runs\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(caseRuns).innerJoin(cases, eq(cases.id, caseRuns.caseId)).where(eq(caseRuns.id, id)))[0]?.org],
   [/^\/findings\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(findings).innerJoin(cases, eq(cases.id, findings.caseId)).where(eq(findings.id, id)))[0]?.org],
 ];
 
@@ -126,12 +127,18 @@ const NEEDS_VERIFIED: [string, RegExp][] = [
   ["POST", /^\/cases\/\d+\/depositions$/],
   ["POST", /^\/cases\/\d+\/analyses$/],
   ["POST", /^\/analyses\/\d+\/resume$/],
+  ["POST", /^\/cases\/\d+\/case-runs$/],
+  ["POST", /^\/case-runs\/\d+\/(?:resume|confirm)$/],
   ["POST", /^\/depositions\/\d+\/retry$/],
   ["POST", /^\/depositions\/\d+\/move$/],
 ];
 const PAID: [string, RegExp][] = [
   ["POST", /^\/cases\/\d+\/analyses$/],
   ["POST", /^\/analyses\/\d+\/resume$/],
+  ["POST", /^\/cases\/\d+\/case-runs$/],
+  ["POST", /^\/case-runs\/\d+\/confirm$/], // only live runs await confirmation
+  // Resuming a case run is paid only for a live run, which needs the stored run's mode: checked in the route
+  // (api/caseRuns.ts) with the same analysisAccess rule.
 ];
 const matches = (req: Request, rules: [string, RegExp][]) => rules.some(([m, re]) => req.method === m && re.test(req.path));
 
@@ -140,7 +147,9 @@ export function accountGates(): RequestHandler {
     const user = res.locals.user as SessionUser;
     if (!user.emailVerified && matches(req, NEEDS_VERIFIED)) return res.status(403).json({ error: "Verify your email address first. Check your inbox for the link, or send a new one from the banner.", code: "email_unverified" });
     // A demo analysis replays stored results and costs nothing; anything else is a paid check.
-    const paid = matches(req, PAID) && !(req.path.endsWith("/analyses") && (req.body as { mode?: string } | undefined)?.mode === "demo");
+    // A mock case run uses the deterministic mock and is never billed.
+    const mode = (req.body as { mode?: string } | undefined)?.mode;
+    const paid = matches(req, PAID) && !(req.path.endsWith("/analyses") && mode === "demo") && !(req.path.endsWith("/case-runs") && mode === "mock");
     if (paid && !user.analysisAccess) return res.status(403).json({ error: "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.", code: "no_analysis_access" });
     return next();
   };

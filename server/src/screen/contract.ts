@@ -14,7 +14,8 @@ import type { PacketSet } from "../retrieve/grouping";
 export const SCREENING_CONTRACT_VERSION = "screen-contract-v1";
 
 export const SCREEN_STATUSES = ["prioritized", "deferred", "consolidated"] as const;
-export const ADJUDICATION_STATES = ["not_started", "in_progress", "adjudicated", "failed"] as const;
+// incomplete: adjudicated in part; the pairs left without a verdict are listed on the entry and stay unread.
+export const ADJUDICATION_STATES = ["not_started", "in_progress", "adjudicated", "incomplete", "failed"] as const;
 export type ScreenStatus = (typeof SCREEN_STATUSES)[number];
 export type AdjudicationState = (typeof ADJUDICATION_STATES)[number];
 

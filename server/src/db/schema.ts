@@ -648,8 +648,9 @@ export const budgetReservations = pgTable(
 // named set instead of a job. exchange_a / exchange_b are the representative parts of the two logical
 // exchanges; evidence keeps every path's parts, claims and signals.
 // status is the candidate's assessment state: selected (awaiting assessment), adjudicated (assessed),
-// deferred (with deferred_reason), excluded (with exclusion_reason), audit.
-export const candidateStatus = pgEnum("candidate_status", ["selected", "deferred", "audit", "adjudicated", "excluded"]);
+// deferred (with deferred_reason), excluded (with exclusion_reason), audit, uncovered (retrieved but in no
+// issue packet, with deferred_reason giving why; never read, never compatible).
+export const candidateStatus = pgEnum("candidate_status", ["selected", "deferred", "audit", "adjudicated", "excluded", "uncovered"]);
 export const candidates = pgTable(
   "candidates",
   {
@@ -1165,6 +1166,50 @@ export const facts = pgTable(
   ],
 );
 
+// A whole-case analysis (jobs/caseRun.ts): every witness and session of a case, retrieved with the offline
+// multi-path system, packeted, and adjudicated packet by packet through the screening ledger, with screening
+// off (every packet prioritized). Kept apart from `analyses`, whose rows are one pair of depositions.
+// mode: live calls the packet model; mock uses the deterministic label-blind mock and is never billed.
+export const caseRuns = pgTable(
+  "case_runs",
+  {
+    id: id(),
+    caseId: ref("case_id")
+      .notNull()
+      .references(() => cases.id),
+    status: text("status").notNull().default("queued"),
+    mode: text("mode").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    model: text("model").notNull(),
+    effort: text("effort").notNull(),
+    budgetUsd: numeric("budget_usd", { precision: 14, scale: 8, mode: "number" }).notNull(),
+    budgetId: ref("budget_id").references(() => budgets.id),
+    config: jsonb("config").notNull(), // retrieval, triage and grouping settings, verifier and rubric versions
+    sourceHash: text("source_hash"), // the case's evidence when retrieval ran
+    progress: jsonb("progress").notNull().default(sql`'{}'::jsonb`), // counts, never a percentage
+    error: text("error"),
+    runnerId: text("runner_id"),
+    runnerSeenAt: timestamp("runner_seen_at", { withTimezone: true }),
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    // A live run stops after retrieval (awaiting_confirmation, with its estimate in progress) until someone
+    // confirms it with a budget; only then can it send a paid request. Mock runs need no confirmation.
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("case_runs_case_idx").on(t.caseId, t.id),
+    check("case_runs_mode_check", sql`${t.mode} in ('live', 'mock')`),
+    check("case_runs_budget_check", sql`${t.budgetUsd} >= 0`),
+    check(
+      "case_runs_status_check",
+      sql`${t.status} in ('queued', 'retrieving', 'awaiting_confirmation', 'adjudicating', 'completed', 'incomplete', 'failed', 'blocked_budget', 'blocked_credentials', 'cancelled', 'interrupted')`,
+    ),
+  ],
+);
+
 // Evidence screening ledger (Milestone 3, experimental; server/src/screen/ledger.ts). A screening run orders a
 // packet set's issue packets for adjudication; each entry keeps its packet's original items and pairs, and its
 // adjudication progress apart from its screening status. Deferred means unread, never compatible. Entries are
@@ -1183,6 +1228,10 @@ export const screeningRuns = pgTable("screening_runs", {
   settings: jsonb("settings").notNull(),
   poolPairs: integer("pool_pairs").notNull(),
   uncovered: jsonb("uncovered").$type<{ a: string; b: string; reason: string }[]>().notNull(),
+  // Set when the run belongs to a whole-case run (jobs/caseRun.ts); null on offline benchmark runs.
+  caseId: ref("case_id").references(() => cases.id),
+  caseRunId: ref("case_run_id").references(() => caseRuns.id),
+  sourceHash: text("source_hash"), // the case's stored evidence when the run was built
   createdAt: createdAt(),
 });
 
@@ -1207,13 +1256,24 @@ export const screeningEntries = pgTable(
     adjudicationStatus: text("adjudication_status").notNull().default("not_started"),
     adjudicationRef: text("adjudication_ref"),
     adjudicationNote: text("adjudication_note"),
+    // Database identifiers, on entries of a whole-case run: the candidates (one per pair, in `pairs` order),
+    // and the exchanges, depositions and sessions the packet reads.
+    candidateIds: bigint("candidate_ids", { mode: "number" }).array(),
+    exchangeIds: bigint("exchange_ids", { mode: "number" }).array(),
+    documentIds: bigint("document_ids", { mode: "number" }).array(),
+    sessionIds: bigint("session_ids", { mode: "number" }).array(),
+    attempts: integer("attempts").notNull().default(0), // model calls made for this packet, recovery included
+    requestId: ref("request_id"), // the last adjudication_requests row
+    llmCallId: ref("llm_call_id"), // the stored reply: reused on resume instead of a second paid call
+    failureBillable: boolean("failure_billable"), // on failure: whether the failed call may have been charged
+    unresolvedPairs: jsonb("unresolved_pairs").$type<{ a: string; b: string; status: string }[]>(), // incomplete: pairs left without a verdict
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique("screening_entries_run_packet_unique").on(t.runId, t.packetId),
     index("screening_entries_queue_idx").on(t.runId, t.adjudicationStatus, t.rank),
     check("screening_entries_screen_status_check", sql`${t.screenStatus} in ('prioritized', 'deferred', 'consolidated')`),
-    check("screening_entries_adjudication_status_check", sql`${t.adjudicationStatus} in ('not_started', 'in_progress', 'adjudicated', 'failed')`),
+    check("screening_entries_adjudication_status_check", sql`${t.adjudicationStatus} in ('not_started', 'in_progress', 'adjudicated', 'incomplete', 'failed')`),
     check("screening_entries_consolidated_check", sql`(${t.screenStatus} = 'consolidated') = (${t.consolidatedInto} is not null) and (${t.screenStatus} = 'consolidated') = (${t.rank} is null)`),
   ],
 );

@@ -3,10 +3,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import { sql } from "drizzle-orm";
-import { analysisRoutes, caseRoutes, depositionRoutes, reportRoutes } from "./api";
+import { analysisRoutes, caseRunRoutes, caseRoutes, depositionRoutes, reportRoutes } from "./api";
 import { accountGates, authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
 import { connect } from "./db/client";
-import { createAnalysisQueues, createIngestQueues, startBoss } from "./jobs";
+import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, startBoss } from "./jobs";
 
 const app = express();
 app.disable("x-powered-by");
@@ -34,6 +34,7 @@ async function mountDepositionRoutes() {
     const boss = await startBoss(process.env.DATABASE_URL!, { supervise: false });
     await createIngestQueues(boss);
     await createAnalysisQueues(boss);
+    await createCaseRunQueues(boss);
     // For a load balancer or container health check: 200 only while the database answers.
     app.get("/api/health", async (_req, res) => {
       try {
@@ -48,6 +49,7 @@ async function mountDepositionRoutes() {
     app.use("/api", sameOrigin, requireUser(db), scopeToOrg(db), accountGates());
     app.use("/api", caseRoutes({ db }));
     app.use("/api", analysisRoutes({ db, pool, boss }));
+    app.use("/api", caseRunRoutes({ db, boss }));
     app.use("/api", depositionRoutes({ db, pool, boss }));
     app.use("/api", reportRoutes({ db }));
   } catch (error) {
