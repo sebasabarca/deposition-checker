@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CrossLabelFile } from "../../server/src/eval/crossLabels";
-import { checkDuplicates, checkItemText, checkManifest, checkSegmentation, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, heldOutPairs, kindOf, locatePhrase, poolContribution, rankPairs, unlabelledSample } from "../../server/src/eval/retrievalEval";
+import { checkDuplicates, checkItemText, checkManifest, checkSegmentation, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, heldOutPairs, kindOf, locatePhrase, PacketSetSchema, evaluatePackets, poolBurden, poolContribution, rankPairs, targetClassOf, unlabelledSample } from "../../server/src/eval/retrievalEval";
 import { buildPool, type FrozenItem, type FrozenPair, type PathNeighbours, type PathRankings, type Ranked } from "../../server/src/retrieve/frozen";
 
 // Six items in three sessions: a1 a2 (session A), b1 b2 (B), c1 c2 (C).
@@ -16,7 +16,54 @@ const CONTROL: FrozenPair = { id: "N", category: "no_conflict", source: "test", 
 
 describe("retrieval evaluator", () => {
   it("sorts categories into targets, controls and exploratory pairs", () => {
-    expect(["review_worthy", "conflict", "conflict_needs_context", "control", "no_conflict", "exploratory"].map(kindOf)).toEqual(["target", "target", "target", "control", "control", "exploratory"]);
+    expect(["review_worthy", "conflict", "conflict_needs_context", "control", "no_conflict", "exploratory", "insufficient_evidence"].map(kindOf)).toEqual(["target", "target", "target", "control", "control", "exploratory", "unknown"]);
+    expect(["conflict", "conflict_needs_context", "review_worthy", "no_conflict"].map(targetClassOf)).toEqual(["direct", "needs_context", "unclassified", null]);
+  });
+
+  // A hand-ordered pool: x (unlabelled), the control, y (unlabelled), the target. Every item is 9 chars = 3 tokens.
+  const ORDERED = { name: "r", perItem: 1, paths: [], candidates: [["a1", "c1"], ["a2", "c2"], ["b1", "c2"], ["a1", "b2"]].map(([a, b]) => ({ a, b, fused: 0, ranks: {} })) };
+  const ITEM_MAP = new Map(ITEMS.map((i) => [i.key, { ...i, question: "was it", answer: "abc" }]));
+
+  it("counts the review burden and projected tokens to reach each labelled pair in pool order", () => {
+    const report = evaluatePool(ORDERED, [TARGET, CONTROL]);
+    const b = poolBurden(ORDERED, report, [TARGET, CONTROL], ITEM_MAP, 10);
+    expect(b.calls).toBe(4);
+    expect(b.tokens).toBe(4 * (3 + 3 + 10));
+    expect(b.unlabelled).toBe(2);
+    expect(b.reach).toEqual([
+      { id: "N", kind: "control", category: "no_conflict", reviewed: 2, unlabelledAhead: 1, labelledAhead: 0, tokensToReach: 32 },
+      { id: "T", kind: "target", category: "review_worthy", reviewed: 4, unlabelledAhead: 2, labelledAhead: 1, tokensToReach: 64 },
+    ]);
+    expect(b.targetsInOrder).toEqual([4]);
+    expect(b.bySession.map((r) => [r.key, r.candidates, r.counts.target, r.counts.control])).toEqual([["A x C", 2, [0, 0], [1, 1]], ["A x B", 1, [1, 1], [0, 0]], ["B x C", 1, [0, 0], [0, 0]]]);
+    expect(report.classes).toEqual({ unclassified: [1, 1] });
+  });
+
+  it("evaluates a packet set: sides together, listed pairs, sizes, tokens and problems", () => {
+    const DIRECT: FrozenPair = { id: "D", category: "conflict", source: "test", left: ["b1"], right: ["c1"] };
+    const set = {
+      name: "g", source: "pool", settings: {}, tokenAssumption: "stated",
+      packets: [
+        { id: "p1", issue: "i", items: ["a2", "c2", "b1"], pairs: [["a2", "c2"], ["b1", "c2"]] as [string, string][], inputTokens: 100 },
+        { id: "p2", issue: "j", items: ["a1", "b2", "a2"], pairs: [["a1", "a2"], ["a1", "c1"]] as [string, string][], inputTokens: 50 },
+      ],
+      uncovered: [{ a: "b1", b: "c1", reason: "over budget" }],
+    };
+    const r = evaluatePackets(PacketSetSchema.parse(set), [TARGET, CONTROL, DIRECT], ITEM_MAP, 10);
+    expect(r.calls).toBe(2);
+    expect(r.statedTokens).toBe(150);
+    expect(r.projectedTokens).toBe(2 * (9 + 10));
+    expect(r.pairByPairTokens).toBe(4 * 16);
+    expect(r.itemsPerPacket).toEqual({ min: 3, median: 3, max: 3, total: 6 });
+    const t = r.pairs.find((p) => p.id === "T")!;
+    expect([t.together, t.listed, t.firstPacket, t.tokensToReach]).toEqual([["p2"], [], 2, 38]);
+    expect(r.pairs.find((p) => p.id === "N")!.listed).toEqual(["p1"]);
+    expect(r.pairs.find((p) => p.id === "D")!.uncovered).toEqual(["over budget"]);
+    expect(r.together.target).toEqual([1, 2]);
+    expect(r.classes).toEqual({ unclassified: [1, 1], direct: [0, 1] });
+    expect(r.unlabelledListedPairs).toBe(3);
+    expect(r.problems.map((p) => p.detail)).toEqual(["p2: 1 listed pair(s) name an item the packet does not hold", "p2: 1 listed pair(s) join two items of one session"]);
+    expect(PacketSetSchema.safeParse({ ...set, packets: [{ id: "x" }] }).success).toBe(false);
   });
 
   it("ranks a pair in both directions per path, fused, and with each path removed", () => {

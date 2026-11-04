@@ -7,6 +7,7 @@
 // counted as negatives or false positives; results are counts ("2 of 3"), never percentages.
 
 import { buildPool, fuseRankings, pairKey, rankIn, type CandidatePool, type FrozenBenchmark, type FrozenItem, type FrozenPair, type PathNeighbours, type PathRankings, type Ranked } from "../retrieve/frozen";
+import { z } from "zod";
 import type { CrossLabelFile } from "./crossLabels";
 import type { EvidenceFixture } from "./evidenceFixtures";
 
@@ -16,10 +17,29 @@ export const POOL_SIZE_BUDGETS = [100, 250, 500, 1000, 2500, 5000, 10000, 25000,
 export const SAMPLE_SIZE = 25;
 const EXCERPT_CHARS = 160;
 
-export type PairKind = "target" | "control" | "exploratory";
-// target: review_worthy, conflict, conflict_needs_context. control: control, no_conflict. exploratory: never scored.
-export const kindOf = (category: string): PairKind => (category === "control" || category === "no_conflict" ? "control" : category === "exploratory" ? "exploratory" : "target");
-export const KINDS: readonly PairKind[] = ["target", "control", "exploratory"];
+export type PairKind = "target" | "control" | "exploratory" | "unknown";
+// target: review_worthy, conflict, conflict_needs_context (and direct, inferential). control: control, no_conflict.
+// exploratory: never scored. unknown: any other label (insufficient_evidence, unknown, ...), reported apart.
+const TARGET_CATEGORIES = new Set(["review_worthy", "conflict", "conflict_needs_context", "direct", "inferential"]);
+export const kindOf = (category: string): PairKind => (category === "control" || category === "no_conflict" ? "control" : category === "exploratory" ? "exploratory" : TARGET_CATEGORIES.has(category) ? "target" : "unknown");
+export const KINDS: readonly PairKind[] = ["target", "control", "exploratory", "unknown"];
+// A target's class where its label says so: a confirmed direct contradiction, inferential or needing context, or
+// unclassified (review_worthy says only that it is worth a look).
+export type TargetClass = "direct" | "needs_context" | "unclassified";
+export const TARGET_CLASSES: readonly TargetClass[] = ["direct", "needs_context", "unclassified"];
+export const targetClassOf = (category: string): TargetClass | null =>
+  kindOf(category) !== "target" ? null : category === "conflict" || category === "direct" ? "direct" : category === "conflict_needs_context" || category === "inferential" ? "needs_context" : "unclassified";
+const countClasses = (pairs: readonly { category: string; held: boolean }[]) => {
+  const out = {} as Record<TargetClass, [held: number, of: number]>;
+  for (const p of pairs) { const c = targetClassOf(p.category); if (!c) continue; const x = (out[c] ??= [0, 0]); x[1]++; if (p.held) x[0]++; }
+  return out;
+};
+
+// Projected adjudication input: each item's question and answer at CHARS_PER_TOKEN, plus a fixed overhead per call.
+export const CHARS_PER_TOKEN = 3;
+export const CALL_OVERHEAD_TOKENS = 3500; // adjudicate-v3 system prompt + JSON schema (about 10,100 chars) at 3 chars/token, rounded up
+export const itemTokens = (i: Pick<FrozenItem, "question" | "answer"> | undefined) => (i ? Math.ceil((i.question.length + i.answer.length) / CHARS_PER_TOKEN) : 0);
+export const tokenAssumption = (overhead: number) => `each item's question + answer at ${CHARS_PER_TOKEN} chars/token (rounded up per item), plus ${overhead} tokens fixed overhead per call`;
 
 // ---------- Paths: full rankings and depth-limited neighbours, per query ----------
 
@@ -103,10 +123,11 @@ const countBy = (pairs: readonly { kind: PairKind }[], held: (i: number) => bool
   return out;
 };
 
-export type PoolPair = { id: string; kind: PairKind; held: boolean; poolRank: number | null; perItemRank: number | null; ranks: Record<string, [number | null, number | null]> | null };
+export type PoolPair = { id: string; kind: PairKind; category: string; held: boolean; poolRank: number | null; perItemRank: number | null; ranks: Record<string, [number | null, number | null]> | null };
 export type PoolReport = {
   name: string; perItem: number; paths: string[]; candidates: number; crossSession: boolean;
   pairs: PoolPair[];
+  classes: Record<TargetClass, [held: number, of: number]>;
   // Labelled pairs held if each item kept only its first `b` candidates in pool order / if the pool were cut to its
   // first `n` (the last budget is the whole pool).
   perItemBudgets: Record<number, Counted>;
@@ -138,9 +159,9 @@ export function evaluatePool(pool: CandidatePool, pairs: readonly FrozenPair[], 
       if (f.perItemRank === null || r < f.perItemRank) f.perItemRank = r;
     });
   });
-  const out: PoolPair[] = pairs.map((p, i) => ({ id: p.id, kind: kindOf(p.category), held: found[i].poolRank !== null, ...found[i] }));
+  const out: PoolPair[] = pairs.map((p, i) => ({ id: p.id, kind: kindOf(p.category), category: p.category, held: found[i].poolRank !== null, ...found[i] }));
   return {
-    name: pool.name, perItem: pool.perItem, paths: pool.paths, candidates: pool.candidates.length, crossSession, pairs: out,
+    name: pool.name, perItem: pool.perItem, paths: pool.paths, candidates: pool.candidates.length, crossSession, pairs: out, classes: countClasses(out),
     perItemBudgets: Object.fromEntries(PER_ITEM_BUDGETS.map((b) => [b, countBy(out, (i) => out[i].perItemRank !== null && out[i].perItemRank! <= b)])),
     sizeBudgets: Object.fromEntries([...POOL_SIZE_BUDGETS.filter((n) => n < pool.candidates.length), pool.candidates.length].map((n) => [n, countBy(out, (i) => out[i].poolRank !== null && out[i].poolRank! <= n)])),
     solePath,
@@ -185,6 +206,144 @@ export function unlabelledSample(pool: CandidatePool, pairs: readonly FrozenPair
     out.push({ poolRank: i + 1, a: c.a, b: c.b, fused: c.fused, ranks: c.ranks, excerptA: excerpt(c.a), excerptB: excerpt(c.b) });
   }
   return out;
+}
+
+// ---------- Review burden, projected tokens and coverage by witness and session pair ----------
+
+// A held labelled pair, reached by reviewing the pool in its array order (a reranked pool is just a reordered one):
+// `reviewed` candidates up to and including it, of which `unlabelledAhead` join no labelled pair (the false-positive
+// burden; controls and exploratory pairs ahead are `labelledAhead`, never false positives).
+export type Reach = { id: string; kind: PairKind; category: string; reviewed: number; unlabelledAhead: number; labelledAhead: number; tokensToReach: number };
+export type CoverageRow = { key: string; candidates: number; counts: Counted };
+export type PoolBurden = {
+  calls: number; tokens: number; overhead: number; unlabelled: number; missingItems: number;
+  reach: Reach[];
+  targetsInOrder: number[]; // candidates reviewed to reach the 1st, 2nd, ... held target
+  byWitness: CoverageRow[]; bySession: CoverageRow[];
+};
+
+const pairOf = (a: string, b: string) => (a < b ? `${a} x ${b}` : `${b} x ${a}`);
+
+// Candidates and labelled pairs (held/of) per unordered pair of witnesses or sessions. A labelled pair counts under
+// every key its sides' items give (normally one).
+export function coverageRows(candidates: readonly { a: string; b: string }[], pairs: readonly FrozenPair[], held: readonly boolean[], groupOf: (key: string) => string): CoverageRow[] {
+  const rows = new Map<string, CoverageRow>();
+  const row = (key: string) => rows.get(key) ?? rows.set(key, { key, candidates: 0, counts: Object.fromEntries(KINDS.map((k) => [k, [0, 0]])) as Counted }).get(key)!;
+  for (const c of candidates) row(pairOf(groupOf(c.a), groupOf(c.b))).candidates++;
+  pairs.forEach((p, i) => {
+    const keys = new Set(p.left.flatMap((a) => p.right.map((b) => pairOf(groupOf(a), groupOf(b)))));
+    for (const k of keys) { const x = row(k).counts[kindOf(p.category)]; x[1]++; if (held[i]) x[0]++; }
+  });
+  return [...rows.values()].sort((x, y) => y.candidates - x.candidates || x.key.localeCompare(y.key));
+}
+
+export function poolBurden(pool: CandidatePool, report: PoolReport, pairs: readonly FrozenPair[], items: ReadonlyMap<string, FrozenItem>, overhead = CALL_OVERHEAD_TOKENS): PoolBurden {
+  const join = pairs.map(joins);
+  const unlabelledBefore: number[] = [];
+  const tokensThrough: number[] = [];
+  let unlabelled = 0, tokens = 0, missingItems = 0;
+  for (const c of pool.candidates) {
+    unlabelledBefore.push(unlabelled);
+    if (!join.some((j) => j(c.a, c.b))) unlabelled++;
+    for (const k of [c.a, c.b]) if (!items.has(k)) missingItems++;
+    tokens += itemTokens(items.get(c.a)) + itemTokens(items.get(c.b)) + overhead;
+    tokensThrough.push(tokens);
+  }
+  const reach = report.pairs.filter((p) => p.poolRank !== null).map((p) => {
+    const i = p.poolRank! - 1;
+    return { id: p.id, kind: p.kind, category: p.category, reviewed: i + 1, unlabelledAhead: unlabelledBefore[i], labelledAhead: i - unlabelledBefore[i], tokensToReach: tokensThrough[i] };
+  }).sort((a, b) => a.reviewed - b.reviewed);
+  const held = report.pairs.map((p) => p.held);
+  const attr = (f: (i: FrozenItem) => string) => (k: string) => { const i = items.get(k); return i ? f(i) : "?"; };
+  return {
+    calls: pool.candidates.length, tokens, overhead, unlabelled, missingItems, reach,
+    targetsInOrder: reach.filter((r) => r.kind === "target").map((r) => r.reviewed),
+    byWitness: coverageRows(pool.candidates, pairs, held, attr((i) => i.witness)),
+    bySession: coverageRows(pool.candidates, pairs, held, attr((i) => i.session)),
+  };
+}
+
+// ---------- Evidence packets (issue grouping) ----------
+
+export const EvidencePacketSchema = z.object({ id: z.string().min(1), issue: z.string(), items: z.array(z.string()), pairs: z.array(z.tuple([z.string(), z.string()])), inputTokens: z.number().nonnegative() });
+export const PacketSetSchema = z.object({
+  name: z.string(), source: z.string(), settings: z.record(z.string(), z.unknown()), packets: z.array(EvidencePacketSchema),
+  uncovered: z.array(z.object({ a: z.string(), b: z.string(), reason: z.string() })), tokenAssumption: z.string(),
+});
+export type EvidencePacket = z.infer<typeof EvidencePacketSchema>;
+export type PacketSet = z.infer<typeof PacketSetSchema>;
+
+const spread = (xs: readonly number[]) => { const s = [...xs].sort((a, b) => a - b); return { min: s[0] ?? 0, median: s.length ? s[Math.floor((s.length - 1) / 2)] : 0, max: s.at(-1) ?? 0, total: s.reduce((a, b) => a + b, 0) }; };
+
+export type PacketPair = {
+  id: string; kind: PairKind; category: string;
+  together: string[]; // packets holding an item of each side
+  listed: string[]; // packets naming a joining pair explicitly
+  firstPacket: number | null; // 1-based position of the first `together` packet: packets read to reach it
+  tokensToReach: number | null; // projected tokens through that packet
+  uncovered: string[]; // the set's own uncovered entries joining this pair, with reasons
+};
+export type PacketReport = {
+  name: string; source: string; settings: Record<string, unknown>; tokenAssumption: string;
+  packets: number; calls: number; distinctItems: number;
+  itemsPerPacket: ReturnType<typeof spread>; pairsPerPacket: ReturnType<typeof spread>;
+  statedTokens: number; projectedTokens: number; pairByPairTokens: number; overhead: number;
+  pairs: PacketPair[];
+  together: Counted; listed: Counted; classes: Record<TargetClass, [held: number, of: number]>;
+  uncovered: number; unlabelledListedPairs: number;
+  problems: Problem[];
+};
+
+// Whether each labelled pair's two sides are put in front of the adjudicator together, and what the set costs:
+// the set's stated inputTokens, an independent projection (distinct items per packet + overhead per call), and
+// what adjudicating the same listed pairs one by one would take.
+export function evaluatePackets(set: PacketSet, pairs: readonly FrozenPair[], items: ReadonlyMap<string, FrozenItem>, overhead = CALL_OVERHEAD_TOKENS): PacketReport {
+  const join = pairs.map(joins);
+  const problems: Problem[] = [];
+  const ids = new Set<string>();
+  const uniquePairs = new Set<string>();
+  let pairByPairTokens = 0, unlabelledListed = 0, projectedTokens = 0;
+  const projected: number[] = [];
+  for (const p of set.packets) {
+    if (ids.has(p.id)) problems.push({ check: "packets", detail: `packet id ${p.id} repeats` });
+    ids.add(p.id);
+    const own = new Set(p.items);
+    const unknown = p.items.filter((k) => !items.has(k));
+    if (unknown.length) problems.push({ check: "packets", detail: `${p.id}: ${unknown.length} item(s) not in the corpus, e.g. ${unknown[0]}` });
+    let outside = 0, sameSession = 0;
+    for (const [a, b] of p.pairs) {
+      if (!own.has(a) || !own.has(b)) outside++;
+      if (items.get(a) && items.get(a)!.session === items.get(b)?.session) sameSession++;
+      if (!join.some((j) => j(a, b))) unlabelledListed++;
+      const key = pairKey(a, b);
+      if (!uniquePairs.has(key)) { uniquePairs.add(key); pairByPairTokens += itemTokens(items.get(a)) + itemTokens(items.get(b)) + overhead; }
+    }
+    if (outside) problems.push({ check: "packets", detail: `${p.id}: ${outside} listed pair(s) name an item the packet does not hold` });
+    if (sameSession) problems.push({ check: "packets", detail: `${p.id}: ${sameSession} listed pair(s) join two items of one session` });
+    projectedTokens += [...own].reduce((n, k) => n + itemTokens(items.get(k)), 0) + overhead;
+    projected.push(projectedTokens);
+  }
+  const out: PacketPair[] = pairs.map((pair, i) => {
+    const [L, R] = [new Set(pair.left), new Set(pair.right)];
+    const together: string[] = [], listed: string[] = [];
+    let first: number | null = null;
+    set.packets.forEach((p, n) => {
+      if (p.items.some((k) => L.has(k)) && p.items.some((k) => R.has(k))) { together.push(p.id); first ??= n; }
+      if (p.pairs.some(([a, b]) => join[i](a, b))) listed.push(p.id);
+    });
+    const uncovered = set.uncovered.filter((u) => join[i](u.a, u.b)).map((u) => u.reason);
+    return { id: pair.id, kind: kindOf(pair.category), category: pair.category, together, listed, firstPacket: first === null ? null : first + 1, tokensToReach: first === null ? null : projected[first], uncovered };
+  });
+  return {
+    name: set.name, source: set.source, settings: set.settings, tokenAssumption: set.tokenAssumption,
+    packets: set.packets.length, calls: set.packets.length, distinctItems: new Set(set.packets.flatMap((p) => p.items)).size,
+    itemsPerPacket: spread(set.packets.map((p) => p.items.length)), pairsPerPacket: spread(set.packets.map((p) => p.pairs.length)),
+    statedTokens: set.packets.reduce((n, p) => n + p.inputTokens, 0), projectedTokens, pairByPairTokens, overhead,
+    pairs: out,
+    together: countBy(out, (i) => out[i].together.length > 0), listed: countBy(out, (i) => out[i].listed.length > 0),
+    classes: countClasses(out.map((p) => ({ category: p.category, held: p.together.length > 0 }))),
+    uncovered: set.uncovered.length, unlabelledListedPairs: unlabelledListed, problems,
+  };
 }
 
 // ---------- Integrity ----------
