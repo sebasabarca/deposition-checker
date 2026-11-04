@@ -2,7 +2,7 @@
 
 **Status: preparation only. Milestone 3 is not complete.** This builds the screening contract, the deferred-evidence ledger and an offline benchmark, and measures a baseline. Nothing here is wired into production adjudication, and the default analysis method is unchanged. No strategy or budget is selected: that waits for the Milestone 2 pilot results and the Milestone 4 audit of deferred evidence. No paid model call was made. The worktree `.env` has no API key and `ALLOW_PAID_CALLS=false`.
 
-Worktree `../deposition-checker-m3`, branch `m3-screening`, from `e48145b`, uncommitted. Test database `deposition_checker_m3_test`.
+Built on branch `m3-screening` from `e48145b` (commit `e5fd09d`) and merged into `multi-analysis` after Milestone 2 (`c97bf58`). Milestone 2 added no migration, so 0035 kept its number. The benchmark figures below were measured before Milestone 2's final results; its pilot found 1 of 4 real targets with either arm (`docs/milestone-2-results.md`), which strengthens the case for the Milestone 4 audit before any strategy is chosen.
 
 ## What was built
 
@@ -145,9 +145,9 @@ These figures rest on a 12-packet calibration. Replace them with the full pilot'
 - `npx tsx scripts/screening-benchmark.ts --raw <main repo>/data/raw [--out data/raw/screening/<name>]`: the offline benchmark described above. No model, API or database call. Output is git-ignored, because it names testimony items.
 - Tests: `npx vitest run tests/screen tests/db/screeningLedger.test.ts`.
 
-## Doc updates to apply at integration
+## Doc updates made at integration
 
-These were not applied in this worktree, to avoid conflicts with Milestone 2's uncommitted edits to the same files.
+The first three were applied on `multi-analysis` after the merge. The last is still open.
 
 - `docs/architecture.md`: add `screen/` (contract, strategies, ledger; pure apart from `ledger.ts`; never calls a model), `eval/screeningBenchmark.ts` and `scripts/screening-benchmark.ts`.
 - `docs/commands.md`: the benchmark command above.
