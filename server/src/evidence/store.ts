@@ -275,8 +275,9 @@ export async function nextSessionPart(db: Database, sessionId: number) {
 }
 
 // Leaves a stored copy out of new analyses and the evidence index, keeping it and everything on it.
-// A duplicate must be the same file in the same case as an active copy, which then counts for both.
-export async function excludeDocument(db: Database, documentId: number, x: { reason: "legacy_parse" } | { reason: "duplicate"; duplicateOf: number }) {
+// A duplicate must be the same file in the same case as an active copy, which then counts for both;
+// a misfiled copy is someone else's testimony stored under this case or witness.
+export async function excludeDocument(db: Database, documentId: number, x: { reason: "legacy_parse" | "misfiled" } | { reason: "duplicate"; duplicateOf: number }) {
   const [d] = await db.select().from(depositions).where(eq(depositions.id, documentId));
   if (!d) throw new Error(`No document ${documentId}.`);
   if (d.excludedReason !== null) throw new Error(`Document ${documentId} is already excluded (${d.excludedReason}).`);

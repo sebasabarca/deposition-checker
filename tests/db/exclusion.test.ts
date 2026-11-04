@@ -75,6 +75,15 @@ describe.skipIf(!TEST_DATABASE_URL)("excluded copies (Postgres, synthetic archiv
     expect((await parserAudit(db, { caseId })).map((d) => d.action.split(":")[0])).toEqual(["current", "excluded", "excluded"]);
   });
 
+  it("excludes a misfiled document, keeping its rows and leaving it out of search and coverage", async () => {
+    await excludeDocument(db, legacy, { reason: "misfiled" });
+    const c = await evidenceCoverage(db, caseId);
+    expect(c.excluded).toEqual([{ documentId: legacy, witness: "Iris Calloway", reason: "misfiled", duplicateOf: null }]);
+    expect(await searchEvidence(db, "ledger", { caseId })).toMatchObject({ matched: 0 });
+    expect(await db.$count(exchanges, eq(exchanges.depositionId, legacy))).toBeGreaterThan(0);
+    expect((await parserAudit(db, { caseId })).find((d) => d.documentId === legacy)?.action).toMatch(/^excluded: misfiled/);
+  });
+
   it("refuses a duplicate that isn't the same file in the case, or that points at an excluded copy", async () => {
     await expect(excludeDocument(db, copy, { reason: "duplicate", duplicateOf: legacy })).rejects.toThrow(/isn't the same file/);
     await excludeDocument(db, active, { reason: "duplicate", duplicateOf: copy });

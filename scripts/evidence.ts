@@ -31,7 +31,7 @@
 //     them is removed. A dry run unless --execute; executing first writes a backup under data/raw/backups/.
 //     Refuses, changing nothing, when text would change or a referenced exchange would change its lines,
 //     and then maps each such exchange to the corrected ones and lists the findings that need review.
-//   npx tsx scripts/evidence.ts exclude --document-id <id> --reason legacy_parse|duplicate [--duplicate-of <id>]
+//   npx tsx scripts/evidence.ts exclude --document-id <id> --reason legacy_parse|duplicate|misfiled [--duplicate-of <id>]
 //     Leaves a stored copy out of new analyses and the evidence index (search, lookup, coverage totals),
 //     keeping it and every analysis, finding and review on it. A duplicate names the active copy of the
 //     same file in the same case.
@@ -156,7 +156,7 @@ async function main() {
     } else if (command === "exclude") {
       const id = num(values["document-id"]);
       const reason = values.reason;
-      if (!id || (reason !== "legacy_parse" && reason !== "duplicate")) throw new Error("exclude needs --document-id and --reason legacy_parse|duplicate");
+      if (!id || (reason !== "legacy_parse" && reason !== "duplicate" && reason !== "misfiled")) throw new Error("exclude needs --document-id and --reason legacy_parse|duplicate|misfiled");
       const of = num(values["duplicate-of"]);
       if (reason === "duplicate" && !of) throw new Error("a duplicate needs --duplicate-of <active copy>");
       await excludeDocument(db, id, reason === "duplicate" ? { reason, duplicateOf: of! } : { reason });

@@ -313,6 +313,8 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const caseId = docs[0].caseId;
     const started = await call("POST", `/cases/${caseId}/analyses`, { depositionA: docs[0].id, depositionB: docs[1].id, mode: "demo" });
     const id = started.body.analysis.id;
+    // Let the worker finish first, so its own status writes can't overwrite the states set below.
+    await until(() => call("GET", `/analyses/${id}`), (r) => r.body.analysis.status === "completed");
     // Held as running: deletion must wait for the check, so no job loses its rows.
     await db.update(analyses).set({ status: "adjudicating" }).where(eq(analyses.id, id));
     expect(await call("DELETE", `/depositions/${docs[0].id}`)).toMatchObject({ status: 409, body: { analyses: [id] } });

@@ -148,7 +148,10 @@ describe.skipIf(!gates.every((g) => existsSync(`${RAW}/gates/${g.file}`)))("Gate
       },
       TIMEOUT,
     );
-    it.skipIf(!ocrTools)(
+  }
+  // The OCR reads are independent (each uses its own temporary folder), so they run at the same time.
+  for (const g of gates) {
+    (ocrTools ? it.concurrent : it.skip)(
       `${g.file} is read by OCR, with every page accounted for`,
       async () => {
         const result = await readDeposition(bytes(`${RAW}/gates/${g.file}`));

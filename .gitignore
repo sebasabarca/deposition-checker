@@ -15,3 +15,7 @@ experiments/multimodel-contradictions/work/
 experiments/multimodel-contradictions/runs/
 experiments/multimodel-contradictions/review/
 experiments/multimodel-contradictions/config/approval.local.json
+
+# Local code graph (graphify update .) and local Claude Code config (graphify skill, agent worktrees): never committed
+graphify-out/
+.claude/

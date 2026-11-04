@@ -120,7 +120,7 @@ export async function parserAudit(db: Database, scope: { caseId?: number } = {})
       documentId: d.id, caseId: d.caseId, witness: d.witness, layout, status: d.status, parserVersion: d.parserVersion, current: d.parserVersion === PARSER_VERSION, storedFile: !d.storageKey.startsWith("fixtures/"),
       artifacts, impact,
       excluded: d.excludedReason, duplicateOf: d.duplicateOf,
-      action: d.excludedReason === "legacy_parse" ? "excluded: legacy parse, kept unchanged with its findings" : d.excludedReason === "duplicate" ? `excluded: duplicate of document ${d.duplicateOf}` : d.parserVersion === PARSER_VERSION ? "current" : found === 0 ? "older parser, no known artifact in its stored rows" : impact.findings > 0 ? "re-read needed; it would remove findings: needs approval" : "re-read needed; no findings affected",
+      action: d.excludedReason === "legacy_parse" ? "excluded: legacy parse, kept unchanged with its findings" : d.excludedReason === "duplicate" ? `excluded: duplicate of document ${d.duplicateOf}` : d.excludedReason === "misfiled" ? "excluded: misfiled, another witness's or case's testimony, kept unchanged" : d.parserVersion === PARSER_VERSION ? "current" : found === 0 ? "older parser, no known artifact in its stored rows" : impact.findings > 0 ? "re-read needed; it would remove findings: needs approval" : "re-read needed; no findings affected",
     });
   }
   return out;

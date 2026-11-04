@@ -9,6 +9,8 @@ Finds potential contradictions in a witness's sworn testimony across deposition 
 
 ## Setup
 
+The full guide, including what has and hasn't been tested on a fresh machine, is `docs/setup.md`.
+
 **Requirements:**
 - Node.js 22.12 or newer (`.nvmrc` selects 24);
 - Docker (for Postgres 16);

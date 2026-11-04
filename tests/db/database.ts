@@ -1,7 +1,7 @@
 // Shared setup for the database tests. They need Postgres (`npm run db:up`) and run only when
 // TEST_DATABASE_URL is set, so `npm test` still works without Docker. The test database is wiped,
-// so its name must end in "_test". Every file resets the same database, so vitest.config.mts runs
-// test files one at a time.
+// so its name must end in "_test". Every file resets its database; files run in parallel because each
+// Vitest worker gets its own database (tests/db/workerDatabase.mts), never one shared by two files at once.
 
 import "dotenv/config";
 import { sql } from "drizzle-orm";

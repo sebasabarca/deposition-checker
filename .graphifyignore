@@ -1,0 +1,8 @@
+# Graphify indexes code only (AST, local). Leave out vendored skills, experiments, data and generated output.
+.agents/
+experiments/
+data/
+docs/
+graphify-out/
+.claude/
+client/dist/
