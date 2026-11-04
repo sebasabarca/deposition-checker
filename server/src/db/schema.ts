@@ -726,6 +726,8 @@ export const verdicts = pgTable(
   (t) => [
     check("verdicts_valid_check", sql`(${t.status}::text = 'valid') = (${t.parsed} is not null)`),
     check("verdicts_origin_check", sql`${t.origin} in ('model', 'replayed', 'fixture') and (${t.origin} = 'model') = (${t.llmCallId} is not null) and (${t.origin} = 'replayed') = (${t.replayOf} is not null)`),
+    // Not unique: a candidate can hold several verdicts (replays, earlier analyses of the same set).
+    index("verdicts_candidate_idx").on(t.candidateId),
   ],
 );
 

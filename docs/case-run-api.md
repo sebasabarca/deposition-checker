@@ -48,7 +48,7 @@ A mock run (`{mode:"mock"}`) skips confirmation. It goes straight to adjudicatio
 
 **Polling.** Poll `GET /case-runs/:id` every few seconds while the status is `queued`, `retrieving` or `adjudicating`. Stop at any other status. Progress is shown as counts, never a percentage: `packets.adjudicated` of `packets.total`, and `candidates.adjudicated` of `candidates.total`.
 
-**Cancel.** No new packet starts after a cancel; the packet in flight finishes and is kept. A run with no worker attached becomes `cancelled` at once.
+**Cancel.** No new packet starts after a cancel; the packets in flight (several when the worker runs packets in parallel) finish and are kept. A run with no worker attached becomes `cancelled` at once.
 
 ## `CaseRunReport`
 
@@ -123,4 +123,4 @@ The existing endpoints are unchanged:
 
 - An estimate before any run exists. Today the estimate is the `awaiting_confirmation` stage of a live run, because building the pool is too heavy for an API request.
 - Concurrency: packets are read one at a time.
-- Findings filters or paging: the list returns everything, in insertion order.
+- Findings filters or paging: the list returns everything, in retrieval order (the same whatever order parallel packets finished in).

@@ -260,6 +260,13 @@
       "when": 1793772952070,
       "tag": "0036_case_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793782605932,
+      "tag": "0037_verdicts_candidate_idx",
+      "breakpoints": true
     }
   ]
 }

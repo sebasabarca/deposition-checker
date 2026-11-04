@@ -6,8 +6,11 @@ import { anthropicAdjudicator, anthropicDiscovery, type PromptVersion } from "./
 import { anthropicCardModel, anthropicTopicModel } from "./claims";
 import type { Effort } from "./adjudicate/prompt";
 import { connect } from "./db/client";
+import { caseRunSettings, ProviderLimiter } from "./jobs/limiter";
 import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
 import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
+
+const SHUTDOWN_GRACE_MS = 60_000;
 
 async function main() {
   const { db, pool } = connect();
@@ -17,24 +20,37 @@ async function main() {
   await createCaseRunQueues(boss);
   await startIngestWorkers(boss, db);
   const shuttingDown = new AbortController();
+  const draining = new AbortController(); // case runs stop claiming packets; requests in flight may finish
   await startAnalysisWorkers(boss, db, {
-    signal: shuttingDown.signal,
+    signal: draining.signal, // analyses abort at once on shutdown, as before
     liveAdjudicator: (a) => (paidCallsAllowed(process.env) ? anthropicAdjudicator(a.effort as Effort, a.promptVersion as PromptVersion) : null),
     liveCardModels: () => (paidCallsAllowed(process.env) ? { cards: anthropicCardModel(), topics: anthropicTopicModel() } : null),
     discovery: () => (paidCallsAllowed(process.env) ? anthropicDiscovery() : null),
   });
-  // Whole-case runs: packet-v1 only, so the worker never sends an experimental contract.
-  await startCaseRunWorkers(boss, db, pool, {
-    signal: shuttingDown.signal,
-    adjudicator: () => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator()) : null),
-  });
-  console.log(`Worker running (ingest and analysis; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"})`);
+  // Whole-case runs: packet-v1 only, so the worker never sends an experimental contract. Concurrency and the
+  // provider's limits come from the environment (jobs/limiter.ts, caseRunSettings); one limiter serves every run.
+  const caseRuns = caseRunSettings(process.env);
+  await startCaseRunWorkers(
+    boss, db, pool,
+    {
+      signal: shuttingDown.signal,
+      drain: draining.signal,
+      concurrency: caseRuns.packetsPerCase,
+      limiter: new ProviderLimiter(caseRuns.limits),
+      adjudicator: () => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator()) : null),
+    },
+    { maxCases: caseRuns.maxCases },
+  );
+  console.log(`Worker running (ingest, analysis and case runs; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"}; case runs: ${caseRuns.maxCases} at once, ${caseRuns.packetsPerCase} packets each, ${caseRuns.limits.maxInFlight} packets in all)`);
 
   // An unfinished job is redelivered by pg-boss, and stops at once if it was a paid one.
   // A running analysis stops dispatching and aborts what is in flight, then records itself interrupted.
+  // Case runs first get SHUTDOWN_GRACE_MS to finish the requests they have in flight (a request aborted mid-way
+  // may have been billed, and is never retried automatically); then everything in flight is aborted.
   const shutdown = async () => {
-    shuttingDown.abort();
-    await boss.stop({ graceful: true });
+    draining.abort();
+    setTimeout(() => shuttingDown.abort(), SHUTDOWN_GRACE_MS).unref();
+    await boss.stop({ graceful: true, timeout: SHUTDOWN_GRACE_MS + 15_000 });
     await pool.end();
     process.exit(0);
   };

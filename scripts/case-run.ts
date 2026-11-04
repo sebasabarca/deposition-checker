@@ -6,6 +6,8 @@
 //   --live --budget <usd> --execute
 //                              PAID: packet-v1 on Sonnet, under the budget. Needs ANTHROPIC_API_KEY and
 //                              ALLOW_PAID_CALLS=true, and the developer's approval with a stated USD limit.
+//   --concurrency <n>          packets in flight at once (default 1); the provider limits come from the
+//                              environment (PROVIDER_* in jobs/limiter.ts), conservative by default
 //   --resume <runId> [--budget <usd>] [--retry-uncertain] [--execute]
 //                              continues a stopped run; incomplete packets and failures known not to have been
 //                              billed are tried again; --retry-uncertain also retries ones that may have been billed
@@ -21,6 +23,7 @@ import { connect } from "../server/src/db/client";
 import { COST_ASSUMPTIONS, projectCost } from "../server/src/eval/screeningBenchmark";
 import { paidCallsAllowed } from "../server/src/jobs/analysis";
 import { caseRunReport, createCaseRun, fromPacketAdjudicator, resumeCaseRun, runCaseRun } from "../server/src/jobs/caseRun";
+import { caseRunSettings, ProviderLimiter } from "../server/src/jobs/limiter";
 import { buildCasePool } from "../server/src/retrieve/casePool";
 import { INSTRUCTION_TOKENS } from "../server/src/retrieve/grouping";
 import { splitPacketSet } from "../server/src/retrieve/packetSplit";
@@ -28,7 +31,7 @@ import { splitPacketSet } from "../server/src/retrieve/packetSplit";
 const { values } = parseArgs({
   options: {
     "database-env": { type: "string" }, case: { type: "string" }, plan: { type: "boolean" }, mock: { type: "boolean" }, live: { type: "boolean" },
-    budget: { type: "string" }, execute: { type: "boolean" }, "retry-uncertain": { type: "boolean" }, resume: { type: "string" }, minilm: { type: "string", default: "off" },
+    budget: { type: "string" }, execute: { type: "boolean" }, "retry-uncertain": { type: "boolean" }, resume: { type: "string" }, minilm: { type: "string", default: "off" }, concurrency: { type: "string", default: "1" },
   },
 });
 
@@ -40,13 +43,17 @@ async function main() {
   const { db, pool } = connect(url);
   const minilm = values.minilm === "auto" ? "auto" : "off";
   const adjudicator = () => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator()) : null);
+  const concurrency = Number(values.concurrency);
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency takes a whole number of at least 1.");
+  const limiter = new ProviderLimiter({ ...caseRunSettings(process.env).limits, maxInFlight: concurrency });
+  const execution = { adjudicator, minilm, concurrency, limiter } as const;
   try {
     if (values.resume) {
       const id = Number(values.resume);
       const budgetUsd = values.budget ? Number(values.budget) : undefined;
       console.log(`resume: ${await resumeCaseRun(db, id, { budgetUsd, retryUncertain: values["retry-uncertain"] === true })}`);
       if (!values.execute) return console.log("Queued only; add --execute to run it here.");
-      console.log(`run ${id}: ${await runCaseRun(db, pool, id, { adjudicator, minilm })}`);
+      console.log(`run ${id}: ${await runCaseRun(db, pool, id, execution)}`);
       return console.log(JSON.stringify(await caseRunReport(db, id), null, 2));
     }
     const caseId = Number(values.case);
@@ -67,7 +74,7 @@ async function main() {
     if (values.live && (!values.execute || !values.budget)) throw new Error("A live run needs --budget <usd> and --execute.");
     if (values.live && !paidCallsAllowed(process.env)) throw new Error("Paid calls are off (ANTHROPIC_API_KEY and ALLOW_PAID_CALLS=true are both required).");
     const run = await createCaseRun(db, caseId, { mode: values.live ? "live" : "mock", budgetUsd: Number(values.budget ?? 0), confirmed: values.live === true });
-    console.log(`case run ${run.id}: ${await runCaseRun(db, pool, run.id, { adjudicator, minilm })}`);
+    console.log(`case run ${run.id}: ${await runCaseRun(db, pool, run.id, execution)}`);
     console.log(JSON.stringify(await caseRunReport(db, run.id), null, 2));
   } finally {
     await pool.end();

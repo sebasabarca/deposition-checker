@@ -81,8 +81,9 @@ export async function startAnalysisWorkers(boss: PgBoss, db: Database, deps: Ana
 
 // The case-run workers. A run that stops for any reason records it on its row; only a thrown error
 // (database, bug) is retried by pg-boss and, after the last attempt, marked failed here.
-export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool, deps: CaseRunDeps, { pollingIntervalSeconds = 2 } = {}): Promise<void> {
-  await boss.work(CASE_RUN_QUEUE, { pollingIntervalSeconds }, async (jobs: Job<unknown>[]) => {
+// maxCases runs execute at once in this process; their packets share deps.limiter (jobs/limiter.ts).
+export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool, deps: CaseRunDeps, { pollingIntervalSeconds = 2, maxCases = 1 } = {}): Promise<void> {
+  await boss.work(CASE_RUN_QUEUE, { pollingIntervalSeconds, localConcurrency: maxCases }, async (jobs: Job<unknown>[]) => {
     for (const job of jobs) {
       const { caseRunId } = parseCaseRunJob(job.data);
       console.log(`case run ${caseRunId}: ${await runCaseRun(db, pool, caseRunId, deps)}`);

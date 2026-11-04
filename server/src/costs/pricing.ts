@@ -26,6 +26,8 @@ export type PriceTier = { maxPromptTokens: number | null; rates: Rates };
 
 export const PRICES: Record<string, PriceTier[]> = {
   "claude-sonnet-5-5": [
+    // Cache reads $0.10 (0.05x input), from the live pricing page; a cached reference that says $0.20 is stale
+    // (docs/agent-log.md, October 28).
     { maxPromptTokens: null, rates: { input: 2, cacheWrite5m: 2.5, cacheWrite1h: 4, cacheRead: 0.1, output: 10 } },
   ],
   "claude-fable-5-1": [

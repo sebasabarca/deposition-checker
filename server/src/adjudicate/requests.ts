@@ -14,13 +14,27 @@ type Status = (typeof adjudicationRequests.$inferSelect)["status"];
 
 export const DEFAULT_RETRY_AFTER_MS = 30_000;
 
-// What kind of failure this is, and how long the API asked us to wait. Pure.
-export function classifyFailure(error: unknown): { kind: "rate_limited" | "overloaded" | "aborted" | "api_error" | "network"; status: Status; retryAfterMs: number | null; billable: boolean } {
+const RESET_HEADERS = ["requests", "input-tokens", "output-tokens", "tokens"].map((k) => [`anthropic-ratelimit-${k}-remaining`, `anthropic-ratelimit-${k}-reset`] as const);
+
+// How long the API asked us to wait: retry-after (seconds), else the latest RFC 3339 reset of a limit with
+// nothing remaining, else null.
+export function retryAfterMsOf(headers: { get(name: string): string | null } | undefined, now = Date.now()): number | null {
+  const seconds = Number(headers?.get("retry-after"));
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  const resets = RESET_HEADERS.filter(([remaining]) => headers?.get(remaining) === "0").map(([, reset]) => Date.parse(headers?.get(reset) ?? "") - now).filter((ms) => ms > 0);
+  return resets.length ? Math.max(...resets) : null;
+}
+
+// What kind of failure this is, and how long the API asked us to wait. Pure, apart from `now`.
+// A 429 for the organization's monthly spend cap is not a rate limit: retrying fails until the month ends.
+export function classifyFailure(error: unknown, now = Date.now()): { kind: "rate_limited" | "overloaded" | "spend_limit" | "aborted" | "api_error" | "network"; status: Status; retryAfterMs: number | null; billable: boolean } {
   const billable = !failureIsUnbilled(error);
   if (error instanceof Anthropic.APIUserAbortError) return { kind: "aborted", status: "aborted", retryAfterMs: null, billable };
+  if (error instanceof Anthropic.APIError && error.status === 429 && (error.error as { error?: { details?: { error_code?: string } } } | undefined)?.error?.details?.error_code === "enforced_spend_limit_reached") {
+    return { kind: "spend_limit", status: "failed", retryAfterMs: null, billable };
+  }
   if (error instanceof Anthropic.APIError && (error.status === 429 || error.status === 529)) {
-    const seconds = Number(error.headers?.get?.("retry-after"));
-    return { kind: error.status === 429 ? "rate_limited" : "overloaded", status: "rate_limited", retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_RETRY_AFTER_MS, billable };
+    return { kind: error.status === 429 ? "rate_limited" : "overloaded", status: "rate_limited", retryAfterMs: retryAfterMsOf(error.headers, now) ?? DEFAULT_RETRY_AFTER_MS, billable };
   }
   if (error instanceof Anthropic.APIConnectionError) return { kind: "network", status: "failed", retryAfterMs: null, billable };
   return { kind: "api_error", status: "failed", retryAfterMs: null, billable };

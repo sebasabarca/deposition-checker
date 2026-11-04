@@ -1,0 +1,1 @@
+CREATE INDEX "verdicts_candidate_idx" ON "verdicts" USING btree ("candidate_id");
