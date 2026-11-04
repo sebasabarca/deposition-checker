@@ -11,6 +11,7 @@ import type { Pool } from "pg";
 import { buildUnits, compatibility, loadDocument, type Span } from "../claims/facts";
 import { sourceHashOf } from "../claims/facts/context";
 import type { Database } from "../db/client";
+import { classifyGroups, type Eligibility } from "../evidence/eligibility";
 import { depositions } from "../db/schema";
 import { anchorNeighbours, anchors, denseNeighbours, nameVocabulary, fuse, lsa, pairRank, queryRank, rankPairs, sparseNeighbours, tfidf, tokens, type Item, type Neighbour, type Pair } from "../retrieve/independent";
 import { COURTROOM_WORDS } from "../retrieve/procedural";
@@ -20,31 +21,36 @@ export const NEIGHBOURS_PER_ITEM = 100; // per path, before pairs are deduplicat
 export const BUDGETS = [20, 50, 100, 250, 1000] as const;
 const FTS_TERMS = 12;
 
-export type ProbeItem = Item & { document: string; documentId: number; groupId: number; positions: Set<string>; text: string; orderedPositions: string[]; sourceHash: string };
+export type ProbeItem = Item & { document: string; documentId: number; groupId: number; positions: Set<string>; text: string; orderedPositions: string[]; sourceHash: string; eligibility: Eligibility };
 export type FactSignal = { sha: string; position: string; factualDimension: string | null; factualQuestion: string | null; subject: string | null; entities: string[]; object: string | null; polarity: string | null };
 
 const join = (spans: readonly Span[]) => spans.map((s) => s.text).join(" ");
 
-// One item per logical answer group with testimony: its question, its answer and the lines before it.
-export async function loadItems(db: Database, l: LoadedFixtures): Promise<{ items: ProbeItem[]; shaOf: Map<string, string> }> {
-  const items: ProbeItem[] = [];
+// One item per logical answer group: its question, its answer and the lines before it, with its evidence
+// class (evidence/eligibility.ts). Only eligible groups (which always hold testimony) are items, with ids
+// contiguous as the paths need; every other group, including those with no answer at all, is returned in
+// `excluded` with its class and reason, never dropped.
+export async function loadItems(db: Database, l: LoadedFixtures): Promise<{ items: ProbeItem[]; excluded: ProbeItem[]; shaOf: Map<string, string> }> {
+  const all: ProbeItem[] = [];
   const shaOf = new Map<string, string>();
   for (const [key, id] of l.docId) {
     const [d] = await db.select({ session: depositions.sessionId, sha: depositions.fileSha256 }).from(depositions).where(eq(depositions.id, id));
     shaOf.set(key, d.sha);
     const units = buildUnits(await loadDocument(db, id));
-    for (const g of [...new Set(units.map((u) => u.groupId))]) {
-      const parts = units.filter((u) => u.groupId === g);
-      if (!parts.some((u) => u.testimony)) continue;
-      const spans = [...new Map(parts.flatMap((u) => u.spans).map((s) => [s.sourceSpanId, s])).values()];
+    const groups = [...new Set(units.map((u) => u.groupId))].map((g) => ({ g, parts: units.filter((u) => u.groupId === g) }));
+    const spansOf = groups.map(({ parts }) => [...new Map(parts.flatMap((u) => u.spans).map((s) => [s.sourceSpanId, s])).values()]);
+    const classes = classifyGroups(spansOf);
+    groups.forEach(({ g, parts }, n) => {
+      const spans = spansOf[n];
       const question = join(spans.filter((s) => s.speaker === "attorney"));
       const answer = join(spans.filter((s) => s.speaker === "witness" || s.speaker === "unknown"));
       const context = join(parts[0].context);
       const ordered = [...new Set(spans.map((s) => s.position))];
-      items.push({ id: items.length, session: d.session, question, answer, context, document: key, documentId: id, groupId: g, positions: new Set(ordered), orderedPositions: ordered, sourceHash: sourceHashOf(spans), text: `${question} ${answer}` });
-    }
+      all.push({ id: -1, session: d.session, question, answer, context, document: key, documentId: id, groupId: g, positions: new Set(ordered), orderedPositions: ordered, sourceHash: sourceHashOf(spans), text: `${question} ${answer}`, eligibility: classes[n] });
+    });
   }
-  return { items, shaOf };
+  const items = all.filter((i) => i.eligibility.eligible).map((i, n) => ({ ...i, id: n }));
+  return { items, excluded: all.filter((i) => !i.eligibility.eligible), shaOf };
 }
 
 const position = (p: string) => { const [a, b] = p.split(":").map(Number); return a * 1e6 + b; };

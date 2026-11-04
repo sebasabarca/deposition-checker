@@ -2,7 +2,9 @@
 // the fixture definition into TEST_DATABASE_URL (which it wipes), builds the answer-group items, runs the
 // baseline paths (full text, LSA, question-centered, anchors) to `--depth`, and writes items, the
 // labelled pairs resolved to items, each path's full ranking from every labelled side, the baseline pool
-// (each item's fused top `--per-item`) and a manifest with every file's SHA-256. No model or API call.
+// (each item's fused top `--per-item`) and a manifest with every file's SHA-256. Only eligible answer groups
+// (server/src/evidence/eligibility.ts) are items; the others go to excluded-items.json with their class and
+// reason (errata also to errata.json), and any labelled side's group that is excluded is reported. No model or API call.
 //
 //   npx tsx scripts/retrieval-freeze.ts --fixture data/eval/evidence-fixtures-v1.json --out data/raw/retrieval/frozen-v1 [--depth 300] [--per-item 10]
 //
@@ -13,6 +15,7 @@ import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { EVIDENCE_CLASSES } from "../server/src/evidence/eligibility";
 import { loadEvidenceFixtures, missingFixtureFiles, openEvaluationDatabase, readEvidenceFixture } from "../server/src/eval/evidenceFixtures";
 import { fullText, itemsOf, loadItems, type ProbeItem } from "../server/src/eval/retrievalProbe";
 import { buildPool, sha256File, writeJson, type FrozenBenchmark, type FrozenItem, type PathNeighbours, type PathRankings, type Ranked } from "../server/src/retrieve/frozen";
@@ -31,10 +34,16 @@ async function main() {
   const { db, pool } = await openEvaluationDatabase(process.env.TEST_DATABASE_URL);
   try {
     const l = await loadEvidenceFixtures(db, fixture);
-    const { items } = await loadItems(db, l);
+    const { items, excluded } = await loadItems(db, l);
     const keyOf = (i: ProbeItem) => `${i.document}#${i.orderedPositions[0]}-${i.orderedPositions[i.orderedPositions.length - 1]}`;
-    const frozenItems: FrozenItem[] = items.map((i) => ({ key: keyOf(i), document: i.document, witness: fixture.documents[i.document].witness, session: fixture.documents[i.document].session, groupId: i.groupId, positions: i.orderedPositions, sourceHash: i.sourceHash, question: i.question, answer: i.answer, context: i.context }));
-    if (new Set(frozenItems.map((i) => i.key)).size !== frozenItems.length) throw new Error("item keys are not unique");
+    const frozen = (i: ProbeItem): FrozenItem => ({ key: keyOf(i), document: i.document, witness: fixture.documents[i.document].witness, session: fixture.documents[i.document].session, groupId: i.groupId, positions: i.orderedPositions, sourceHash: i.sourceHash, question: i.question, answer: i.answer, context: i.context, eligibility: i.eligibility });
+    const frozenItems = items.map(frozen);
+    const excludedItems = excluded.map(frozen);
+    if (new Set([...frozenItems, ...excludedItems].map((i) => i.key)).size !== frozenItems.length + excludedItems.length) throw new Error("item keys are not unique");
+    // A labelled side's answer group with testimony that is not eligible is reported, never silently lost
+    // (groups with no answer at all were never items).
+    const excludedSides = fixture.items.flatMap((x) => x.sides.flatMap((s, n) => [...itemsOf(excluded.map((e, k) => ({ ...e, id: k })), s)].filter((k) => excluded[k].answer.trim()).map((k) => ({ pair: x.id, side: n + 1, key: excludedItems[k].key, class: excluded[k].eligibility.class }))));
+    if (excludedSides.length) console.warn(`labelled side groups excluded: ${JSON.stringify(excludedSides)}`);
     const pairs = fixture.items.map((x) => ({ id: x.id, category: x.category, controlType: x.controlType, source: values.fixture!, left: [...itemsOf(items, x.sides[0])].map((i) => frozenItems[i].key), right: [...itemsOf(items, x.sides[1])].map((i) => frozenItems[i].key) }));
     for (const p of pairs) if (!p.left.length || !p.right.length) throw new Error(`pair ${p.id} has a side with no item`);
     const benchmark: FrozenBenchmark = { corpus: path.basename(values.fixture), pairs };
@@ -69,14 +78,17 @@ async function main() {
     timings.pools = Math.round(performance.now() - t0);
 
     mkdirSync(values.out, { recursive: true });
-    const files: Record<string, unknown> = { "items.json": frozenItems, "benchmark.json": benchmark, "rankings.json": results.map((r) => r.rankings), "pool-baseline-top5.json": pool5, [`pool-baseline-top${perItem}.json`]: poolN };
+    const files: Record<string, unknown> = { "items.json": frozenItems, "excluded-items.json": excludedItems, "errata.json": excludedItems.filter((i) => i.eligibility!.class === "errata_or_correction"), "benchmark.json": benchmark, "rankings.json": results.map((r) => r.rankings), "pool-baseline-top5.json": pool5, [`pool-baseline-top${perItem}.json`]: poolN };
     for (const r of results) files[`neighbours-${r.neighbours.path}.json`] = r.neighbours;
     for (const [name, value] of Object.entries(files)) writeJson(path.join(values.out, name), value);
     const manifest = {
       frozenOn: new Date().toISOString(), gitHead: execSync("git rev-parse HEAD").toString().trim(), gitClean: execSync("git status --porcelain -- server scripts").toString().trim() === "", fixture: values.fixture, fixtureSha256: sha256File(values.fixture),
       documents: Object.fromEntries(Object.entries(fixture.documents).map(([k, d]) => [k, { sha256: d.sha256, witness: d.witness, session: d.session }])),
       settings: { depth, perItem, lsaDims: 150, ftsTerms: 12, fusion: "reciprocal rank, k = 60, per query", contextWords: 60 },
-      counts: { items: n, pairs: pairs.length, sideItems: sides.size, poolTop5: pool5.candidates.length, [`poolTop${perItem}`]: poolN.candidates.length },
+      counts: {
+        items: n, excluded: excludedItems.length, excludedSides,
+        byClass: Object.fromEntries(EVIDENCE_CLASSES.map((c) => [c, [...frozenItems, ...excludedItems].filter((i) => i.eligibility!.class === c).length])),
+        pairs: pairs.length, sideItems: sides.size, poolTop5: pool5.candidates.length, [`poolTop${perItem}`]: poolN.candidates.length },
       timingsMs: timings,
       files: Object.fromEntries(Object.keys(files).map((name) => [name, sha256File(path.join(values.out!, name))])),
     };

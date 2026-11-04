@@ -5,3 +5,4 @@ export { formatRef, isCitable, REFERENCE_SCHEMES, schemeOf, sourceLineId, type R
 export { evidenceFieldsOf, evidenceKeyOf, SPEAKER_STATUSES, speakerStatusOf, textHashOf, type MemberLine, type SpeakerStatus } from "./exchange";
 export { answerGroup, createSession, evidenceCoverage, excludeDocument, getEvidence, indexEvidence, nextSessionPart, searchEvidence, sourceContext, type EvidenceExchange, type SearchFilters, type SourceRef } from "./store";
 export { attributionReport, correctInPlace, parserAudit, reprocessDocument, reprocessImpact, storedAttribution, type AttributionCause, type AttributionReport } from "./audit";
+export { classifyGroups, ELIGIBLE_CLASSES, EVIDENCE_CLASSES, type Eligibility, type EligibilitySpan, type EvidenceClass } from "./eligibility";

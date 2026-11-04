@@ -3,7 +3,9 @@
 // Pure apart from the JSON helpers at the end. Item keys are stable across loads of the same files:
 // the document's fixture key and the answer group's first and last stored positions.
 //
-//   items.json        FrozenItem[]: every answer group with testimony, with its own words and context
+//   items.json        FrozenItem[]: every eligible answer group, with its own words, context and evidence class
+//   excluded-items.json  FrozenItem[]: every ineligible answer group, with its class and reason (never dropped)
+//   errata.json       FrozenItem[]: the excluded groups classed errata_or_correction, kept for review
 //   benchmark.json    FrozenBenchmark: the labelled pairs, each side resolved to item keys
 //   rankings.json     PathRankings[]: each path's full ranking from every labelled side's items
 //   pool-<name>.json  CandidatePool: candidate pairs, each with every path's rank in both directions
@@ -23,6 +25,7 @@ export type FrozenItem = {
   question: string; // attorney spans
   answer: string; // witness and unidentified-speaker spans
   context: string; // the group before it, as the extraction context shows it
+  eligibility?: { class: string; eligible: boolean; reason: string }; // evidence/eligibility.ts; absent in corpora frozen before it
 };
 
 export type FrozenPair = { id: string; category: string; controlType?: string; source: string; left: string[]; right: string[] };
