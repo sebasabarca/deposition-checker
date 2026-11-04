@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CrossLabelFile } from "../../server/src/eval/crossLabels";
-import { checkDuplicates, checkItemText, checkManifest, checkSegmentation, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, heldOutPairs, kindOf, locatePhrase, PacketSetSchema, evaluatePackets, poolBurden, poolContribution, rankPairs, targetClassOf, unlabelledSample } from "../../server/src/eval/retrievalEval";
+import { caseOfDocument, diffCorpora, withinCase, checkDuplicates, checkItemText, checkManifest, checkSegmentation, checkSessions, checkSides, collectPaths, evaluatePool, fixtureFromCrossLabels, heldOutPairs, kindOf, locatePhrase, PacketSetSchema, evaluatePackets, poolBurden, poolContribution, rankPairs, targetClassOf, unlabelledSample } from "../../server/src/eval/retrievalEval";
 import { buildPool, type FrozenItem, type FrozenPair, type PathNeighbours, type PathRankings, type Ranked } from "../../server/src/retrieve/frozen";
 
 // Six items in three sessions: a1 a2 (session A), b1 b2 (B), c1 c2 (C).
@@ -37,6 +37,27 @@ describe("retrieval evaluator", () => {
     expect(b.targetsInOrder).toEqual([4]);
     expect(b.bySession.map((r) => [r.key, r.candidates, r.counts.target, r.counts.control])).toEqual([["A x C", 2, [0, 0], [1, 1]], ["A x B", 1, [1, 1], [0, 0]], ["B x C", 1, [0, 0], [0, 0]]]);
     expect(report.classes).toEqual({ unclassified: [1, 1] });
+  });
+
+  it("restricts a pool to one case per candidate, keeping its order", () => {
+    const caseOf = caseOfDocument(/^(a|b)/); // documents a and b are case "a"/"b"; c is its own
+    expect(caseOf("abc")).toBe("a");
+    expect(caseOf("c")).toBe("c");
+    const one = caseOfDocument(/^[ab]/); // a and b share no case either: whole match differs
+    expect(withinCase(ORDERED, ITEM_MAP, one).candidates).toEqual([]);
+    const ab = caseOfDocument(/^(?:a|b)()/); // empty first group: a and b are one case, c its own
+    expect(withinCase(ORDERED, ITEM_MAP, ab).candidates.map((c) => `${c.a}${c.b}`)).toEqual(["a1b2"]);
+  });
+
+  it("diffs two corpus versions item by item and maps labelled sides", () => {
+    const before = [ITEMS[0], ITEMS[1], { ...ITEMS[2], answer: "no" }, item("whole", "C", ["0:1", "0:2"])];
+    const excluded = { ...item("c1", "C", ["0:1"]), eligibility: { class: "cover_or_signature", eligible: false, reason: "" } };
+    const after = [ITEMS[0], ITEMS[2], item("c2", "C", ["0:2"])];
+    const d = diffCorpora(before, after, [excluded], [TARGET, { ...CONTROL, right: ["whole"] }], [TARGET, { ...CONTROL, right: ["c2"] }, { ...TARGET, id: "X" }]);
+    expect(d.totals).toEqual({ before: 4, after: 3, same: 1, changed: 1, removed: 2, added: 1, excludedAfter: 1 });
+    expect(d.removedFate).toEqual({ "no longer read": 1, "re-segmented, partly excluded": 1 });
+    expect(d.pairs.map((p) => p.status)).toEqual(["unchanged", "remapped", "added"]);
+    expect(d.pairs[1].right).toEqual([["whole"], ["c2"]]);
   });
 
   it("evaluates a packet set: sides together, listed pairs, sizes, tokens and problems", () => {

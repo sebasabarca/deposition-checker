@@ -263,6 +263,71 @@ export function poolBurden(pool: CandidatePool, report: PoolReport, pairs: reado
   };
 }
 
+// ---------- Within-case evaluation ----------
+
+// A case for each document: the pattern's first capture group, else its whole match, else the document itself.
+// An evaluation option only (a corpus holding several unrelated cases), never a retrieval change.
+export const caseOfDocument = (pattern: RegExp) => (document: string) => { const m = document.match(pattern); return m ? (m[1] ?? m[0]) : document; };
+
+// The pool's candidates whose two items are of one case, in the pool's order.
+export function withinCase(pool: CandidatePool, items: ReadonlyMap<string, FrozenItem>, caseOf: (document: string) => string): CandidatePool {
+  const c = (k: string) => { const i = items.get(k); return i ? caseOf(i.document) : `?${k}`; };
+  return { ...pool, name: `${pool.name} [within-case]`, candidates: pool.candidates.filter((x) => c(x.a) === c(x.b)) };
+}
+
+// ---------- Corpus versions ----------
+
+export type DocumentDiff = { document: string; before: number; after: number; same: number; changed: number; removed: number; added: number; excludedAfter: number };
+export type RemovedFate = Record<string, number>; // "excluded: <class>", "re-segmented", "no longer read"
+export type PairMapping = {
+  id: string; status: "unchanged" | "remapped" | "added" | "removed"; categoryBefore: string | null; categoryAfter: string | null;
+  left: [before: string[], after: string[]]; right: [before: string[], after: string[]];
+};
+export type CorpusDiff = { documentsAdded: string[]; documentsRemoved: string[]; documents: DocumentDiff[]; totals: Omit<DocumentDiff, "document">; removedFate: RemovedFate; pairs: PairMapping[] };
+
+const sameItem = (a: FrozenItem, b: FrozenItem) => a.sourceHash === b.sourceHash && a.question === b.question && a.answer === b.answer && a.positions.join() === b.positions.join();
+
+// Two versions of a corpus, item by item (by key: same, changed text or span, removed, added) and each removed
+// item's fate (its lines now in an excluded group, in other items, or not read at all); and every labelled pair's
+// side mapping by id. Pairs are matched by id; a category change is shown, never hidden.
+export function diffCorpora(before: readonly FrozenItem[], after: readonly FrozenItem[], excludedAfter: readonly FrozenItem[], pairsBefore: readonly FrozenPair[], pairsAfter: readonly FrozenPair[]): CorpusDiff {
+  const B = new Map(before.map((i) => [i.key, i]));
+  const A = new Map(after.map((i) => [i.key, i]));
+  const docs = [...new Set([...before, ...after, ...excludedAfter].map((i) => i.document))].sort();
+  const where = new Map<string, FrozenItem>();
+  for (const i of [...after, ...excludedAfter]) for (const p of i.positions) where.set(`${i.document}@${p}`, i);
+  const removedFate: RemovedFate = {};
+  const documents = docs.map((document) => {
+    const b = before.filter((i) => i.document === document);
+    const a = after.filter((i) => i.document === document);
+    const d: DocumentDiff = { document, before: b.length, after: a.length, same: 0, changed: 0, removed: 0, added: a.filter((i) => !B.has(i.key)).length, excludedAfter: excludedAfter.filter((i) => i.document === document).length };
+    for (const i of b) {
+      const now = A.get(i.key);
+      if (now) { if (sameItem(i, now)) d.same++; else d.changed++; continue; }
+      d.removed++;
+      const targets = i.positions.map((p) => where.get(`${document}@${p}`)).filter((x): x is FrozenItem => !!x);
+      // Its lines now in eligible items (re-segmented, maybe partly excluded), only in excluded groups, or nowhere.
+      const ex = targets.find((t) => t.eligibility && !t.eligibility.eligible);
+      const fate = targets.some((t) => A.has(t.key)) ? (ex ? "re-segmented, partly excluded" : "re-segmented") : ex ? `excluded: ${ex.eligibility!.class}` : "no longer read";
+      removedFate[fate] = (removedFate[fate] ?? 0) + 1;
+    }
+    return d;
+  });
+  const totals = documents.reduce((t, d) => ({ before: t.before + d.before, after: t.after + d.after, same: t.same + d.same, changed: t.changed + d.changed, removed: t.removed + d.removed, added: t.added + d.added, excludedAfter: t.excludedAfter + d.excludedAfter }), { before: 0, after: 0, same: 0, changed: 0, removed: 0, added: 0, excludedAfter: 0 });
+  const PB = new Map(pairsBefore.map((p) => [p.id, p]));
+  const PA = new Map(pairsAfter.map((p) => [p.id, p]));
+  const ids = [...new Set([...PB.keys(), ...PA.keys()])];
+  const sorted = (xs?: readonly string[]) => [...(xs ?? [])].sort();
+  const pairs = ids.map((id): PairMapping => {
+    const [b, a] = [PB.get(id), PA.get(id)];
+    const left: [string[], string[]] = [sorted(b?.left), sorted(a?.left)];
+    const right: [string[], string[]] = [sorted(b?.right), sorted(a?.right)];
+    const status = !b ? "added" : !a ? "removed" : left[0].join() === left[1].join() && right[0].join() === right[1].join() ? "unchanged" : "remapped";
+    return { id, status, categoryBefore: b?.category ?? null, categoryAfter: a?.category ?? null, left, right };
+  });
+  return { documentsAdded: docs.filter((d) => !before.some((i) => i.document === d)), documentsRemoved: docs.filter((d) => !after.some((i) => i.document === d) && !excludedAfter.some((i) => i.document === d)), documents, totals, removedFate, pairs };
+}
+
 // ---------- Evidence packets (issue grouping) ----------
 
 export const EvidencePacketSchema = z.object({ id: z.string().min(1), issue: z.string(), items: z.array(z.string()), pairs: z.array(z.tuple([z.string(), z.string()])), inputTokens: z.number().nonnegative() });

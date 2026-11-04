@@ -10,7 +10,15 @@
 //       --overhead: fixed input tokens per adjudication call in the token projections (default CALL_OVERHEAD_TOKENS)
 //     Each pool (in its array order, so a reranked pool is scored as reordered) also gets the review burden to reach
 //     each labelled pair, projected pair-by-pair tokens, and coverage by witness pair and session pair.
+//       --case-pattern: a regex whose first group (or match) is each document's case; every pool is also scored
+//         restricted to candidates within one case ("[within-case]"), as an evaluation option, not a retrieval change
+//       --group: also groups every pool (and within-case pool) into packets with Agent 5's default grouping
+//         (server/src/retrieve/grouping.ts, DEFAULT_GROUPING, unchanged) and scores them like --packets
 //       --out: writes report.json and the unlabelled sample (it quotes testimony, so it must be under data/raw/)
+//   npx tsx scripts/retrieval-eval.ts --compare <old frozen dir> --frozen <new frozen dir> [--benchmark-before <file>...]
+//     [--benchmark <file>...] [--out <dir under data/raw>] [--json]
+//       two corpus versions: items same/changed/removed/added per document, each removed item's fate, and every
+//       labelled pair's side mapping old -> new (benchmark.json plus the extra benchmark files of each version)
 //   npx tsx scripts/retrieval-eval.ts --build-heldout <cross labels> --frozen <dir> --write <file>
 //       line-anchored cross labels resolved to the corpus's items, minus the corpus's own benchmark pairs
 //   npx tsx scripts/retrieval-eval.ts --build-fixture <cross labels> --root <dir> --write <file>
@@ -22,18 +30,20 @@ import { parseArgs } from "node:util";
 import { readCrossLabelFile } from "../server/src/eval/crossLabels";
 import type { EvidenceFixture } from "../server/src/eval/evidenceFixtures";
 import {
-  CALL_OVERHEAD_TOKENS, checkDuplicates, checkItemText, checkSegmentation, checkManifest, checkSessions, checkSides, collectPaths, evaluatePackets, evaluatePool, fixtureFromCrossLabels, fusionDepthOf, heldOutPairs, KINDS, PacketSetSchema, poolBurden, poolContribution, rankPairs, TARGET_CLASSES, tokenAssumption, unlabelledSample,
+  CALL_OVERHEAD_TOKENS, caseOfDocument, checkDuplicates, diffCorpora, withinCase, checkItemText, checkSegmentation, checkManifest, checkSessions, checkSides, collectPaths, evaluatePackets, evaluatePool, fixtureFromCrossLabels, fusionDepthOf, heldOutPairs, KINDS, PacketSetSchema, poolBurden, poolContribution, rankPairs, TARGET_CLASSES, tokenAssumption, unlabelledSample,
   type Counted, type PairKind, type PairRanks, type Problem, type RankCell, type StoredLine,
 } from "../server/src/eval/retrievalEval";
 import { schemeOf } from "../server/src/evidence/references";
 import { readStoredExport } from "../server/src/eval/storedExport";
 import { readDeposition } from "../server/src/ingest";
+import { groupPool } from "../server/src/retrieve/grouping";
 import { readJson, sha256File, writeJson, type CandidatePool, type FrozenBenchmark, type FrozenItem, type FrozenPair, type PathNeighbours, type PathRankings } from "../server/src/retrieve/frozen";
 
 const { values } = parseArgs({
   options: {
     frozen: { type: "string" }, paths: { type: "string", multiple: true }, pools: { type: "string", multiple: true }, benchmark: { type: "string", multiple: true },
-    packets: { type: "string", multiple: true }, overhead: { type: "string" }, "no-frozen-pools": { type: "boolean" }, out: { type: "string" }, json: { type: "boolean" },
+    packets: { type: "string", multiple: true }, overhead: { type: "string" }, "no-frozen-pools": { type: "boolean" }, "case-pattern": { type: "string" }, group: { type: "boolean" },
+    compare: { type: "string" }, "benchmark-before": { type: "string", multiple: true }, out: { type: "string" }, json: { type: "boolean" },
     "build-heldout": { type: "string" }, "build-fixture": { type: "string" }, root: { type: "string" }, write: { type: "string" },
   },
 });
@@ -135,8 +145,9 @@ async function evaluate() {
   const tRank = performance.now();
 
   const poolFiles = [...(values["no-frozen-pools"] ? [] : files.filter((f) => f.startsWith("pool-")).map((f) => path.join(dir, f))), ...(values.pools ?? [])];
-  const pools = poolFiles.map((f) => {
-    const pool = readJson<CandidatePool>(f);
+  const caseOf = values["case-pattern"] ? caseOfDocument(new RegExp(values["case-pattern"])) : null;
+  const loaded = poolFiles.flatMap((f) => { const pool = readJson<CandidatePool>(f); return caseOf ? [{ f, pool }, { f: `${f} [within-case]`, pool: withinCase(pool, itemMap, caseOf) }] : [{ f, pool }]; });
+  const pools = loaded.map(({ f, pool }) => {
     const report = evaluatePool(pool, allPairs, sessionOf);
     return { file: f, report, burden: poolBurden(pool, report, allPairs, itemMap, overhead), contribution: poolContribution(pool, paths, allPairs), sample: unlabelledSample(pool, allPairs, itemMap) };
   });
@@ -145,6 +156,11 @@ async function evaluate() {
     if (!parsed.success) throw new Error(`${f} is not a PacketSet: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
     return { file: f, report: evaluatePackets(parsed.data, allPairs, itemMap, overhead) };
   });
+  if (values.group) for (const { f, pool } of loaded) {
+    const set = groupPool(pool, items, `${pool.name} grouped`, f);
+    if (values.out) { mkdirSync(values.out, { recursive: true }); writeJson(path.join(values.out, `packets-${path.basename(f, ".json").replace(".json [within-case]", "-within-case")}.json`), set); }
+    packetSets.push({ file: `${f} (grouped, default settings)`, report: evaluatePackets(set, allPairs, itemMap, overhead) });
+  }
   const tPools = performance.now();
   for (const p of pools) if (!p.report.crossSession) problems.push({ check: "sessions", detail: `${p.file}: a candidate joins two items of one session` });
 
@@ -225,5 +241,25 @@ async function evaluate() {
   console.log(out.join("\n"));
 }
 
-const main = values["build-heldout"] ? buildHeldout : values["build-fixture"] ? buildFixture : values.frozen ? evaluate : async () => { throw new Error("needs --frozen <dir>, --build-heldout or --build-fixture"); };
+async function compare() {
+  const [before, after] = [values.compare!, values.frozen!];
+  if (values.out && !underRaw(values.out)) throw new Error("--out must be under data/raw/");
+  const bench = (dir: string, extra: readonly string[] = []) => [readJson<FrozenBenchmark>(path.join(dir, "benchmark.json")), ...extra.map((f) => readJson<FrozenBenchmark>(f))].flatMap((b) => b.pairs);
+  const excludedFile = path.join(after, "excluded-items.json");
+  const d = diffCorpora(readJson<FrozenItem[]>(path.join(before, "items.json")), readJson<FrozenItem[]>(path.join(after, "items.json")), existsSync(excludedFile) ? readJson<FrozenItem[]>(excludedFile) : [], bench(before, values["benchmark-before"]), bench(after, values.benchmark));
+  const report = { before, after, ...d };
+  if (values.out) { mkdirSync(values.out, { recursive: true }); writeJson(path.join(values.out, "corpus-diff.json"), report); }
+  if (values.json) { console.log(JSON.stringify(report, null, 2)); return; }
+  const t = d.totals;
+  const out = [`${before} -> ${after}`, `items: ${t.before} -> ${t.after}; same ${t.same}, changed ${t.changed}, removed ${t.removed}, added ${t.added}; excluded groups now ${t.excludedAfter}`];
+  out.push(`documents added: ${d.documentsAdded.join(", ") || "none"}; removed: ${d.documentsRemoved.join(", ") || "none"}`);
+  out.push(`removed items' fate: ${Object.entries(d.removedFate).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`);
+  for (const x of d.documents) out.push(`  ${x.document.padEnd(28)} ${String(x.before).padStart(5)} -> ${String(x.after).padStart(5)}  same ${x.same}, changed ${x.changed}, removed ${x.removed}, added ${x.added}, excluded ${x.excludedAfter}`);
+  out.push("labelled pairs (left / right item keys, old -> new):");
+  const keys = (b: string[], a: string[]) => (b.join() === a.join() ? `${a.length} same` : `[${b.join(" ")}] -> [${a.join(" ")}]`);
+  for (const p of d.pairs) out.push(`  ${p.id.padEnd(9)} ${p.status.padEnd(9)} ${p.categoryBefore === p.categoryAfter ? p.categoryAfter : `${p.categoryBefore} -> ${p.categoryAfter}`}${p.status === "remapped" ? `; left ${keys(...p.left)}; right ${keys(...p.right)}` : ""}`);
+  console.log(out.join("\n"));
+}
+
+const main = values.compare ? compare : values["build-heldout"] ? buildHeldout : values["build-fixture"] ? buildFixture : values.frozen ? evaluate : async () => { throw new Error("needs --frozen <dir>, --build-heldout or --build-fixture"); };
 main().catch((e) => { console.error(e instanceof Error ? e.message : e); process.exitCode = 1; });

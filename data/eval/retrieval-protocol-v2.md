@@ -104,6 +104,16 @@ coverage by session pair; for packets, labelled pairs together, calls and tokens
 holds every target the reference holds and lowers burden or tokens, or holds more targets at equal or lower cost.
 A lost target is named by id, whatever else improved.
 
+Corpus 2 holds ten unrelated fictional cases (A01 … B05) in one corpus, which no real analysis would do. Every
+corpus-2 result is reported twice: the mixed corpus, and restricted to within-case candidates
+(`--case-pattern '^([AB][0-9][0-9])_'`, the scenario prefix). The restriction is an evaluation option, applied to
+the pool after retrieval; it never changes retrieval. Corpus 1 is reported the same way with Hutchinson as one
+case and Simpson-Resnick as the other (`--case-pattern '^hutchinson|^(?=simpson|resnick)'`).
+
+Step 4 groups each pool with Agent 5's default settings (`--group`, `DEFAULT_GROUPING` unchanged). Grouping projects
+its own tokens (question, answer and context, a header per passage, 2,800 instruction tokens a call); the evaluator
+also reports its own projection and the pair-by-pair figure, so all three are visible side by side.
+
 ## Results across corpus versions
 
 Any comparison of results from different corpus versions states the differences:
@@ -114,7 +124,10 @@ Any comparison of results from different corpus versions states the differences:
   resolved, and whole-session flags that changed;
 - labelled pairs whose category changed (none may change silently; label files are not edited).
 
-Without that statement, numbers from two versions are not compared.
+Without that statement, numbers from two versions are not compared. `--compare <old dir> --frozen <new dir>`
+produces it: per document, items same, changed, removed and added; each removed item's fate (now excluded by
+eligibility with its class, re-segmented into other items, or no longer read); and every labelled pair's status
+(unchanged, remapped, added, removed) with its old and new item keys and any category change.
 
 ## Further real labels (status at round 2)
 
