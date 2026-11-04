@@ -72,7 +72,7 @@ npm run dev                         # then register an account in the app (or ve
 npx tsx scripts/demo-case.ts --email <your account email>
 ```
 
-Open the case **"Demo: Harbor Street warehouse fire (hand-authored example)"**. It holds two completed demo analyses with eight findings: three direct contradictions, two inferential ones, one that needs context and two that are likely compatible.
+Open the case **"Sample case: Harbor Street warehouse fire"**. It holds two completed demo analyses with eight findings: three direct contradictions, two inferential ones, one that needs context and two that are likely compatible.
 
 **What is real and what is not:**
 
@@ -84,7 +84,7 @@ Open the case **"Demo: Harbor Street warehouse fire (hand-authored example)"**. 
   - code calculates its score.
 
   So a citation that didn't match the testimony would show as unverified.
-- **Labelled everywhere.** The app marks every one of these findings as "Demo: a prepared example assessment for synthetic testimony. Not produced by a model". The analysis page says "This is an example analysis. No model was called for it", and lists show "Prepared example, not model output".
+- **Labelled.** The case is named "Sample case", and its analyses carry an "Example" badge. The case's findings card notes "example findings, written by hand". Each finding, when opened, says "Demo: a prepared example assessment for synthetic testimony. Not produced by a model" and badges its explanation "Prepared example, not model output". The analysis page says "This is an example analysis. No model was called for it".
 - **Page and line numbers.** Page:line references come from laying the invented text out at 25 lines per page, as for the other synthetic fixtures. They are not the pagination of a real transcript.
 
 Running the command again changes nothing. To remove the case, delete it from the case page.

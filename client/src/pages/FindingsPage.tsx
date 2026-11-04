@@ -57,7 +57,6 @@ export function FindingsPage() {
                       <tr key={f.id} className={cx(rowClass, "cursor-pointer align-top")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.analysis(f.analysis.id, f.id))}>
                         <td className={cx(tdClass, "max-w-[28rem]")}>
                           <a href={href.analysis(f.analysis.id, f.id)} className="line-clamp-2 font-medium hover:underline">{f.subject ?? f.explanation}</a>
-                          {f.source === "fixture" && <span className="mt-1 block text-xs text-muted">Prepared example, not model output</span>}
                         </td>
                         <td className={tdClass}>
                           <span className="block whitespace-nowrap">{f.title}</span>

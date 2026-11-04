@@ -9,7 +9,7 @@
 
 import type { Verdict } from "../adjudicate/schema";
 
-export const DEMO_CASE_NAME = "Demo: Harbor Street warehouse fire (hand-authored example)";
+export const DEMO_CASE_NAME = "Sample case: Harbor Street warehouse fire";
 // The prompt-version tag stored with every prepared assessment, so its provenance is on the row.
 export const DEMO_PROVENANCE = "fixture:demo-harbor-street-v1";
 

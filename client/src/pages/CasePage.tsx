@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowRight, ArrowRightLeft, FileText, FileUp, GripVertical, Pencil, X } from "lucide-react";
+import { CaseAnalysisAction, CaseAnalysisSummary, useCaseAnalysis } from "../components/CaseAnalysis";
 import { CaseFindings } from "../components/CaseFindings";
 import { CheckAgain, estimateText, NO_ACCESS, useEstimate, useStartCheck } from "../components/CheckAgain";
 import { useUser } from "../lib/session";
@@ -11,11 +12,11 @@ import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Empty, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
 import { analysesOf, dateAction, moveTargets } from "../components/sessionActions";
-import { api } from "../lib/api";
+import { api, DEPOSITION_ADDED } from "../lib/api";
 import { checkState, isActive, pairsChecked } from "../lib/insights";
 import { analysisTitle, ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, CaseDetail, DepositionRow } from "../types";
+import type { AnalysisView, CaseAnalysisView, CaseDetail, DepositionRow } from "../types";
 
 export const sourceOf = (d: Pick<DepositionRow, "scanned" | "originalFilename">) => (/\.txt$/i.test(d.originalFilename ?? "") ? "Text" : d.scanned ? "Scanned PDF" : "PDF");
 
@@ -30,6 +31,7 @@ export function CasePage({ id }: { id: number }) {
   const [over, setOver] = useState<number | null>(null);
   const [move, setMove] = useState<{ d: DepositionRow; to: number | null } | null>(null);
   const add = useAddDeposition();
+  const caseAnalysis = useCaseAnalysis(id);
   const load = useCallback(() => {
     api.case(id)
       .then(async (d) => {
@@ -39,6 +41,13 @@ export function CasePage({ id }: { id: number }) {
       .catch((e: Error) => setError(e.message));
   }, [id]);
   useEffect(load, [load]);
+  // An upload to this case from the Add depositions dialog: reload, so the new sessions show as processing
+  // and the poll below follows them until they're ready.
+  useEffect(() => {
+    const added = (e: Event) => { if ((e as CustomEvent<{ caseId: number }>).detail?.caseId === id) load(); };
+    window.addEventListener(DEPOSITION_ADDED, added);
+    return () => window.removeEventListener(DEPOSITION_ADDED, added);
+  }, [id, load]);
   const busy = !!detail && (detail.depositions.some((d) => d.status === "processing") || detail.analyses.some((a) => isActive(a.status)));
   usePoll(busy, 3000, load);
 
@@ -54,10 +63,12 @@ export function CasePage({ id }: { id: number }) {
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
         title={detail.case.name}
         description={summary}
-        actions={<><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
+        actions={<><CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} /><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
       />
 
       <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} />
+
+      <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
 
       <CaseFindings analyses={analyses} />
 
@@ -122,11 +133,11 @@ export function CasePage({ id }: { id: number }) {
       )}
 
       <Card className="overflow-hidden">
-        <CardHeader title="Analyses" count={analyses.length} />
-        {analyses.length === 0 ? (
+        <CardHeader title="Analyses" count={analyses.length + (caseAnalysis ? 1 : 0)} />
+        {analyses.length === 0 && !caseAnalysis ? (
           <p className="px-5 py-5 text-sm text-muted">No analyses yet. Select two sessions above to start one: two of one witness, or one each of two witnesses.</p>
         ) : (
-          <AnalysesTable analyses={analyses} />
+          <AnalysesTable analyses={analyses} caseRows={caseAnalysis ? [{ caseId: id, analysis: caseAnalysis }] : []} />
         )}
       </Card>
 
@@ -371,7 +382,10 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
   );
 }
 
-export function AnalysesTable({ analyses, caseNames }: { analyses: AnalysisView[]; caseNames?: Map<number, string> }) {
+// A case's stored whole-case analysis, listed with the pair analyses (hand-authored example; no model run).
+export type CaseAnalysisRow = { caseId: number; analysis: CaseAnalysisView };
+
+export function AnalysesTable({ analyses, caseNames, caseRows = [] }: { analyses: AnalysisView[]; caseNames?: Map<number, string>; caseRows?: CaseAnalysisRow[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[52rem] text-sm">
@@ -388,6 +402,21 @@ export function AnalysesTable({ analyses, caseNames }: { analyses: AnalysisView[
           </tr>
         </thead>
         <tbody>
+          {caseRows.map(({ caseId, analysis: c }) => (
+            <tr key={`case-${caseId}`} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.caseAnalysis(caseId))}>
+              <td className={tdClass}>
+                <a href={href.caseAnalysis(caseId)} className="font-semibold hover:underline">Whole case</a>
+                <span className="block text-xs text-muted tabular-nums">{c.coverage.sessions_total} sessions, {c.coverage.witnesses_total} witnesses · {c.coverage.pairs_complete} of {c.coverage.unique_pairs_total} pairs</span>
+              </td>
+              {caseNames && <td className={cx(tdClass, "text-muted")}>{caseNames.get(caseId) ?? "–"}</td>}
+              <td className={tdClass}><span className="flex items-center gap-1.5"><Badge tone="good" dot>Complete</Badge><Badge tone="accent">Example</Badge></span></td>
+              <td className={cx(tdClass, "text-right tabular-nums font-semibold")}>{c.coverage.findings_by_classification.incompatible ?? 0}</td>
+              <td className={cx(tdClass, "text-right tabular-nums")}>{c.coverage.findings_by_classification.uncertain ?? 0}</td>
+              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>–</td>
+              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>{formatUsd(c.execution.cost_usd)}</td>
+              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>–</td>
+            </tr>
+          ))}
           {analyses.map((r) => {
             const s = ANALYSIS_STATUS[r.status];
             const [a, b] = r.depositions;

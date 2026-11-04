@@ -47,7 +47,7 @@ export function CaseFindings({ analyses }: { analyses: AnalysisView[] }) {
       <CardHeader
         title="Findings by review priority"
         count={rows?.length}
-        description={`${toReview} to review across ${finished.length} ${finished.length === 1 ? "analysis" : "analyses"}${compatible.length ? `; ${compatible.length} compatible or dismissed, listed on each analysis` : ""}. Leads for your review, not conclusions.${examples ? " Findings marked as prepared examples were written by hand for the demo, not produced by a model." : ""}`}
+        description={`${toReview} to review${compatible.length ? ` · ${compatible.length} compatible` : ""} · leads, not conclusions${examples ? " · example findings, written by hand" : ""}`}
       />
       {error ? <p className="px-5 py-4 text-sm text-conflict" role="alert">The findings couldn't be loaded: {error}</p> : !rows ? <p className="px-5 py-4 text-sm text-muted">Loading findings…</p> : (
         <div className="divide-y divide-rule">
@@ -90,7 +90,6 @@ function FindingRow({ f }: { f: Row }) {
           <span className="line-clamp-2 text-sm font-medium">{f.subject ?? f.explanation}</span>
           <span className="block text-xs text-muted">
             {analysisTitle(f.analysis)} · {findingHeadline(f)}
-            {f.source === "fixture" && " · Prepared example, not model output"}
             {unverified && <span className="text-conflict"> · <CircleAlert aria-hidden className="inline size-3 align-[-1px]" /> Citation not verified</span>}
           </span>
         </span>

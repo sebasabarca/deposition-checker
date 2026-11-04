@@ -5,7 +5,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { ClipboardPaste, FileText, RotateCw, UploadCloud, X } from "lucide-react";
-import { api } from "../lib/api";
+import { api, DEPOSITION_ADDED } from "../lib/api";
 import { guessWitness, needsWitness, runLimited, type UploadState } from "../lib/bulkUpload";
 import { describeText } from "../lib/textTranscript";
 import { href } from "../lib/router";
@@ -106,6 +106,7 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
     try {
       const { deposition } = await api.upload(target, item.file, item.witness.trim(), item.takenOn || undefined);
       update(item.key, { state: "added" });
+      window.dispatchEvent(new CustomEvent(DEPOSITION_ADDED, { detail: { caseId: target } }));
       return deposition.id;
     } catch (err) {
       update(item.key, { state: "failed", error: (err as Error).message });

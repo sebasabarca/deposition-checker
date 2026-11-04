@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Database } from "../db/client";
 import { analysisFindings, analysisView, findingDetail } from "./analyses";
 import { caseDetail } from "./cases";
+import { caseAnalysisReport, CaseDecisionsBody } from "./caseAnalysis";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof findingDetail>>>;
 type Side = Detail["a"];
@@ -54,7 +55,9 @@ export async function reportData(db: Database, caseId: number, analysisIds: numb
   return { name: detail.case.name, witnesses: detail.witnesses.map((w) => w.name), covered, gaps, kept, context, withContext, entries };
 }
 
-type Report = NonNullable<Awaited<ReturnType<typeof reportData>>>;
+// authorship "hand": the explanations were written by hand (the demo case's example analysis), and the
+// report says so instead of attributing them to Veridict's analysis.
+export type Report = NonNullable<Awaited<ReturnType<typeof reportData>>> & { authorship?: "hand" };
 
 const NAVY = "#13213a";
 const INK = "#1b2230";
@@ -96,7 +99,14 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
   doc.moveDown(0.8);
   doc.moveTo(left, doc.y).lineTo(left + width, doc.y).lineWidth(2).strokeColor(NAVY).stroke();
   doc.moveDown(1);
-  doc.font("Helvetica").fontSize(9).fillColor(MUTED).text("Each finding below is a lead for review, not a conclusion that any witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. The explanations were written by Veridict's analysis, an AI system, and are labelled as such. Decisions and notes are the reviewer's.", { width, lineGap: 2 });
+  // Who wrote each explanation: a prepared example (written by hand, origin "fixture") or Veridict's analysis.
+  const handWritten = (f: Report["entries"][number]) => r.authorship === "hand" || f.source?.kind === "fixture";
+  const hand = r.entries.filter(handWritten).length;
+  const authorship = r.authorship === "hand" || (r.entries.length > 0 && hand === r.entries.length)
+    ? "The explanations are prepared examples written by hand for this demonstration; no model was run."
+    : hand > 0 ? "The explanations were written by Veridict's analysis, an AI system, except those marked as prepared examples, which were written by hand; each is labelled."
+    : "The explanations were written by Veridict's analysis, an AI system, and are labelled as such.";
+  doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(`Each finding below is a lead for review, not a conclusion that any witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. ${authorship} Decisions and notes are the reviewer's.`, { width, lineGap: 2 });
 
   if (r.entries.length === 0) {
     doc.moveDown(2);
@@ -143,8 +153,9 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
       doc.moveDown(0.2);
       doc.font("Helvetica").fontSize(10).fillColor(INK).text(body, left, doc.y, { width, lineGap: 2 });
     };
-    section("Why the statements may conflict (Veridict's analysis)", f.assessment.explanation);
-    if (f.assessment.alternativeExplanation) section("The innocent explanation (Veridict's analysis)", f.assessment.alternativeExplanation);
+    const source = handWritten(f) ? "prepared example, not model output" : "Veridict's analysis";
+    section(`Why the statements may conflict (${source})`, f.assessment.explanation);
+    if (f.assessment.alternativeExplanation) section(`The innocent explanation (${source})`, f.assessment.alternativeExplanation);
     if (f.reviewNote) {
       doc.moveDown(0.9);
       doc.font("Helvetica").fontSize(10);
@@ -190,6 +201,20 @@ export function reportRoutes({ db }: { db: Database }): Router {
     const data = await reportData(db, caseId.data, ids, q.data.context === "1");
     if (!data) return res.status(404).json({ error: "That case or analysis wasn't found, or the analysis hasn't finished." });
     const file = `Veridict report - ${data.name}${data.covered.length === 1 ? ` - ${data.covered[0]}` : ""}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${file.replace(/[^\w .,()-]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file)}`);
+    renderReport(data).pipe(res);
+  });
+
+  // The case's whole-case analysis report: the findings the reviewer kept, with their notes. The decisions
+  // come in the body because they are kept in the reviewer's browser.
+  router.post("/cases/:id/case-analysis/report.pdf", async (req, res) => {
+    const caseId = z.coerce.number().int().positive().safeParse(req.params.id);
+    const body = CaseDecisionsBody.safeParse(req.body ?? {});
+    if (!caseId.success || !body.success) return res.status(400).json({ error: "Invalid report request." });
+    const data = await caseAnalysisReport(db, caseId.data, body.data.decisions);
+    if (!data) return res.status(404).json({ error: "This case has no whole-case analysis." });
+    const file = `Veridict report - ${data.name} - whole case.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${file.replace(/[^\w .,()-]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file)}`);
     renderReport(data).pipe(res);
