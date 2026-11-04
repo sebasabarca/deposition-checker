@@ -2,7 +2,7 @@
 // canvas, a navy primary, pale status pairs; no shadows except on what floats.
 
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { BadgeCheck, CircleCheck, ScanText, Sparkles, UserRoundCheck, X, type LucideIcon } from "lucide-react";
+import { BadgeCheck, ChevronRight, CircleCheck, ScanText, Sparkles, UserRoundCheck, X, type LucideIcon } from "lucide-react";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -91,6 +91,23 @@ export function PageHeader({ title, description, actions, above }: { title: Reac
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </header>
+  );
+}
+
+// The way back up, above a page's title: each level above this page as a link, in navy and underlined
+// so it reads as navigation at a glance.
+export function Breadcrumbs({ items }: { items: { label: string; href: string }[] }) {
+  return (
+    <nav aria-label="Breadcrumb" className="mb-2">
+      <ol className="flex flex-wrap items-center gap-1 text-sm font-medium">
+        {items.map((item, i) => (
+          <li key={item.href} className="flex min-w-0 items-center gap-1">
+            {i > 0 && <ChevronRight aria-hidden className="size-3.5 flex-none text-muted" />}
+            <a href={item.href} className="-mx-1 max-w-80 truncate rounded px-1 py-0.5 text-navy-3 underline decoration-navy-3/30 underline-offset-4 transition-colors hover:bg-hover hover:text-navy hover:decoration-navy">{item.label}</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }
 

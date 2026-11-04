@@ -6,7 +6,7 @@ import { Download } from "lucide-react";
 import { CheckAgain } from "../components/CheckAgain";
 import { FindingPanel } from "../components/FindingPanel";
 import { EMPTY, FindingBar, GROUPS } from "../components/FindingRegister";
-import { Alert, Badge, Button, buttonClass, Loading, PageHeader } from "../components/ui";
+import { Alert, Badge, Breadcrumbs, Button, buttonClass, Loading, PageHeader } from "../components/ui";
 import { api } from "../lib/api";
 import { isActive } from "../lib/insights";
 import { analysisTitle, ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL } from "../lib/labels";
@@ -91,13 +91,12 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   return (
     <>
       <PageHeader
+        above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }, ...(caseName ? [{ label: caseName, href: href.case(analysis.caseId) }] : [])]} />}
         title={cross ? <>{analysisTitle(analysis)}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></> : <>{a.witness}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></>}
         description={
-          <>
-            {caseName && <a href={href.case(analysis.caseId)} className="font-medium text-ink hover:underline">{caseName}</a>}
-            {done && <> · checked {formatDate(analysis.finishedAt ?? analysis.createdAt)} · {findings.length} {findings.length === 1 ? "finding" : "findings"} · {decided} decided</>}
-            {!done && <> · {active ? "check running" : ANALYSIS_STATUS[analysis.status].label}</>}
-          </>
+          done
+            ? <>Checked {formatDate(analysis.finishedAt ?? analysis.createdAt)} · {findings.length} {findings.length === 1 ? "finding" : "findings"} · {decided} decided</>
+            : <>{active ? "Check running" : ANALYSIS_STATUS[analysis.status].label}</>
         }
         actions={done ? (
           <>

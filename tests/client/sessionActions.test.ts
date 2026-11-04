@@ -1,0 +1,37 @@
+// The case page's session rows: which need a date, where a session can move, what a move deletes.
+import { describe, expect, it } from "vitest";
+import { analysesOf, dateAction, moveTargets } from "../../client/src/components/sessionActions";
+
+const found = (date: string) => ({ date, ref: "1:5" });
+
+describe("dateAction", () => {
+  it("asks for a missing date, with or without one in the transcript", () => {
+    expect(dateAction({ takenOn: null, dateFound: null })).toBe("missing");
+    expect(dateAction({ takenOn: null, dateFound: found("1996-01-23") })).toBe("missing");
+  });
+  it("flags an entered date the transcript contradicts, and passes one it agrees with or lacks", () => {
+    expect(dateAction({ takenOn: "1996-01-24", dateFound: found("1996-01-23") })).toBe("differs");
+    expect(dateAction({ takenOn: "1996-01-23", dateFound: found("1996-01-23") })).toBeNull();
+    expect(dateAction({ takenOn: "1996-01-23", dateFound: null })).toBeNull();
+  });
+});
+
+describe("analysesOf", () => {
+  const analyses = [{ depositionA: 1, depositionB: 2 }, { depositionA: 3, depositionB: 1 }, { depositionA: 2, depositionB: 3 }];
+  it("counts the analyses that compared the session on either side", () => {
+    expect(analysesOf(analyses, 1)).toBe(2);
+    expect(analysesOf(analyses, 3)).toBe(2);
+    expect(analysesOf(analyses, 9)).toBe(0);
+  });
+});
+
+describe("moveTargets", () => {
+  const witnesses = [{ id: 1, name: "Simpson", depositions: [10, 11] }, { id: 2, name: "Resnick", depositions: [20] }, { id: 3, name: "Kato", depositions: [] }];
+  it("offers the other witnesses with sessions, never the session's own", () => {
+    expect(moveTargets(witnesses, 1).map((w) => w.name)).toEqual(["Resnick"]);
+    expect(moveTargets(witnesses, 2).map((w) => w.name)).toEqual(["Simpson"]);
+  });
+  it("offers nothing when only one witness has sessions", () => {
+    expect(moveTargets(witnesses.slice(0, 1), 1)).toEqual([]);
+  });
+});
