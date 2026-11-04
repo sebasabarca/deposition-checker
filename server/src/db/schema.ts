@@ -14,6 +14,7 @@ import {
   check,
   customType,
   date,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -1161,5 +1162,58 @@ export const facts = pgTable(
     index("facts_unit_idx").on(t.unitKey, t.extractorVersion),
     check("facts_status_check", sql`${t.status} in ('indexed', 'rejected', 'stale')`),
     check("facts_indexed_check", sql`${t.status} <> 'indexed' or (${t.sourceVerification} in ('verified', 'approximate') and ${t.attributionStatus} <> 'invalid' and ${t.rejectionReason} is null and ${t.factualDimension} is not null and ${t.evidencePhrase} is not null)`),
+  ],
+);
+
+// Evidence screening ledger (Milestone 3, experimental; server/src/screen/ledger.ts). A screening run orders a
+// packet set's issue packets for adjudication; each entry keeps its packet's original items and pairs, and its
+// adjudication progress apart from its screening status. Deferred means unread, never compatible. Entries are
+// never deleted, and the packet set's uncovered pairs are kept on the run with their reasons.
+export const screeningRuns = pgTable("screening_runs", {
+  id: id(),
+  corpus: text("corpus").notNull(),
+  packetSetName: text("packet_set_name").notNull(),
+  packetSetSha256: text("packet_set_sha256").notNull(),
+  poolSha256: text("pool_sha256").notNull(),
+  itemsSha256: text("items_sha256").notNull(),
+  strategy: text("strategy").notNull(),
+  strategyVersion: text("strategy_version").notNull(),
+  contract: text("contract").notNull(), // SCREENING_CONTRACT_VERSION
+  budget: integer("budget").notNull(), // packets prioritized
+  settings: jsonb("settings").notNull(),
+  poolPairs: integer("pool_pairs").notNull(),
+  uncovered: jsonb("uncovered").$type<{ a: string; b: string; reason: string }[]>().notNull(),
+  createdAt: createdAt(),
+});
+
+export const screeningEntries = pgTable(
+  "screening_entries",
+  {
+    id: id(),
+    runId: ref("run_id")
+      .notNull()
+      .references(() => screeningRuns.id, { onDelete: "restrict" }),
+    packetId: text("packet_id").notNull(),
+    rank: integer("rank"), // null only when consolidated
+    screenStatus: text("screen_status").notNull(), // prioritized | deferred | consolidated
+    consolidatedInto: text("consolidated_into"),
+    reason: text("reason").notNull(),
+    priority: doublePrecision("priority").notNull(), // an ordering key, never a probability
+    signals: jsonb("signals").$type<Record<string, number | boolean>>().notNull(),
+    sessions: jsonb("sessions").$type<string[]>().notNull(),
+    witnesses: jsonb("witnesses").$type<string[]>().notNull(),
+    items: jsonb("items").$type<{ key: string; sourceHash: string; session: string; witness: string }[]>().notNull(),
+    pairs: jsonb("pairs").$type<[string, string][]>().notNull(),
+    adjudicationStatus: text("adjudication_status").notNull().default("not_started"),
+    adjudicationRef: text("adjudication_ref"),
+    adjudicationNote: text("adjudication_note"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("screening_entries_run_packet_unique").on(t.runId, t.packetId),
+    index("screening_entries_queue_idx").on(t.runId, t.adjudicationStatus, t.rank),
+    check("screening_entries_screen_status_check", sql`${t.screenStatus} in ('prioritized', 'deferred', 'consolidated')`),
+    check("screening_entries_adjudication_status_check", sql`${t.adjudicationStatus} in ('not_started', 'in_progress', 'adjudicated', 'failed')`),
+    check("screening_entries_consolidated_check", sql`(${t.screenStatus} = 'consolidated') = (${t.consolidatedInto} is not null) and (${t.screenStatus} = 'consolidated') = (${t.rank} is null)`),
   ],
 );
