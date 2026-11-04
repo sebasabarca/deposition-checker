@@ -54,6 +54,8 @@ import { screen } from "../screen/strategies";
 import { MAX_RECOVERY_ROUNDS, verifyPacketReply } from "../verify/packet";
 import { VERIFICATION_VERSION } from "../verify/version";
 import { Aborted, ProviderLimiter, realClock, UNLIMITED, type Clock } from "./limiter";
+import { BATCH_DEFAULTS, runBatchTick, type BatchDeps } from "./caseRunBatch";
+import { BATCH_MULTIPLIER } from "../costs/pricing";
 
 export const CASE_RUN_STATUSES = ["queued", "retrieving", "awaiting_confirmation", "adjudicating", "completed", "incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted"] as const;
 export type CaseRunStatus = (typeof CASE_RUN_STATUSES)[number];
@@ -86,7 +88,10 @@ export type CaseRunDeps = {
   packetLimits?: PacketLimits; // default PACKET_LIMITS (8 pairs, about 9,000 input tokens)
   // afterRequestSent: the provider has the request, and the process dies before any response is saved.
   faults?: { afterReplyRecorded?: (packetId: string) => void; afterRequestSent?: (packetId: string) => void };
+  // Economy execution (caseRunBatch.ts): the batch provider for a run, or null when this server can't use it.
+  batch?: (run: CaseRun) => BatchDeps | null;
 };
+export type CaseRunExecution = "standard" | "batch";
 
 export const fromPacketAdjudicator = (a: PacketAdjudicator): CasePacketModel => ({
   model: a.model, effort: a.effort, promptVersion: a.promptVersion,
@@ -108,9 +113,9 @@ export function mockCaseModel(model = MOCK_MODEL): CasePacketModel & { calls: st
 }
 
 // Stored with the run's screening ledger so a packet can be rebuilt from the database after a restart.
-type ItemIndex = Record<string, Pick<CaseItem, "document" | "session" | "groupId" | "positions" | "sourceHash" | "depositionId" | "witnessId" | "sessionId" | "exchangeIds">>;
+export type ItemIndex = Record<string, Pick<CaseItem, "document" | "session" | "groupId" | "positions" | "sourceHash" | "depositionId" | "witnessId" | "sessionId" | "exchangeIds">>;
 
-async function update(db: Database, id: number, changes: Partial<typeof caseRuns.$inferInsert>) {
+export async function update(db: Database, id: number, changes: Partial<typeof caseRuns.$inferInsert>) {
   await db.update(caseRuns).set({ ...changes, updatedAt: new Date() }).where(eq(caseRuns.id, id));
 }
 
@@ -151,15 +156,17 @@ export async function interruptCaseRun(db: Database, run: CaseRun, reason: strin
   await update(db, run.id, { status: "interrupted", error: reason, finishedAt: new Date(), runnerId: null });
 }
 
-export async function runCaseRun(db: Database, pool: Pool, id: number, deps: CaseRunDeps): Promise<CaseRunStatus | "duplicate_delivery"> {
+// "polling": an economy run with batches still open; the caller queues the next check.
+export async function runCaseRun(db: Database, pool: Pool, id: number, deps: CaseRunDeps): Promise<CaseRunStatus | "duplicate_delivery" | "polling"> {
   const [run] = await db.select().from(caseRuns).where(eq(caseRuns.id, id));
   if (!run) throw new Error(`No case run ${id}.`);
   if (JOB_STOPS.includes(run.status as CaseRunStatus)) return run.status as CaseRunStatus;
   const runnerId = randomUUID();
   if (!(await claimRunner(db, id, runnerId))) return "duplicate_delivery";
   try {
-    // Only adjudication spends money; retrieval is free and simply runs again.
-    if (run.mode === "live" && run.status === "adjudicating") {
+    // Only adjudication spends money; retrieval is free and simply runs again. An economy run's requests live in
+    // the provider's batches, recorded in the database, so a new runner simply continues it.
+    if (run.mode === "live" && run.status === "adjudicating" && run.execution !== "batch") {
       await interruptCaseRun(db, run, "The worker stopped while this run was in progress. Completed findings are kept; a request in flight is counted in full in case it was billed. Resume to continue.");
       return "interrupted";
     }
@@ -174,7 +181,7 @@ export async function runCaseRun(db: Database, pool: Pool, id: number, deps: Cas
   }
 }
 
-async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus> {
+async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus | "polling"> {
   let ledger = await ledgerOf(db, run.id);
   if (!ledger) {
     await update(db, run.id, { status: "retrieving", startedAt: run.startedAt ?? new Date(), finishedAt: null, error: null });
@@ -190,6 +197,18 @@ async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunD
   if (run.mode === "live" && fresh.confirmedAt === null) {
     await update(db, run.id, { status: "awaiting_confirmation", error: null });
     return "awaiting_confirmation";
+  }
+  if (run.execution === "batch") {
+    const batch = deps.batch?.(run) ?? null;
+    if (!batch) {
+      await update(db, run.id, { status: "blocked_credentials", error: "Economy case runs need the analysis key and ALLOW_PAID_CALLS=true on this server. Nothing was sent.", finishedAt: new Date() });
+      return "blocked_credentials";
+    }
+    if (run.status !== "adjudicating") {
+      await update(db, run.id, { status: "adjudicating", startedAt: run.startedAt ?? new Date(), finishedAt: null, error: null });
+      await db.update(caseRuns).set({ config: sql`${caseRuns.config} || ${JSON.stringify({ execution: { mode: "batch", ...BATCH_DEFAULTS, ...batch.settings } })}::jsonb` }).where(eq(caseRuns.id, run.id));
+    }
+    return runBatchTick(db, run, ledger.id, batch);
   }
   const model = run.mode === "mock" ? mockCaseModel() : deps.adjudicator(run);
   if (!model) {
@@ -284,7 +303,7 @@ function sleepClock(sleep: (ms: number) => Promise<void>): Clock {
 }
 
 // Ends the run. With no explicit status, it is completed only when every packet was adjudicated in full.
-async function finish(db: Database, runId: number, ledgerId: number, status: CaseRunStatus | null, error: string | null): Promise<CaseRunStatus> {
+export async function finish(db: Database, runId: number, ledgerId: number, status: CaseRunStatus | null, error: string | null): Promise<CaseRunStatus> {
   const counts = await db.select({ status: screeningEntries.adjudicationStatus, n: sql<number>`count(*)::int` }).from(screeningEntries).where(eq(screeningEntries.runId, ledgerId)).groupBy(screeningEntries.adjudicationStatus);
   const left = counts.filter((c) => c.status !== "adjudicated").reduce((n, c) => n + c.n, 0);
   const final = status ?? (left === 0 ? "completed" : "incomplete");
@@ -359,9 +378,21 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
   const sized = packets.packets.map((p) => ({ passageTokens: p.inputTokens - INSTRUCTION_TOKENS, pairs: p.pairs.length }));
   const expectedUsd = projectCost(sized);
   const largest = packets.packets.reduce((m, p) => Math.max(m, maxRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(p.inputTokens * 4), maxOutputTokens: maxOutputTokensFor(p.pairs.length) })), 0);
+  // Economy (the Message Batches API): the same projection at batch prices. Cache hits in a batch are best effort,
+  // so the range runs from fast mode's caching to none. Every request in a submitted batch holds its worst case
+  // until its result is imported, so the recommended limit leaves room for one full batch in flight on top of the
+  // no-cache projection; a lower limit still works, with fewer requests in flight at once.
+  const worstOf = (p: (typeof packets.packets)[number]) => maxRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(p.inputTokens * 4), maxOutputTokens: maxOutputTokensFor(p.pairs.length) }) * BATCH_MULTIPLIER;
+  const worstTotal = packets.packets.reduce((n, p) => n + worstOf(p), 0);
+  const perBatch = packets.packets.length ? (worstTotal / packets.packets.length) * Math.min(BATCH_DEFAULTS.batchSize, packets.packets.length) : 0;
+  const economyNoCache = projectCost(sized, false) * BATCH_MULTIPLIER;
   const estimate = {
     packets: sized.length, listedPairs: sized.reduce((n, p) => n + p.pairs, 0), splitPackets: packets.packets.filter((p) => p.splitFrom).length, oversizePackets: packets.packets.filter((p) => p.oversize).length,
     expectedUsd: round2(expectedUsd), noCacheUsd: round2(projectCost(sized, false)), largestPacketWorstCaseUsd: round2(largest), recommendedBudgetUsd: Math.ceil((expectedUsd + largest) * 100) / 100,
+    economy: {
+      expectedUsd: round2(expectedUsd * BATCH_MULTIPLIER), noCacheUsd: round2(economyNoCache), worstCaseUsd: round2(worstTotal), worstCasePerBatchUsd: round2(perBatch),
+      recommendedBudgetUsd: Math.ceil((economyNoCache + perBatch) * 100) / 100, batchSize: BATCH_DEFAULTS.batchSize, discount: BATCH_MULTIPLIER,
+    },
     assumptions: COST_ASSUMPTIONS, note: "A projection from packet size and measured output per pair, not a measurement; the budget is a hard stop.",
   };
   await db.update(caseRuns).set({ progress: sql`${caseRuns.progress} || ${JSON.stringify({ estimate })}::jsonb`, updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
@@ -371,21 +402,35 @@ const round2 = (x: number) => Math.round(x * 100) / 100;
 
 
 type EntryOutcome = { kind: "done" | "incomplete" | "halted" } | { kind: "budget"; message: string } | { kind: "failed"; message: string; fatal?: boolean };
-type Entry = typeof screeningEntries.$inferSelect;
+export type Entry = typeof screeningEntries.$inferSelect;
 
-async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, entry: Entry, index: ItemIndex, names: Map<number, string>, model: CasePacketModel, deps: CaseRunDeps, ex: Exec): Promise<EntryOutcome> {
+// One packet, both execution modes: entryContext rebuilds its passages from stored lines, nextStep decides what it
+// needs from the stored rows (nothing, a stored reply to parse, or a request), and applyReply parses, verifies and
+// persists a reply. Standard mode sends the request itself (callModel); batch mode (caseRunBatch.ts) submits it
+// in a provider batch and comes back with the reply. Either way the same reply gives the same verdicts and findings.
+export type EntryContext = { ids: number[]; candidateOfPair: Map<string, number>; pairOfCandidate: Map<number, [string, string]>; keys: string[]; passages: Awaited<ReturnType<typeof resolvePassages>>["passages"]; unresolved: Awaited<ReturnType<typeof resolvePassages>>["unresolved"] };
+export type EntryStep =
+  | { kind: "done" }
+  | { kind: "stored"; packet: IssuePacket; sentIds: number[]; text: string | null; callId: number | null; requestId: number }
+  | { kind: "send"; packet: IssuePacket; sentIds: number[]; remaining: number[] };
+
+export async function entryContext(db: Database, entry: Entry, index: ItemIndex, names: Map<number, string>): Promise<EntryContext | string> {
   const ids = entry.candidateIds ?? [];
-  if (ids.length !== entry.pairs.length) return fail(db, ledgerId, entry, `the entry lists ${entry.pairs.length} pairs and ${ids.length} candidates`, false);
-  const candidateOfPair = new Map(entry.pairs.map(([a, b], i) => [pairKey(a, b), ids[i]]));
-  const pairOfCandidate = new Map(entry.pairs.map((p, i) => [ids[i], p]));
-
+  if (ids.length !== entry.pairs.length) return `the entry lists ${entry.pairs.length} pairs and ${ids.length} candidates`;
   // Passages from stored lines; an item whose stored lines changed or vanished is left out, its pairs excluded.
   const keys = [...new Set(entry.pairs.flat())];
   const items: FrozenItem[] = keys.map((k) => ({ key: k, ...index[k], witness: names.get(index[k].witnessId) ?? "", question: "", answer: "", context: "" }));
   const { passages, unresolved } = await resolvePassages(db, items, new Map(keys.map((k) => [index[k].document, index[k].depositionId])));
-  const replies = { made: 0 };
+  return { ids, candidateOfPair: new Map(entry.pairs.map(([a, b], i) => [pairKey(a, b), ids[i]])), pairOfCandidate: new Map(entry.pairs.map((p, i) => [ids[i], p])), keys, passages, unresolved };
+}
 
+// `at.entry` is updated when a stored reply pointer is cleared, so the caller always holds the current row.
+// `pending`: a reply held in memory instead of stored (a mock batch result, which has no llm_calls row), parsed
+// exactly like a stored one.
+export async function nextStep(db: Database, run: CaseRun, at: { entry: Entry }, ctx: EntryContext, pending?: { candidateIds: number[]; text: string | null; requestId: number }): Promise<EntryStep> {
+  const { ids, candidateOfPair, pairOfCandidate, keys, passages, unresolved } = ctx;
   for (;;) {
+    const entry = at.entry;
     // One query per round: which of the packet's candidates already have a verdict, and which were excluded.
     const states = await db
       .select({ id: candidates.id, status: candidates.status, answered: sql<boolean>`exists (select 1 from verdicts v where v.candidate_id = "candidates"."id")` }) // qualified by hand: Drizzle renders bare column names inside a select list
@@ -395,7 +440,7 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
     const remaining = ids.filter((c) => !settled.has(c));
 
     // A stored reply not yet turned into verdicts (the run stopped after paying for it): parse that.
-    const stored = entry.llmCallId !== null && entry.requestId !== null ? await storedReply(db, entry.requestId, entry.llmCallId) : null;
+    const stored = pending ?? (entry.llmCallId !== null && entry.requestId !== null ? await storedReply(db, entry.requestId, entry.llmCallId) : null);
     if (remaining.length === 0 && !stored) {
       await db.update(screeningEntries).set({ adjudicationStatus: "adjudicated", adjudicationRef: caseRunSetOf(run.id), unresolvedPairs: null, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
       return { kind: "done" };
@@ -406,37 +451,58 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
     if (unbuilt.length) {
       const why = (u: (typeof unbuilt)[number]) => `evidence could not be rebuilt from stored lines: ${u.reason}${unresolved.find((x) => u.reason.endsWith(x.key)) ? ` (${unresolved.find((x) => u.reason.endsWith(x.key))!.reason})` : ""}`;
       for (const u of unbuilt) await db.update(candidates).set({ status: "excluded", exclusionReason: why(u) }).where(eq(candidates.id, u.candidateId));
-      if (stored) await db.update(screeningEntries).set({ llmCallId: null }).where(eq(screeningEntries.id, entry.id));
-      entry = { ...entry, llmCallId: null };
+      if (stored && !pending) await db.update(screeningEntries).set({ llmCallId: null }).where(eq(screeningEntries.id, entry.id));
+      pending = undefined;
+      at.entry = { ...entry, llmCallId: null };
       continue;
     }
     const packet = built.packet!;
     const sentIds = packet.pairs.map((_, i) => sendIds[i]);
+    if (pending) return { kind: "stored", packet, sentIds, text: pending.text, callId: null, requestId: pending.requestId };
+    if (stored) return { kind: "stored", packet, sentIds, text: stored.text, callId: entry.llmCallId, requestId: entry.requestId! };
+    return { kind: "send", packet, sentIds, remaining };
+  }
+}
 
-    let text: string | null;
-    let callId: number | null;
-    let requestId: number;
-    if (stored) {
-      ({ text, callId, requestId } = { text: stored.text, callId: entry.llmCallId, requestId: entry.requestId! });
-    } else {
+// Pairs still without a verdict after the packet and its recovery request: the entry ends incomplete, each pair
+// listed and unread (its candidate stays `selected`), never compatible.
+export async function markIncomplete(db: Database, entry: Entry, remaining: number[], ctx: EntryContext) {
+  const unresolvedPairs = remaining.map((c) => { const [a, b] = ctx.pairOfCandidate.get(c)!; return { a, b, status: "unanswered after the packet and one recovery request" }; });
+  await db.update(screeningEntries).set({ adjudicationStatus: "incomplete", unresolvedPairs, adjudicationNote: `${remaining.length} of ${ctx.ids.length} pairs left without a verdict`, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+}
+
+// The reply text, parsed leniently, checked against the packet by code, and persisted. Returns the entry as it is after.
+export async function applyReply(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], reply: { text: string | null; callId: number | null; requestId: number }, model: Pick<CasePacketModel, "model" | "promptVersion" | "effort">): Promise<Entry> {
+  const parsed = parseVerdictsLenient(reply.text, VERDICT_SCHEMAS["packet-v1"]);
+  const verification = verifyPacketReply(packet, parsed);
+  await persist(db, run, entry, packet, sentIds, verification, { model: model.model, promptVersion: model.promptVersion, effort: model.effort, callId: run.mode === "live" ? reply.callId : null, requestId: reply.requestId });
+  return { ...entry, llmCallId: null, requestId: reply.requestId };
+}
+
+async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, entry: Entry, index: ItemIndex, names: Map<number, string>, model: CasePacketModel, deps: CaseRunDeps, ex: Exec): Promise<EntryOutcome> {
+  const ctx = await entryContext(db, entry, index, names);
+  if (typeof ctx === "string") return fail(db, ledgerId, entry, ctx, false);
+  const at = { entry };
+  const replies = { made: 0 };
+  for (;;) {
+    const step = await nextStep(db, run, at, ctx);
+    if (step.kind === "done") return { kind: "done" };
+    let reply: { text: string | null; callId: number | null; requestId: number };
+    if (step.kind === "stored") reply = step;
+    else {
       if (replies.made >= 1 + MAX_RECOVERY_ROUNDS) {
-        const unresolvedPairs = remaining.map((c) => { const [a, b] = pairOfCandidate.get(c)!; return { a, b, status: "unanswered after the packet and one recovery request" }; });
-        await db.update(screeningEntries).set({ adjudicationStatus: "incomplete", unresolvedPairs, adjudicationNote: `${remaining.length} of ${ids.length} pairs left without a verdict`, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+        await markIncomplete(db, at.entry, step.remaining, ctx);
         return { kind: "incomplete" };
       }
-      const call = await callModel(db, run, entry, packet, sentIds, model, deps, ex);
+      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex);
       if (call.kind === "halted") return call; // nothing sent: the interrupt returns the packet to the queue
-      if (call.kind !== "reply") return call.kind === "budget" ? releaseForBudget(db, entry, call.message) : fail(db, ledgerId, entry, call.message, call.billable, call.fatal);
+      if (call.kind !== "reply") return call.kind === "budget" ? releaseForBudget(db, at.entry, call.message) : fail(db, ledgerId, at.entry, call.message, call.billable, call.fatal);
       replies.made++;
-      ({ text, callId, requestId } = call);
-      await db.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId, llmCallId: callId, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
-      deps.faults?.afterReplyRecorded?.(entry.packetId);
+      reply = call;
+      await db.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: call.requestId, llmCallId: call.callId, updatedAt: sql`now()` }).where(eq(screeningEntries.id, at.entry.id));
+      deps.faults?.afterReplyRecorded?.(at.entry.packetId);
     }
-
-    const parsed = parseVerdictsLenient(text, VERDICT_SCHEMAS["packet-v1"]);
-    const verification = verifyPacketReply(packet, parsed);
-    await persist(db, run, entry, packet, sentIds, verification, { model: model.model, promptVersion: model.promptVersion, effort: model.effort, callId: run.mode === "live" ? callId : null, requestId });
-    entry = { ...entry, llmCallId: null, requestId };
+    at.entry = await applyReply(db, run, at.entry, step.packet, step.sentIds, reply, model);
   }
 }
 
@@ -574,13 +640,13 @@ async function persist(db: Database, run: CaseRun, entry: Entry, packet: IssuePa
 
 // Creates a run, and a live run's budget. A live run created with `confirmed` (the CLI, after its own plan)
 // may spend at once; otherwise it stops after retrieval for confirmCaseRun. The caller queues the job.
-export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean }) {
+export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard" }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution }) {
   return db.transaction(async (tx) => {
     const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract: PACKET_PROMPT_VERSION, verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
     const live = mode === "live";
     const [row] = await tx
       .insert(caseRuns)
-      .values({ caseId, mode, budgetUsd: live ? budgetUsd : 0, promptVersion: PACKET_PROMPT_VERSION, model: live ? PACKET_MODEL : MOCK_MODEL, effort: live ? PACKET_EFFORT : "mock", config, confirmedAt: live && confirmed ? new Date() : null })
+      .values({ caseId, mode, execution, retentionAcknowledgedAt: live && confirmed && execution === "batch" ? new Date() : null, budgetUsd: live ? budgetUsd : 0, promptVersion: PACKET_PROMPT_VERSION, model: live ? PACKET_MODEL : MOCK_MODEL, effort: live ? PACKET_EFFORT : "mock", config, confirmedAt: live && confirmed ? new Date() : null })
       .returning();
     if (live) {
       const [b] = await tx.insert(budgets).values({ name: caseRunSetOf(row.id), limitUsd: budgetUsd }).returning({ id: budgets.id });
@@ -592,14 +658,17 @@ export async function createCaseRun(db: Database, caseId: number, { mode, budget
 }
 
 // A person confirms a live run's estimate with a budget: the only way an unconfirmed run starts spending.
-export async function confirmCaseRun(db: Database, id: number, { budgetUsd }: { budgetUsd: number }): Promise<"queued" | "not_found" | "not_awaiting" | "no_budget"> {
+// Economy (execution "batch") also needs the person to acknowledge that the provider keeps batch inputs and results
+// for 29 days. The execution mode is fixed here: nothing has been sent yet, and it never changes afterwards.
+export async function confirmCaseRun(db: Database, id: number, { budgetUsd, execution = "standard", retentionAcknowledged = false }: { budgetUsd: number; execution?: CaseRunExecution; retentionAcknowledged?: boolean }): Promise<"queued" | "not_found" | "not_awaiting" | "no_budget" | "no_acknowledgement"> {
   if (!(budgetUsd > 0)) return "no_budget";
+  if (execution === "batch" && !retentionAcknowledged) return "no_acknowledgement";
   return db.transaction(async (tx) => {
     const [run] = await tx.select().from(caseRuns).where(eq(caseRuns.id, id)).for("update");
     if (!run) return "not_found" as const;
     if (run.status !== "awaiting_confirmation" || run.mode !== "live") return "not_awaiting" as const;
     await tx.update(budgets).set({ limitUsd: budgetUsd }).where(eq(budgets.id, run.budgetId!));
-    await tx.update(caseRuns).set({ budgetUsd, confirmedAt: new Date(), status: "queued", error: null, updatedAt: new Date() }).where(eq(caseRuns.id, id));
+    await tx.update(caseRuns).set({ budgetUsd, execution, retentionAcknowledgedAt: execution === "batch" ? new Date() : null, confirmedAt: new Date(), status: "queued", error: null, updatedAt: new Date() }).where(eq(caseRuns.id, id));
     return "queued" as const;
   });
 }
@@ -679,6 +748,23 @@ export async function caseRunReport(db: Database, id: number) {
     from adjudication_requests r left join llm_calls l on l.id = r.llm_call_id left join budget_reservations b on b.id = r.reservation_id
     where r.candidate_set = ${set}`).then((r) => r.rows);
   const budget = run.budgetId ? await db.execute<{ limit_usd: string; spent_usd: string; reserved_usd: string }>(sql`select limit_usd, spent_usd, reserved_usd from budgets where id = ${run.budgetId}`).then((r) => r.rows[0]) : null;
+  // Economy runs: their provider batches by state, and their requests by what the provider said.
+  const batchRows = run.execution === "batch" ? await db.execute<{ status: string; n: number; requests: number; oldest_open: string | null; results_expire: string | null }>(sql`
+    select status, count(*)::int as n, coalesce(sum(request_count), 0)::int as requests,
+      min(submitted_at) filter (where status in ('submitted', 'canceling'))::text as oldest_open,
+      min(provider_created_at + interval '29 days') filter (where status = 'ended')::text as results_expire
+    from case_run_batches where case_run_id = ${run.id} group by status`).then((r) => r.rows) : [];
+  const batchRequests = run.execution === "batch" ? await db.execute<{ kind: string; n: number }>(sql`
+    select case when r.status = 'sent' then 'processing' when r.status in ('completed', 'partial') then 'succeeded' else coalesce(r.error_kind, r.status::text) end as kind, count(*)::int as n
+    from adjudication_requests r join case_run_batches b on b.id = r.case_run_batch_id where b.case_run_id = ${run.id} group by 1`).then((r) => r.rows) : [];
+  const batchCount = (...st: string[]) => batchRows.filter((b) => st.includes(b.status)).reduce((n, b) => n + b.n, 0);
+  const batches = run.execution === "batch" ? {
+    total: batchRows.reduce((n, b) => n + b.n, 0), submitting: batchCount("submitting"), processing: batchCount("submitted", "canceling"), awaitingImport: batchCount("ended"), imported: batchCount("imported"),
+    notSubmitted: batchCount("not_submitted"), unknown: batchCount("submission_unknown"),
+    oldestOpenSince: batchRows.map((b) => b.oldest_open).filter((x) => x !== null).sort()[0] ?? null,
+    resultsExpireAt: batchRows.map((b) => b.results_expire).filter((x) => x !== null).sort()[0] ?? null,
+    requests: Object.fromEntries(batchRequests.map((r) => [r.kind, r.n])) as Record<string, number>,
+  } : null;
   const ledgerCount = (s: string) => entries.find((r) => r.status === s)?.n ?? 0;
   const uncertainPackets = entries.reduce((n, r) => n + r.uncertain, 0);
   const state = coverageState(coverage);
@@ -687,12 +773,13 @@ export async function caseRunReport(db: Database, id: number) {
     ...(coverage.pending ? [`${coverage.pending} pairs not read yet`] : []),
     ...(coverage.incomplete ? [`${coverage.incomplete} pairs read but left without a verdict (incomplete or failed packets)`] : []),
     ...(uncertainPackets ? [`${uncertainPackets} packets failed with a request that may have been billed; retried only on request`] : []),
+    ...(batches?.unknown ? [`${batches.unknown} provider batches could not be confirmed after a crash during submission; their requests are counted as billed`] : []),
     ...(coverage.deferred ? [`${coverage.deferred} pairs deferred by retrieval triage, unread (${Object.entries(coverage.deferredByStage).map(([k, v]) => `${v} ${k}`).join(", ")})`] : []),
     ...(coverage.uncovered ? [`${coverage.uncovered} pairs in no packet, unread`] : []),
     ...(coverage.excluded ? [`${coverage.excluded} pairs whose evidence could not be rebuilt from stored lines`] : []),
   ];
   return {
-    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
+    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
     config: run.config, sourceHash: run.sourceHash, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, updatedAt: run.updatedAt,
     confirmedAt: run.confirmedAt, cancelRequested: run.cancelRequestedAt !== null,
     estimate: (run.progress as { estimate?: unknown }).estimate ?? null,

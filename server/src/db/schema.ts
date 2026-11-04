@@ -849,10 +849,24 @@ export const adjudicationRequests = pgTable(
     contaminatedCandidateIds: bigint("contaminated_candidate_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
     suspectedCandidateIds: bigint("suspected_candidate_ids", { mode: "number" }).array().notNull().default(sql`'{}'::bigint[]`),
     splitReason: text("split_reason"), // why this batch is smaller than the strategy's size
+    // A case-run request sent through the Message Batches API (economy mode): its provider batch, its custom_id
+    // (unique, so a result delivered twice is imported once), its ledger entry, its round (1 the packet, 2 the
+    // recovery request) and the request it retries (an unbilled errored or expired one, retried once).
+    caseRunBatchId: ref("case_run_batch_id").references(() => caseRunBatches.id),
+    customId: text("custom_id"),
+    screeningEntryId: ref("screening_entry_id").references(() => screeningEntries.id),
+    round: integer("round"),
+    retryOf: ref("retry_of"),
     startedAt: createdAt(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("adjudication_requests_set_idx").on(t.candidateSet), index("adjudication_requests_analysis_idx").on(t.analysisId)],
+  (t) => [
+    index("adjudication_requests_set_idx").on(t.candidateSet),
+    index("adjudication_requests_analysis_idx").on(t.analysisId),
+    uniqueIndex("adjudication_requests_custom_id_unique").on(t.customId),
+    index("adjudication_requests_batch_idx").on(t.caseRunBatchId),
+    index("adjudication_requests_entry_idx").on(t.screeningEntryId),
+  ],
 );
 
 export const analysisStatus = pgEnum("analysis_status", [
@@ -1181,6 +1195,11 @@ export const caseRuns = pgTable(
       .references(() => cases.id),
     status: text("status").notNull().default("queued"),
     mode: text("mode").notNull(),
+    // standard: Messages API requests in parallel (fast). batch: the Message Batches API (economy, half price,
+    // up to 24 hours). Chosen at confirmation and fixed once model processing starts.
+    execution: text("execution").notNull().default("standard"),
+    // Economy only: when the person acknowledged that the provider stores batch inputs and results for 29 days.
+    retentionAcknowledgedAt: timestamp("retention_acknowledged_at", { withTimezone: true }),
     promptVersion: text("prompt_version").notNull(),
     model: text("model").notNull(),
     effort: text("effort").notNull(),
@@ -1209,6 +1228,48 @@ export const caseRuns = pgTable(
       "case_runs_status_check",
       sql`${t.status} in ('queued', 'retrieving', 'awaiting_confirmation', 'adjudicating', 'completed', 'incomplete', 'failed', 'blocked_budget', 'blocked_credentials', 'cancelled', 'interrupted')`,
     ),
+    check("case_runs_execution_check", sql`${t.execution} in ('standard', 'batch')`),
+  ],
+);
+
+// One provider batch of an economy case run (jobs/caseRunBatch.ts). The row and its requests are written before
+// the provider is called (`submitting`), the provider's ID right after (`submitted`). A row left `submitting`
+// by a crash is reconciled from the provider's batch list, and never sent again blindly (`submission_unknown`
+// until someone decides). The requests are adjudication_requests rows; their usage and cost are llm_calls rows.
+//   submitting -> submitted -> (canceling) -> ended -> imported
+//   submitting -> not_submitted (the provider refused it: nothing billed) | submission_unknown
+export const caseRunBatches = pgTable(
+  "case_run_batches",
+  {
+    id: id(),
+    caseRunId: ref("case_run_id")
+      .notNull()
+      .references(() => caseRuns.id),
+    seq: integer("seq").notNull(),
+    status: text("status").notNull().default("submitting"),
+    providerBatchId: text("provider_batch_id"),
+    requestCount: integer("request_count").notNull(),
+    payloadBytes: integer("payload_bytes").notNull(),
+    maxCostUsd: numeric("max_cost_usd", { precision: 14, scale: 8, mode: "number" }).notNull(), // the sum of its reservations
+    providerStatus: text("provider_status"), // in_progress, canceling, ended
+    requestCounts: jsonb("request_counts"), // the provider's counts: processing, succeeded, errored, canceled, expired
+    resultsImported: integer("results_imported").notNull().default(0),
+    error: text("error"),
+    recovery: text("recovery"), // how a crash during submission was resolved
+    createdAt: createdAt(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    providerCreatedAt: timestamp("provider_created_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    importedAt: timestamp("imported_at", { withTimezone: true }),
+    cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("case_run_batches_seq_unique").on(t.caseRunId, t.seq),
+    uniqueIndex("case_run_batches_provider_unique").on(t.providerBatchId),
+    check("case_run_batches_status_check", sql`${t.status} in ('submitting', 'submitted', 'canceling', 'ended', 'imported', 'not_submitted', 'submission_unknown')`),
   ],
 );
 

@@ -12,7 +12,10 @@ import { caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCa
 const Id = z.coerce.number().int().positive();
 const ACTIVE = ["queued", "retrieving", "awaiting_confirmation", "adjudicating"];
 const NO_ACCESS = { error: "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.", code: "no_analysis_access" };
-const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]) }).strict();
+const Execution = z.enum(["standard", "batch"]);
+// execution: a test-model run picks its transport at start (it needs no confirmation); a live run picks it when
+// it is confirmed, after its estimate.
+const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execution.optional() }).strict();
 // A whole case is far larger than one pair of sessions (the six-document real fixtures project about $60), so
 // case runs have their own ceiling. The budget itself is always the person's explicit confirmation.
 export const MAX_CASE_RUN_BUDGET_USD = 250;
@@ -29,7 +32,7 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     if (!kase) return res.status(404).json({ error: "Case not found." });
     const [active] = await db.select({ id: caseRuns.id }).from(caseRuns).where(and(eq(caseRuns.caseId, caseId.data), inArray(caseRuns.status, ACTIVE)));
     if (active) return res.status(409).json({ error: `Case run ${active.id} is still running for this case.`, caseRunId: active.id });
-    const run = await createCaseRun(db, caseId.data, { mode: body.data.mode });
+    const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard" });
     await enqueueCaseRun(boss, { caseRunId: run.id });
     return res.status(202).json({ caseRun: await caseRunReport(db, run.id) });
   });
@@ -56,13 +59,15 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     return res.json({ complete: report.complete, incompleteReasons: report.incompleteReasons, findings: await caseRunFindings(db, id.data) });
   });
 
-  // Confirms a live run's estimate with a budget; the run then starts its paid adjudication.
+  // Confirms a live run's estimate with a budget and an execution mode (standard, the default, or batch); the run
+  // then starts its paid adjudication. Batch needs retentionAcknowledged: the provider keeps batch data 29 days.
   router.post("/case-runs/:id/confirm", async (req, res) => {
     const id = Id.safeParse(req.params.id);
-    const body = z.object({ budgetUsd: Budget }).strict().safeParse(req.body ?? {});
+    const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
+    if (outcome === "no_acknowledgement") return res.status(400).json({ error: "Economy analysis stores the testimony with the AI provider for up to 29 days. Confirm that you understand this to use it.", code: "retention_not_acknowledged" });
     if (outcome !== "queued") return res.status(409).json({ error: "Only a live run waiting for confirmation can be confirmed." });
     await enqueueCaseRun(boss, { caseRunId: id.data });
     return res.status(202).json({ caseRun: await caseRunReport(db, id.data) });
@@ -92,6 +97,13 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     const [run] = await db.select().from(caseRuns).where(eq(caseRuns.id, id.data));
     if (!run) return res.status(404).json({ error: "Case run not found." });
     if (!ACTIVE.includes(run.status)) return res.status(409).json({ error: `Only a running case run can be cancelled; this one is ${run.status}.` });
+    // An economy run between checks has no runner but has batches at the provider: its next check cancels them,
+    // imports what finished, and only then ends the run.
+    if (run.execution === "batch" && run.status === "adjudicating") {
+      await db.update(caseRuns).set({ cancelRequestedAt: new Date(), updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
+      await enqueueCaseRun(boss, { caseRunId: run.id });
+      return res.status(202).json({ caseRun: await caseRunReport(db, run.id) });
+    }
     await db.update(caseRuns).set({ cancelRequestedAt: new Date(), updatedAt: new Date(), ...(run.runnerId === null ? { status: "cancelled", error: "Cancelled before it started.", finishedAt: new Date() } : {}) }).where(eq(caseRuns.id, run.id));
     return res.status(202).json({ caseRun: await caseRunReport(db, run.id) });
   });

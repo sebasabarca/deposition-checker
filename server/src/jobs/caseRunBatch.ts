@@ -1,0 +1,437 @@
+// Economy execution of a whole-case run: the same ledger entries, packets, prompt, verification and scoring as
+// standard execution (caseRun.ts: entryContext, nextStep, applyReply), sent through the Message Batches API
+// (adjudicate/packetBatch.ts) at half price. Only the transport differs.
+//
+// The run advances in ticks. The case-run job runs one tick and, while batches are open, queues itself again
+// (CASE_RUN_BATCH_POLL_SECONDS later), so nothing waits in memory: every fact is in the database, and a worker
+// restart simply runs the next tick. One tick:
+//   1. reconcile  a batch left `submitting` by a crash: found in the provider's batch list (same request count,
+//                 created in the window) it is adopted; not found within the window it becomes
+//                 submission_unknown, its requests uncertain (counted in full) and its packets failed, retried only
+//                 when someone resumes with retryUncertain. A submission is never repeated blindly.
+//   2. poll       each open batch's status; a cancelled run asks the provider to cancel its open batches.
+//   3. import     an ended batch's results, streamed: each by custom_id, each at most once (a result whose
+//                 request is no longer `sent` is a duplicate). A reply is recorded (llm_calls, raw text) and its
+//                 pointer stored on the ledger entry before it is parsed, exactly as in standard execution.
+//   4. advance    every entry with no open request: parse a stored reply; then done, a recovery request (round 2),
+//                 one retry of an unbilled errored or expired request, or the end (incomplete or failed).
+//   5. submit     new batches while fewer than CASE_RUN_BATCHES_IN_FLIGHT are open. Claims, reservations, the
+//                 batch row and its request rows are written in one transaction, then the provider is called.
+//
+// Budget: every request reserves its worst case at batch prices (its max_tokens of output) before its batch is
+// submitted, and keeps it until its result is imported, so spending can never pass the limit. A batch takes only
+// the requests the remaining budget covers; when nothing is open and the next request doesn't fit, the run stops
+// as blocked_budget. An economy run never falls back to standard requests.
+
+import { randomBytes } from "node:crypto";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import Anthropic from "@anthropic-ai/sdk";
+import { classifyFailure, closeRequest, openRequest } from "../adjudicate/requests";
+import { PROVIDER_MAX_BYTES, PROVIDER_MAX_REQUESTS, requestBytes, totalOf, type BatchResult, type BatchState, type PacketBatchProvider, type PacketBatchRequest } from "../adjudicate/packetBatch";
+import { formatIssuePacket, maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_SYSTEM_PROMPT, type IssuePacket } from "../adjudicate/packetPrompt";
+import { BudgetExceeded, closeFailed, failureIsUnbilled, inputTokenBound, maxBatchRequestCost, recordCall, releaseUnbilled, reserve, settle } from "../costs";
+import type { Database } from "../db/client";
+import { adjudicationRequests, caseRunBatches, caseRuns, screeningEntries, witnesses } from "../db/schema";
+import { claimNext, markFailed } from "../screen/ledger";
+import { MAX_RECOVERY_ROUNDS } from "../verify/packet";
+import { applyReply, caseRunSetOf, entryContext, finish, markIncomplete, MOCK_MODEL, nextStep, type CaseRun, type CaseRunStatus, type Entry, type EntryContext, type ItemIndex } from "./caseRun";
+
+export type BatchSettings = { batchSize: number; maxBytes: number; inFlight: number; pollSeconds: number; reconcileWindowMs: number };
+// 100 requests a batch: about 2.5 MB (well under 256 MB) and a worst-case reservation of roughly $10-$15 at batch
+// prices on the real fixtures, so several batches fit in flight under a budget near the estimate. Ten batches
+// open at once keeps polling cheap. A minute between checks: batches take minutes to hours.
+export const BATCH_DEFAULTS: BatchSettings = { batchSize: 100, maxBytes: 32 * 1024 * 1024, inFlight: 10, pollSeconds: 60, reconcileWindowMs: 10 * 60_000 };
+export const MOCK_POLL_SECONDS = 2;
+const LIST_SKEW_MS = 2 * 60_000; // provider and server clocks may differ
+
+export function batchSettings(env: Record<string, string | undefined>): BatchSettings {
+  const int = (name: string, fallback: number, max: number) => {
+    const raw = env[name];
+    if (raw === undefined || raw === "") return fallback;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > max) throw new Error(`${name} must be a whole number from 1 to ${max}; got ${raw}.`);
+    return n;
+  };
+  return {
+    batchSize: int("CASE_RUN_BATCH_SIZE", BATCH_DEFAULTS.batchSize, PROVIDER_MAX_REQUESTS),
+    maxBytes: int("CASE_RUN_BATCH_MAX_MB", BATCH_DEFAULTS.maxBytes / 1024 / 1024, PROVIDER_MAX_BYTES / 1024 / 1024 - 1) * 1024 * 1024,
+    inFlight: int("CASE_RUN_BATCHES_IN_FLIGHT", BATCH_DEFAULTS.inFlight, 1000),
+    pollSeconds: int("CASE_RUN_BATCH_POLL_SECONDS", BATCH_DEFAULTS.pollSeconds, 3600),
+    reconcileWindowMs: BATCH_DEFAULTS.reconcileWindowMs,
+  };
+}
+
+// faults: test hooks that simulate a crash at a named point.
+export type BatchDeps = {
+  provider: PacketBatchProvider;
+  settings?: Partial<BatchSettings>;
+  now?: () => number;
+  faults?: { afterBatchWritten?: (seq: number) => void; afterResultRecorded?: (customId: string) => void; afterSubmitted?: (seq: number) => void };
+};
+
+type Batch = typeof caseRunBatches.$inferSelect;
+type Request = typeof adjudicationRequests.$inferSelect;
+type Send = { entry: Entry; packet: IssuePacket; sentIds: number[]; round: number; retryOf: number | null };
+type Model = { model: string; promptVersion: string; effort: string };
+const OPEN: Batch["status"][] = ["submitting", "submitted", "canceling", "ended"];
+const asDb = (tx: unknown) => tx as Database;
+// The provider no longer has the batch (deleted, or a test-model batch lost with its worker): it can't end on its
+// own, so it is treated as ended with no results, which leaves each request uncertain.
+const notFound = (e: unknown) => typeof e === "object" && e !== null && (e as { status?: number }).status === 404;
+
+export async function runBatchTick(db: Database, run: CaseRun, ledgerId: number, deps: BatchDeps): Promise<CaseRunStatus | "polling"> {
+  const s = { ...BATCH_DEFAULTS, ...deps.settings };
+  const now = () => deps.now?.() ?? Date.now();
+  const live = run.mode === "live";
+  const model: Model = live ? { model: PACKET_MODEL, promptVersion: PACKET_PROMPT_VERSION, effort: PACKET_EFFORT } : { model: MOCK_MODEL, promptVersion: PACKET_PROMPT_VERSION, effort: "mock" };
+  const [fresh] = await db.select({ cancel: caseRuns.cancelRequestedAt }).from(caseRuns).where(eq(caseRuns.id, run.id));
+  const cancelling = fresh.cancel !== null;
+  const ledger = await db.execute<{ settings: { itemIndex: ItemIndex } }>(sql`select settings from screening_runs where id = ${ledgerId}`).then((r) => r.rows[0]);
+  const index = ledger.settings.itemIndex;
+  const names = new Map((await db.select({ id: witnesses.id, name: witnesses.name }).from(witnesses).where(eq(witnesses.caseId, run.caseId))).map((w) => [w.id, w.name]));
+  const contexts = new Map<number, EntryContext | string>();
+  const contextOf = async (tx: Database, entry: Entry) => {
+    if (!contexts.has(entry.id)) contexts.set(entry.id, await entryContext(tx, entry, index, names));
+    return contexts.get(entry.id)!;
+  };
+
+  await reconcile(db, run, deps, s, now);
+  await poll(db, run, deps, cancelling);
+  const pending = new Map<number, string | null>(); // mock replies, by request id: a mock run records no llm_calls
+  for (const b of await batchesOf(db, run.id, ["ended"])) await importBatch(db, run, b, deps, live, pending);
+
+  // Advance every entry that waits on nothing.
+  const sends: Send[] = [];
+  const waiting = await db.select().from(screeningEntries).where(and(eq(screeningEntries.runId, ledgerId), eq(screeningEntries.adjudicationStatus, "in_progress"))).orderBy(asc(screeningEntries.rank));
+  const latest = await latestRequests(db, waiting.map((e) => e.id));
+  for (const entry of waiting) {
+    const last = latest.get(entry.id) ?? null;
+    if (last?.status === "sent") continue;
+    const send = await advance(db, run, ledgerId, entry, last, await contextOf(db, entry), model, pending, cancelling);
+    if (send) sends.push(send);
+  }
+
+  let budgetMessage: string | null = null;
+  let fatal: string | null = null;
+  if (!cancelling) ({ budgetMessage, fatal } = await submit(db, run, ledgerId, sends, contextOf, model, deps, s));
+
+  const open = (await batchesOf(db, run.id, OPEN)).length;
+  if (open > 0) return "polling";
+  if (fatal) return finish(db, run.id, ledgerId, "failed", fatal);
+  // Work left that nothing stopped (the provider rate-limited this tick's batch): the next check submits it.
+  if (!cancelling && !budgetMessage && (await db.$count(screeningEntries, and(eq(screeningEntries.runId, ledgerId), eq(screeningEntries.screenStatus, "prioritized"), inArray(screeningEntries.adjudicationStatus, ["in_progress", "not_started"])))) > 0) return "polling";
+  if (cancelling) {
+    await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: cancelled", updatedAt: sql`now()` }).where(and(eq(screeningEntries.runId, ledgerId), eq(screeningEntries.adjudicationStatus, "in_progress")));
+    return finish(db, run.id, ledgerId, "cancelled", "Cancelled. Completed findings are kept; packets not yet read stay pending.");
+  }
+  if (budgetMessage) {
+    await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: budget", updatedAt: sql`now()` }).where(and(eq(screeningEntries.runId, ledgerId), eq(screeningEntries.adjudicationStatus, "in_progress")));
+    return finish(db, run.id, ledgerId, "blocked_budget", budgetMessage);
+  }
+  return finish(db, run.id, ledgerId, null, null);
+}
+
+const batchesOf = (db: Database, runId: number, statuses: Batch["status"][]) => db.select().from(caseRunBatches).where(and(eq(caseRunBatches.caseRunId, runId), inArray(caseRunBatches.status, statuses))).orderBy(asc(caseRunBatches.seq));
+
+// Each entry's most recent request. A request that was never submitted (the provider refused its batch) is
+// left out: it changed nothing.
+async function latestRequests(db: Database, entryIds: number[]) {
+  if (!entryIds.length) return new Map<number, Request>();
+  const rows = await db.execute<{ id: number }>(sql`
+    select distinct on (screening_entry_id) id from adjudication_requests
+    where screening_entry_id in (${sql.join(entryIds.map((x) => sql`${x}`), sql`, `)}) and coalesce(error_kind, '') <> 'not_submitted'
+    order by screening_entry_id, id desc`).then((r) => r.rows.map((x) => Number(x.id)));
+  if (!rows.length) return new Map<number, Request>();
+  const full = await db.select().from(adjudicationRequests).where(inArray(adjudicationRequests.id, rows));
+  return new Map(full.map((r) => [r.screeningEntryId!, r]));
+}
+
+// What an entry needs after its last request (or with none: a fresh claim). Returns the request to send, if any.
+async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entry, last: Request | null, ctx: EntryContext | string, model: Model, pending: Map<number, string | null>, cancelling: boolean): Promise<Send | null> {
+  if (typeof ctx === "string") {
+    await failEntry(db, ledgerId, entry, ctx, false);
+    return null;
+  }
+  const at = { entry };
+  let mock = last && pending.has(last.id) ? { candidateIds: last.candidateIds, text: pending.get(last.id)!, requestId: last.id } : undefined;
+  for (;;) {
+    const step = await nextStep(db, run, at, ctx, mock);
+    if (step.kind === "done") return null;
+    if (step.kind === "stored") {
+      at.entry = await applyReply(db, run, at.entry, step.packet, step.sentIds, step, model);
+      mock = undefined;
+      continue;
+    }
+    const send = (round: number, retryOf: number | null): Send => ({ entry: at.entry, packet: step.packet, sentIds: step.sentIds, round, retryOf });
+    // Cancelling: nothing more is sent. Unread pairs go back to the queue; a possibly billed request stays visible.
+    if (cancelling && last?.errorKind !== "uncertain") {
+      await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: cancelled", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+      return null;
+    }
+    if (!last) return send(1, null);
+    if (last.status === "completed" || last.status === "partial") {
+      if ((last.round ?? 1) >= 1 + MAX_RECOVERY_ROUNDS) {
+        await markIncomplete(db, at.entry, step.remaining, ctx);
+        return null;
+      }
+      return send((last.round ?? 1) + 1, null);
+    }
+    // Errored (not a bad request) or expired: not billed, so retried once in a later batch.
+    if ((last.errorKind === "batch_errored" || last.errorKind === "expired") && last.retryOf === null) return send(last.round ?? 1, last.id);
+    if (last.errorKind === "canceled") {
+      await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: its batch was cancelled", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+      return null;
+    }
+    const uncertain = last.errorKind === "uncertain";
+    await failEntry(db, ledgerId, entry, `${last.errorKind ?? "failed"}: ${last.error ?? "the batch request failed"}${last.retryOf !== null ? " (after one retry)" : ""}`, uncertain);
+    return null;
+  }
+}
+
+async function failEntry(db: Database, ledgerId: number, entry: Entry, message: string, billable: boolean) {
+  await markFailed(db, ledgerId, entry.packetId, message.slice(0, 2000));
+  await db.update(screeningEntries).set({ failureBillable: billable }).where(eq(screeningEntries.id, entry.id));
+}
+
+// Builds and submits batches: first the requests entries already waiting need (recovery rounds, retries), then
+// fresh packets from the ledger, each with its worst case reserved. Stops at the in-flight limit or the budget.
+async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[], contextOf: (tx: Database, e: Entry) => Promise<EntryContext | string>, model: Model, deps: BatchDeps, s: BatchSettings): Promise<{ budgetMessage: string | null; fatal: string | null }> {
+  const live = run.mode === "live";
+  let open = (await batchesOf(db, run.id, OPEN)).length;
+  const queue = [...sends];
+  for (; open < s.inFlight; open++) {
+    let short: string | null = null;
+    const written = await db.transaction(async (txRaw) => {
+      const tx = asDb(txRaw);
+      const items: { send: Send; request: PacketBatchRequest; bytes: number; maxCostUsd: number; reservationId: number | null; fresh: boolean }[] = [];
+      let bytes = 0;
+      const take = async (send: Send, fresh: boolean) => {
+        const request = { customId: `cr${run.id}-e${send.entry.id}-${randomBytes(6).toString("hex")}`, packet: send.packet };
+        const size = requestBytes(request);
+        if (items.length && bytes + size > s.maxBytes) return false;
+        const chars = PACKET_SYSTEM_PROMPT.length + formatIssuePacket(send.packet).length;
+        const maxCostUsd = live ? maxBatchRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(chars), maxOutputTokens: maxOutputTokensFor(send.packet.pairs.length) }) : 0;
+        let reservationId: number | null = null;
+        if (live) {
+          try {
+            reservationId = await reserve(tx, run.budgetId!, maxCostUsd, `${caseRunSetOf(run.id)} ${send.entry.packetId} batch`);
+          } catch (e) {
+            if (!(e instanceof BudgetExceeded)) throw e;
+            short = `Stopped before packet ${send.entry.packetId}: its worst case at batch prices ($${maxCostUsd.toFixed(4)}) is more than the budget has left once the requests in flight are counted at their worst case. Completed findings are kept; raise the budget and resume to continue.`;
+            return false;
+          }
+        }
+        items.push({ send, request, bytes: size, maxCostUsd, reservationId, fresh });
+        bytes += size;
+        return true;
+      };
+      while (queue.length && items.length < s.batchSize) {
+        if (!(await take(queue[0], false))) break;
+        queue.shift();
+      }
+      while (!short && items.length < s.batchSize && bytes < s.maxBytes) {
+        const [entry] = await claimNext(tx, ledgerId, 1);
+        if (!entry) break;
+        const ctx = await contextOf(tx, entry);
+        const send = await advance(tx, run, ledgerId, entry, null, ctx, model, new Map(), false);
+        if (!send) continue; // done already, or failed: nothing to send
+        if (!(await take(send, true))) {
+          await tx.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: budget or batch size", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+          break;
+        }
+      }
+      if (!items.length) return null;
+      const [{ seq }] = await tx.execute<{ seq: number }>(sql`select coalesce(max(seq), 0)::int + 1 as seq from case_run_batches where case_run_id = ${run.id}`).then((r) => r.rows);
+      const [batch] = await tx.insert(caseRunBatches).values({ caseRunId: run.id, seq, status: "submitting", requestCount: items.length, payloadBytes: bytes, maxCostUsd: items.reduce((n, i) => n + i.maxCostUsd, 0) }).returning();
+      const context = { candidateSet: caseRunSetOf(run.id), analysisId: null, strategy: "packet-batch", maxConcurrency: items.length };
+      for (const i of items) {
+        const chars = PACKET_SYSTEM_PROMPT.length + formatIssuePacket(i.send.packet).length;
+        const id = await openRequest(tx, context, { candidateIds: i.send.sentIds, model: model.model, promptVersion: model.promptVersion, estimatedInputTokens: inputTokenBound(chars), maxOutputTokens: maxOutputTokensFor(i.send.packet.pairs.length), maxCostUsd: i.maxCostUsd, reservationId: i.reservationId });
+        await tx.update(adjudicationRequests).set({ caseRunBatchId: batch.id, customId: i.request.customId, screeningEntryId: i.send.entry.id, round: i.send.round, retryOf: i.send.retryOf }).where(eq(adjudicationRequests.id, id));
+      }
+      return { batch, requests: items.map((i) => i.request) };
+    });
+    if (!written) return { budgetMessage: short && open === 0 ? short : null, fatal: null };
+    deps.faults?.afterBatchWritten?.(written.batch.seq);
+    let state: BatchState;
+    try {
+      state = await deps.provider.submit(written.requests);
+    } catch (e) {
+      const f = classifyFailure(e);
+      if (failureIsUnbilled(e)) {
+        // Refused: no batch exists. The requests changed nothing; their entries are decided again next tick.
+        await notSubmitted(db, written.batch, e);
+        if (f.status === "rate_limited") return { budgetMessage: null, fatal: null };
+        return { budgetMessage: null, fatal: `The provider refused a batch: ${e instanceof Error ? e.message : String(e)}` };
+      }
+      // It may exist: left `submitting` for the next tick to find in the provider's list.
+      await db.update(caseRunBatches).set({ error: `submission outcome unknown: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, written.batch.id));
+      return { budgetMessage: null, fatal: null };
+    }
+    await adopt(db, written.batch, state, null);
+    deps.faults?.afterSubmitted?.(written.batch.seq);
+    if (short) return { budgetMessage: null, fatal: null }; // the budget is full: wait for results
+  }
+  return { budgetMessage: null, fatal: null };
+}
+
+async function notSubmitted(db: Database, batch: Batch, e: unknown) {
+  const message = (e instanceof Error ? e.message : String(e)).slice(0, 2000);
+  const requests = await db.select().from(adjudicationRequests).where(eq(adjudicationRequests.caseRunBatchId, batch.id));
+  for (const r of requests) {
+    if (r.reservationId !== null) await releaseUnbilled(db, r.reservationId, "batch not submitted");
+    await closeRequest(db, r.id, { status: "failed", errorKind: "not_submitted", error: message });
+  }
+  await db.update(caseRunBatches).set({ status: "not_submitted", error: message, updatedAt: new Date() }).where(eq(caseRunBatches.id, batch.id));
+}
+
+async function adopt(db: Database, batch: Batch, state: BatchState, recovery: string | null) {
+  await db
+    .update(caseRunBatches)
+    .set({ status: state.status === "ended" ? "ended" : state.status === "canceling" ? "canceling" : "submitted", providerBatchId: state.id, providerStatus: state.status, requestCounts: state.counts, submittedAt: new Date(), providerCreatedAt: state.createdAt, expiresAt: state.expiresAt, endedAt: state.endedAt, recovery, error: null, updatedAt: new Date() })
+    .where(eq(caseRunBatches.id, batch.id));
+}
+
+// A batch row left `submitting` belongs to a runner that died between writing it and saving the provider's ID.
+// The provider's list is the only record: a batch created since the row with the same number of requests, not
+// already known, is this one (confirmed by custom_id when its results can be read). None after the window:
+// submission_unknown, and its requests are treated as possibly billed.
+async function reconcile(db: Database, run: CaseRun, deps: BatchDeps, s: BatchSettings, now: () => number) {
+  for (const b of await batchesOf(db, run.id, ["submitting"])) {
+    const since = new Date(b.createdAt.getTime() - LIST_SKEW_MS);
+    const known = new Set((await db.select({ id: caseRunBatches.providerBatchId }).from(caseRunBatches).where(sql`${caseRunBatches.providerBatchId} is not null`)).map((r) => r.id));
+    const ours = new Set((await db.select({ id: adjudicationRequests.customId }).from(adjudicationRequests).where(eq(adjudicationRequests.caseRunBatchId, b.id))).map((r) => r.id));
+    let found: BatchState | null = null;
+    let how = "";
+    try {
+      const candidates: BatchState[] = [];
+      for await (const x of deps.provider.list(since)) if (!known.has(x.id) && totalOf(x.counts) === b.requestCount) candidates.push(x);
+      for (const c of candidates) {
+        if (c.status !== "ended") continue;
+        for await (const r of deps.provider.results(c.id)) {
+          if (ours.has(r.customId)) { found = c; how = "its results carry this batch's custom IDs"; break; }
+        }
+        if (found) break;
+      }
+      const unended = candidates.filter((c) => c.status !== "ended");
+      if (!found && unended.length === 1 && candidates.length === 1) { found = unended[0]; how = "the only unclaimed batch of the same size created since; to be confirmed by custom ID when its results arrive"; }
+      else if (!found && unended.length > 1) {
+        await db.update(caseRunBatches).set({ error: `${unended.length} provider batches could be this one; waiting for them to end to match custom IDs`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+        continue;
+      }
+    } catch (e) {
+      await db.update(caseRunBatches).set({ error: `could not list the provider's batches: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+      continue;
+    }
+    if (found) {
+      await adopt(db, b, found, `Recovered after a crash during submission: provider batch ${found.id} (${how}).`);
+      continue;
+    }
+    if (now() - b.createdAt.getTime() < s.reconcileWindowMs) continue;
+    const note = "The worker stopped while submitting this batch and the provider's list shows no matching batch. It may still have been accepted, so its requests are counted in full and their packets are not sent again unless someone resumes with retryUncertain.";
+    for (const r of await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.caseRunBatchId, b.id), eq(adjudicationRequests.status, "sent")))) {
+      if (r.reservationId !== null) await closeFailed(db, r.reservationId, new Error("batch submission outcome unknown"));
+      await closeRequest(db, r.id, { status: "failed", errorKind: "uncertain", error: note });
+    }
+    // Their packets fail when advanced: each one's last request is uncertain.
+    await db.update(caseRunBatches).set({ status: "submission_unknown", recovery: note, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+  }
+}
+
+async function poll(db: Database, run: CaseRun, deps: BatchDeps, cancelling: boolean) {
+  for (const b of await batchesOf(db, run.id, ["submitted", "canceling"])) {
+    if (cancelling && b.cancelRequestedAt === null) {
+      try {
+        await deps.provider.cancel(b.providerBatchId!);
+        await db.update(caseRunBatches).set({ cancelRequestedAt: new Date(), status: "canceling", updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+      } catch (e) {
+        await db.update(caseRunBatches).set({ error: `cancel failed, retried next check: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+      }
+    }
+    try {
+      const st = await deps.provider.retrieve(b.providerBatchId!);
+      const ended = st.status === "ended";
+      await db
+        .update(caseRunBatches)
+        .set({ providerStatus: st.status, requestCounts: st.counts, expiresAt: st.expiresAt, lastPolledAt: new Date(), error: null, updatedAt: new Date(), ...(ended ? { status: "ended", endedAt: st.endedAt ?? new Date() } : {}) })
+        .where(eq(caseRunBatches.id, b.id));
+    } catch (e) {
+      if (notFound(e)) {
+        await db.update(caseRunBatches).set({ status: "ended", endedAt: new Date(), error: "The provider no longer has this batch; its requests have no results.", lastPolledAt: new Date(), updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+        continue;
+      }
+      // A failed check proves nothing: the batch keeps running and is checked again next tick.
+      await db.update(caseRunBatches).set({ error: `status check failed: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, lastPolledAt: new Date(), updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+    }
+  }
+}
+
+// Imports an ended batch's results. Safe to repeat after a crash at any point: a request is closed once, and a
+// result for a request already closed (a duplicate delivery, or a re-import) is skipped.
+async function importBatch(db: Database, run: CaseRun, b: Batch, deps: BatchDeps, live: boolean, pending: Map<number, string | null>) {
+  let imported = 0;
+  let foreign = 0;
+  try {
+    for await (const r of deps.provider.results(b.providerBatchId!)) {
+      const [req] = await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.customId, r.customId), eq(adjudicationRequests.caseRunBatchId, b.id)));
+      if (!req) { foreign++; continue; }
+      if (req.status !== "sent") continue;
+      await recordResult(db, run, req, r, live, pending);
+      imported++;
+      deps.faults?.afterResultRecorded?.(r.customId);
+    }
+  } catch (e) {
+    if (!(e instanceof Anthropic.APIError)) throw e; // ours (database, a bug): the job fails and is retried
+    if (!notFound(e)) {
+      await db.update(caseRunBatches).set({ error: `results import stopped, resumed next check: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+      return;
+    }
+  }
+  // Every request of an ended batch has a result. One without is unknown, and may have been billed.
+  for (const req of await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.caseRunBatchId, b.id), eq(adjudicationRequests.status, "sent")))) {
+    if (req.reservationId !== null) await closeFailed(db, req.reservationId, new Error("no result in the ended batch"));
+    await closeRequest(db, req.id, { status: "failed", errorKind: "uncertain", error: "The ended batch holds no result for this request; it may have been billed." });
+  }
+  await db
+    .update(caseRunBatches)
+    .set({ status: "imported", importedAt: new Date(), resultsImported: sql`${caseRunBatches.resultsImported} + ${imported}`, error: foreign ? `${foreign} results matched no request of this batch` : null, updatedAt: new Date() })
+    .where(eq(caseRunBatches.id, b.id));
+}
+
+async function recordResult(db: Database, run: CaseRun, req: Request, r: BatchResult, live: boolean, pending: Map<number, string | null>) {
+  if (r.type === "succeeded") {
+    const reply = r.reply;
+    const status = reply.stopReason === "max_tokens" ? "partial" : "completed";
+    const errorKind = reply.stopReason === "max_tokens" ? "cut_off" : reply.stopReason === "refusal" ? "refused" : null;
+    if (!live) {
+      await db.transaction(async (txRaw) => {
+        const tx = asDb(txRaw);
+        await closeRequest(tx, req.id, { status, errorKind, latencyMs: reply.latencyMs });
+        await tx.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: req.id, updatedAt: sql`now()` }).where(eq(screeningEntries.id, req.screeningEntryId!));
+      });
+      pending.set(req.id, reply.text);
+      return;
+    }
+    // The reply is paid for: recorded with its raw text, its reservation settled, and its pointer stored on the
+    // entry, in one transaction, before anything parses it.
+    await db.transaction(async (txRaw) => {
+      const tx = asDb(txRaw);
+      const call = await recordCall(tx, { jobId: null, stage: "adjudication", model: reply.model, usage: reply.usage as Anthropic.Usage, attempt: req.retryOf === null ? 1 : 2, items: req.candidateIds.length, batch: true, rawOutput: reply.text, effort: PACKET_EFFORT, latencyMs: reply.latencyMs });
+      if (req.reservationId !== null) await settle(tx, req.reservationId, { id: call.id, costUsd: call.costUsd });
+      await closeRequest(tx, req.id, { status, errorKind, llmCallId: call.id, latencyMs: reply.latencyMs });
+      await tx.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: req.id, llmCallId: call.id, updatedAt: sql`now()` }).where(eq(screeningEntries.id, req.screeningEntryId!));
+    });
+    return;
+  }
+  // Errored, expired and cancelled requests are not billed (the provider's documentation): reservation released.
+  if (req.reservationId !== null) await releaseUnbilled(db, req.reservationId, `batch item ${r.type}`);
+  if (r.type === "errored") await closeRequest(db, req.id, { status: "failed", errorKind: r.errorType === "invalid_request_error" ? "batch_invalid" : "batch_errored", error: `${r.errorType}: ${r.message}` });
+  else if (r.type === "expired") await closeRequest(db, req.id, { status: "failed", errorKind: "expired", error: "The batch reached its 24-hour limit before this request ran." });
+  else await closeRequest(db, req.id, { status: "aborted", errorKind: "canceled", error: "The batch was cancelled before this request ran." });
+}
+
+// Economy runs that should be ticking: the worker queues them again on start, in case a tick's follow-up job
+// was lost (pg-boss keeps queued jobs, so this is a backstop).
+export async function batchRunsToResume(db: Database) {
+  return db.select({ id: caseRuns.id, mode: caseRuns.mode }).from(caseRuns).where(and(eq(caseRuns.execution, "batch"), eq(caseRuns.status, "adjudicating")));
+}

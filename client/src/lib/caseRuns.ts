@@ -2,7 +2,7 @@
 // The lanes mirror server/src/api/present.ts (findingGroup); the coverage words follow docs/case-run-api.md:
 // unread evidence is never shown as reviewed or as "no contradiction".
 
-import type { CaseRun, CaseRunFinding, CaseRunStatus, CoverageState } from "../types";
+import type { CaseRun, CaseRunEstimate, CaseRunExecution, CaseRunFinding, CaseRunStatus, CoverageState } from "../types";
 import type { Tone } from "../components/ui";
 
 // Mirrors MAX_CASE_RUN_BUDGET_USD in server/src/api/caseRuns.ts.
@@ -67,3 +67,22 @@ export function canStartRun(latest: CaseRun | null, readySessions: number): stri
 }
 
 export const isTestRun = (run: Pick<CaseRun, "mode">) => run.mode === "mock";
+
+// The two ways a paid run can read the case: the same evidence, prompt, checks and scoring; only the transport,
+// the time it takes and the price differ (docs/case-run-api.md).
+export const EXECUTION: Record<CaseRunExecution, { label: string; short: string; description: string }> = {
+  standard: { label: "Fast analysis", short: "Fast", description: "Processes evidence with parallel AI requests. Best when you need results sooner." },
+  batch: { label: "Economy analysis", short: "Economy", description: "Uses asynchronous batch processing to reduce AI costs. Processing time may vary and can take up to 24 hours." },
+};
+
+// What the confirm step shows for a mode: the cost as a single figure (fast) or a range (economy: the provider's
+// cache is best effort, so from fast mode's caching to none), and the recommended limit. null when the estimate
+// predates economy mode.
+export function modeEstimate(e: CaseRunEstimate, execution: CaseRunExecution): { lowUsd: number; highUsd: number; recommendedUsd: number } | null {
+  if (execution === "standard") return { lowUsd: e.expectedUsd, highUsd: e.expectedUsd, recommendedUsd: e.recommendedBudgetUsd };
+  if (!e.economy) return null;
+  return { lowUsd: e.economy.expectedUsd, highUsd: e.economy.noCacheUsd, recommendedUsd: e.economy.recommendedBudgetUsd };
+}
+
+// The recommended limit can't pass the ceiling a person is allowed to confirm.
+export const defaultLimit = (recommendedUsd: number) => Math.min(recommendedUsd, MAX_CASE_RUN_BUDGET_USD).toFixed(2);

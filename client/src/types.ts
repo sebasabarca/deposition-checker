@@ -296,9 +296,13 @@ export type CaseAnalysisView = {
 // over every witness and session of a case. A mock run uses the deterministic test model: no model, no cost.
 export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | "adjudicating" | "completed" | "incomplete" | "failed" | "blocked_budget" | "blocked_credentials" | "cancelled" | "interrupted";
 export type CoverageState = "complete" | "processed_with_unread" | "partial";
-export type CaseRunEstimate = { packets: number; listedPairs: number; splitPackets: number; oversizePackets: number; expectedUsd: number; noCacheUsd: number; largestPacketWorstCaseUsd: number; recommendedBudgetUsd: number; note: string };
+// economy: the same projection at Message Batches API prices (absent on runs prepared before economy mode existed).
+export type CaseRunEconomyEstimate = { expectedUsd: number; noCacheUsd: number; worstCaseUsd: number; worstCasePerBatchUsd: number; recommendedBudgetUsd: number; batchSize: number; discount: number };
+export type CaseRunEstimate = { packets: number; listedPairs: number; splitPackets: number; oversizePackets: number; expectedUsd: number; noCacheUsd: number; largestPacketWorstCaseUsd: number; recommendedBudgetUsd: number; economy?: CaseRunEconomyEstimate; note: string };
+export type CaseRunExecution = "standard" | "batch";
+export type CaseRunBatches = { total: number; submitting: number; processing: number; awaitingImport: number; imported: number; notSubmitted: number; unknown: number; oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number> };
 export type CaseRun = {
-  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; error: string | null; model: string;
+  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
   createdAt: string; startedAt: string | null; finishedAt: string | null; confirmedAt: string | null; cancelRequested: boolean;
   estimate: CaseRunEstimate | null;
   coverageState: CoverageState; complete: boolean; incompleteReasons: string[];

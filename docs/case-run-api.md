@@ -14,13 +14,35 @@ Every route is under `/api`. They sit behind the existing sign-in, `sameOrigin` 
 ```
 POST /cases/:id/case-runs {mode:"live"}
   queued → retrieving → awaiting_confirmation (estimate ready; nothing sent, nothing spent)
-POST /case-runs/:id/confirm {budgetUsd}
+POST /case-runs/:id/confirm {budgetUsd, execution?, retentionAcknowledged?}
   queued → adjudicating → completed | incomplete | failed | blocked_budget | cancelled | interrupted
 POST /case-runs/:id/resume {budgetUsd?, retryUncertain?}   (from incomplete, failed, blocked_*, cancelled, interrupted)
   queued → adjudicating → …
 ```
 
 A mock run (`{mode:"mock"}`) skips confirmation. It goes straight to adjudication with the deterministic mock: no model, no cost, and verdicts labelled `fixture`.
+
+### Fast and economy execution
+
+A run reads its packets in one of two ways, chosen when it is confirmed (`execution`) and fixed from then on. A mock run chooses at start (`{mode:"mock", execution}`).
+
+| | `standard` (Fast, the default) | `batch` (Economy) |
+|---|---|---|
+| Transport | Messages API, a few packets in parallel (`CASE_RUN_PACKETS_*`) | Message Batches API (`jobs/caseRunBatch.ts`), `CASE_RUN_BATCH_SIZE` requests a batch, up to `CASE_RUN_BATCHES_IN_FLIGHT` batches open |
+| Price | Standard | 50% of standard on every token type ([pricing](https://platform.claude.com/docs/en/about-claude/pricing)) |
+| Time | Minutes, set by the rate limits | Set by the provider: most batches end within an hour, every batch within 24 hours |
+| Same packets, prompt (`packet-v1`), model, effort, output cap, verification, scoring | Yes | Yes: both send `packetRequestParams` (`adjudicate/packetModel.ts`) |
+| Budget | Each request in flight holds its worst case | Each request in a submitted batch holds its worst case at batch prices until its result is imported. A batch takes only what the remaining limit covers, so a limit near the estimate means fewer packets at once and more rounds, never more spending |
+| Data retention | As configured for the account | **Not eligible for zero data retention:** the provider stores batch inputs and results for 29 days. Confirming needs `retentionAcknowledged: true` |
+| After a worker restart | A request in flight is uncertain; resume continues | Nothing is lost: the next check carries on from the database |
+
+An economy run is a series of short checks: each one imports ended batches, sends recovery requests and retries, and submits new batches, then queues the next check (`CASE_RUN_BATCH_POLL_SECONDS`, 60 by default; 2 for a mock run). Its status stays `adjudicating` while any batch is open. It never falls back to standard requests.
+
+- **Results** are matched by `custom_id`, imported once each (a duplicate delivery is skipped), recorded in `llm_calls` with `batch = true` and their raw text before they are parsed, and settled against their reservation.
+- **Errored** (not an invalid request) and **expired** requests are not billed: each is retried once in a later batch, then its packet fails unbilled. An **invalid** request is not retried. A **cancelled** request returns its packet to the queue.
+- **A request with no result** in an ended batch is uncertain: its reservation is charged in full and its packet is retried only on `retryUncertain`.
+- **A crash while submitting** leaves the batch `submitting`. The next check looks for it in the provider's batch list (same request count, created since); found, it is adopted and confirmed by `custom_id`. Not found within 10 minutes, it becomes `submission_unknown`: its requests count as billed and its packets are retried only on `retryUncertain`. A batch is never resubmitted blindly.
+- **Results must be imported within 29 days** of the batch's creation, after which the provider deletes them. A run imports as soon as a batch ends; `batches.resultsExpireAt` shows the deadline of any finished batch not yet imported.
 
 | Status | Meaning | What the UI offers |
 |---|---|---|
@@ -38,28 +60,37 @@ A mock run (`{mode:"mock"}`) skips confirmation. It goes straight to adjudicatio
 
 | Method and path | Body | Success | Errors |
 |---|---|---|---|
-| `POST /cases/:id/case-runs` | `{ mode: "live" \| "mock" }` | 202 `{ caseRun }` | 400 bad body (a budget here is refused; it comes with confirmation), 403 access, 404 case, 409 `{ caseRunId }` when a run of this case is still active |
+| `POST /cases/:id/case-runs` | `{ mode: "live" \| "mock", execution?: "standard" \| "batch" }` (execution: mock only) | 202 `{ caseRun }` | 400 bad body (a budget here is refused; it comes with confirmation), 403 access, 404 case, 409 `{ caseRunId }` when a run of this case is still active |
 | `GET /cases/:id/case-runs` | | 200 `{ caseRuns: CaseRunReport[] }`, newest first | 400 |
 | `GET /case-runs/:id` | | 200 `{ caseRun }` | 404 |
-| `POST /case-runs/:id/confirm` | `{ budgetUsd }` (more than 0, at most `MAX_BUDGET_USD`) | 202 `{ caseRun }` | 400, 403, 404, 409 when not `awaiting_confirmation` |
+| `POST /case-runs/:id/confirm` | `{ budgetUsd, execution?: "standard" \| "batch", retentionAcknowledged?: boolean }` (budget more than 0, at most `MAX_CASE_RUN_BUDGET_USD`) | 202 `{ caseRun }` | 400 (with `code: "retention_not_acknowledged"` for economy without the acknowledgement), 403, 404, 409 when not `awaiting_confirmation` |
 | `POST /case-runs/:id/resume` | `{ budgetUsd?, retryUncertain? }` | 202 `{ caseRun }` | 400 (a lower budget, or a bad body), 403 live without access, 404, 409 when not stopped |
 | `POST /case-runs/:id/cancel` | | 202 `{ caseRun }` | 404, 409 when not active |
 | `GET /case-runs/:id/findings` | | 200 `{ complete, incompleteReasons, findings: CaseRunFinding[] }` | 404 |
 
 **Polling.** Poll `GET /case-runs/:id` every few seconds while the status is `queued`, `retrieving` or `adjudicating`. Stop at any other status. Progress is shown as counts, never a percentage: `packets.adjudicated` of `packets.total`, and `candidates.adjudicated` of `candidates.total`.
 
-**Cancel.** No new packet starts after a cancel; the packets in flight (several when the worker runs packets in parallel) finish and are kept. A run with no worker attached becomes `cancelled` at once.
+**Cancel.** No new packet starts after a cancel; the packets in flight (several when the worker runs packets in parallel) finish and are kept. A run with no worker attached becomes `cancelled` at once. An economy run stays `adjudicating` with `cancelRequested: true` until its next check has asked the provider to cancel its open batches and imported what they finished (requests already running may still complete and be billed); then it becomes `cancelled`.
 
 ## `CaseRunReport`
 
 ```ts
 type CaseRunReport = {
   id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; error: string | null;
+  execution: "standard" | "batch"; retentionAcknowledgedAt: string | null;
+  batches: null | {                         // economy runs only: provider batches by state, requests by outcome
+    total; submitting; processing; awaitingImport; imported; notSubmitted; unknown: number;
+    oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number>;
+  };
   model: string; promptVersion: "packet-v1"; effort: string; config: object; sourceHash: string | null;
   createdAt: string; startedAt: string | null; finishedAt: string | null; updatedAt: string; confirmedAt: string | null; cancelRequested: boolean;
   estimate: null | {                        // set after retrieval
     packets: number; listedPairs: number; splitPackets: number; oversizePackets: number;
     expectedUsd: number; noCacheUsd: number; largestPacketWorstCaseUsd: number; recommendedBudgetUsd: number;
+    economy?: {                             // the same projection at batch prices (absent on older runs)
+      expectedUsd: number; noCacheUsd: number;   // cache hits in a batch are best effort: show the range
+      worstCaseUsd: number; worstCasePerBatchUsd: number; recommendedBudgetUsd: number; batchSize: number; discount: number;
+    };
     assumptions: object; note: string;      // a projection, not a measurement
   };
   coverageState: "complete" | "processed_with_unread" | "partial";

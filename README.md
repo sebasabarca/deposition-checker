@@ -56,7 +56,7 @@ npm 11 may warn that some packages' install scripts were not run (esbuild, onnxr
 | `ALLOW_PAID_CALLS` | Paid analyses only | Must be `true` for any model call. Keep it `false`: with `false`, nothing can be sent to a model or charged. |
 | `APP_URL` | Default works | Where links in emails point. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | No | Without them, emails (account verification, password reset) are printed in the `npm run dev` terminal instead of sent. |
-| `CASE_RUN_*`, `PROVIDER_*` | No | Concurrency and provider rate limits for whole-case analyses. Conservative defaults; see the comments in `.env.example`. |
+| `CASE_RUN_*`, `PROVIDER_*` | No | Concurrency and provider rate limits for whole-case analyses, and the batch size, batches in flight and check interval of Economy runs (`CASE_RUN_BATCH_*`). Conservative defaults; see the comments in `.env.example`. |
 
 ## First-time walkthrough
 
@@ -114,10 +114,27 @@ When a run shows **Finished**, choose **View findings**. Findings are grouped in
    - larger cases cost more;
    - the run stops at your limit;
    - unread pairs are never counted as reviewed.
-3. **Confirm.** Nothing is charged until you enter a spending limit (at most $250), tick **I authorize Veridict to spend up to $…**, and choose **Start paid analysis**.
-4. **Progress and control.** While the run is in progress, the panel shows packets read, pairs with a verdict, and the amount spent. **Cancel** stops it, and **Resume** continues a stopped run, with a higher limit if it stopped at the old one.
+3. **Choose the mode.** **Fast analysis** or **Economy analysis**, each with its own estimate (see below).
+4. **Confirm.** Nothing is charged until you enter a spending limit (at most $250), tick **I authorize Veridict to spend up to $…** (and, for Economy, the data-retention box), and choose **Start fast analysis** or **Start economy analysis**.
+5. **Progress and control.** While the run is in progress, the panel shows packets read, pairs with a verdict, and the amount spent (Economy also shows its provider batches). **Cancel** stops it, and **Resume** continues a stopped run, with a higher limit if it stopped at the old one. You can leave the page: the run continues on the server.
 
-The cost depends on the case. On the project's six-document real test corpus, the estimate was about $60; a small case like the two files above estimates about $1.
+The cost depends on the case. On the project's six-document real test corpus, the estimate was about $60 in Fast mode and about $30–$43 in Economy; a small case like the two files above estimates about $1 (Fast) or $0.50–$0.67 (Economy).
+
+#### Fast or Economy
+
+Both modes read the same prepared evidence packets with the same model, prompt, citation checks and scoring, so the same replies give the same findings. They differ in transport, time and price:
+
+| | Fast | Economy |
+|---|---|---|
+| How | Parallel requests to the Messages API | Anthropic's Message Batches API, about 100 packets per batch |
+| Price | Standard | Half price on every token type. The estimate is a range because the provider's prompt cache is best effort in batches |
+| Time | Minutes | Set by Anthropic: most batches finish within an hour, every batch within 24 hours. Findings appear as each batch finishes |
+| Spending limit | Each request in flight holds its largest possible cost | Each request in a running batch holds its largest possible cost until it returns, so the recommended limit is higher than the expected spend. A lower limit still works, with fewer packets at a time and a longer run; it never raises the charge |
+| Data retention | The account's normal retention | **Anthropic stores batch inputs and results for 29 days, and batches aren't covered by zero data retention.** Economy asks you to acknowledge this before it starts. Check it against your client obligations before using Economy on real testimony |
+| Cancel | Stops at once; requests in flight finish | Asks Anthropic to cancel the open batches; requests already running may still finish and are charged. The panel shows "Cancelling…" until the next check, within about a minute |
+| If the server restarts | A request in flight may have been charged; it is never resent automatically | Nothing is lost; the run continues from the database |
+
+Economy never switches to Fast on its own. An expired or failed batch request isn't charged and is retried once; a request whose outcome is unknown is counted as charged and retried only if you ask. **Test economy mode (free)** runs the whole economy flow with the test model and a simulated batch provider.
 
 **Preparing an estimate needs paid access for the account.** New accounts don't have it. To try the whole flow without any possibility of a charge, grant access while keeping `ALLOW_PAID_CALLS=false`:
 

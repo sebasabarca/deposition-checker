@@ -117,6 +117,7 @@ export async function createCaseRunQueues(boss: PgBoss, overrides: QueueOptions 
   await ensure(CASE_RUN_QUEUE, { ...ANALYSIS_QUEUE_OPTIONS, expireInSeconds: 6 * 60 * 60, ...overrides, deadLetter: CASE_RUN_FAILED_QUEUE });
 }
 
-export async function enqueueCaseRun(boss: PgBoss, job: CaseRunJob): Promise<void> {
-  await boss.send(CASE_RUN_QUEUE, job, { singletonKey: `case-run-${job.caseRunId}` });
+// startAfterSeconds: an economy run's next check of its open batches.
+export async function enqueueCaseRun(boss: PgBoss, job: CaseRunJob, { startAfterSeconds }: { startAfterSeconds?: number } = {}): Promise<void> {
+  await boss.send(CASE_RUN_QUEUE, job, { singletonKey: `case-run-${job.caseRunId}`, ...(startAfterSeconds ? { startAfter: startAfterSeconds } : {}) });
 }

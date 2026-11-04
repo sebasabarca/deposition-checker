@@ -1,7 +1,7 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseRun, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseRun, CaseRunExecution, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
 import type { Workspace } from "./workspace";
 
 export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
@@ -58,8 +58,9 @@ export const api = {
   // sent to a model until confirmCaseRun with a budget. A mock run uses the free deterministic test model.
   caseRuns: (caseId: number) => request<{ caseRuns: CaseRun[] }>("GET", `/cases/${caseId}/case-runs`),
   caseRun: (id: number) => request<{ caseRun: CaseRun }>("GET", `/case-runs/${id}`),
-  startCaseRun: (caseId: number, mode: "live" | "mock") => request<{ caseRun: CaseRun }>("POST", `/cases/${caseId}/case-runs`, { mode }),
-  confirmCaseRun: (id: number, budgetUsd: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/confirm`, { budgetUsd }),
+  // execution: a test run picks fast (standard) or economy (batch) here; a paid run picks it when confirmed.
+  startCaseRun: (caseId: number, mode: "live" | "mock", execution: CaseRunExecution = "standard") => request<{ caseRun: CaseRun }>("POST", `/cases/${caseId}/case-runs`, mode === "mock" ? { mode, execution } : { mode }),
+  confirmCaseRun: (id: number, budgetUsd: number, execution: CaseRunExecution = "standard", retentionAcknowledged = false) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/confirm`, execution === "batch" ? { budgetUsd, execution, retentionAcknowledged } : { budgetUsd }),
   resumeCaseRun: (id: number, budgetUsd?: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/resume`, budgetUsd === undefined ? {} : { budgetUsd }),
   cancelCaseRun: (id: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/cancel`),
   caseRunFindings: (id: number) => request<{ complete: boolean; incompleteReasons: string[]; findings: CaseRunFinding[] }>("GET", `/case-runs/${id}/findings`),

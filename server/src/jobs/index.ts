@@ -8,6 +8,7 @@ import { and, eq, notInArray } from "drizzle-orm";
 import type { Pool } from "pg";
 import { analyses, caseRuns } from "../db/schema";
 import { CASE_RUN_TERMINAL, runCaseRun, type CaseRunDeps } from "./caseRun";
+import { BATCH_DEFAULTS, batchRunsToResume, MOCK_POLL_SECONDS } from "./caseRunBatch";
 import { runAnalysis, TERMINAL, type AnalysisDeps } from "./analysis";
 import { failureMessage, recordIngestFailure, runIngestJob } from "./ingest";
 import { CASE_RUN_FAILED_QUEUE, CASE_RUN_QUEUE, enqueueCaseRun, parseCaseRunJob, ANALYSIS_FAILED_QUEUE, ANALYSIS_QUEUE, enqueueAnalysis, INGEST_FAILED_QUEUE, INGEST_QUEUE, parseAnalysisJob, parseIngestJob, DISCOVERY_POLL_SECONDS, PARSING_RECHECK_SECONDS } from "./queue";
@@ -16,6 +17,7 @@ export { failureMessage, recordIngestFailure, runIngestJob, type IngestJobResult
 export { analysisCost, candidateSetOf, DIRECT_FABLE, interruptAnalysis, MAX_CONSECUTIVE_FAILURES, paidCallsAllowed, RUNNER_STALE_MS, runAnalysis, TERMINAL, type Analysis, type AnalysisDeps, type AnalysisProgress, type RunOutcome } from "./analysis";
 export { CASE_RUN_TERMINAL, caseRunFindings, caseRunReport, caseRunSetOf, createCaseRun, fromPacketAdjudicator, mockCaseModel, resumeCaseRun, runCaseRun, type CaseRunDeps } from "./caseRun";
 export { CASE_RUN_QUEUE, createCaseRunQueues, enqueueCaseRun } from "./queue";
+export { batchSettings, BATCH_DEFAULTS, runBatchTick, type BatchDeps, type BatchSettings } from "./caseRunBatch";
 export {
   ANALYSIS_FAILED_QUEUE,
   ANALYSIS_QUEUE,
@@ -82,13 +84,21 @@ export async function startAnalysisWorkers(boss: PgBoss, db: Database, deps: Ana
 // The case-run workers. A run that stops for any reason records it on its row; only a thrown error
 // (database, bug) is retried by pg-boss and, after the last attempt, marked failed here.
 // maxCases runs execute at once in this process; their packets share deps.limiter (jobs/limiter.ts).
-export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool, deps: CaseRunDeps, { pollingIntervalSeconds = 2, maxCases = 1 } = {}): Promise<void> {
+// An economy run's tick returns "polling" while its batches are open: the job queues its next check, mock runs
+// sooner (MOCK_POLL_SECONDS). On start, every economy run still adjudicating is queued again, in case a follow-up
+// job was lost (the singleton key keeps a run from being queued twice).
+export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool, deps: CaseRunDeps, { pollingIntervalSeconds = 2, maxCases = 1, batchPollSeconds = BATCH_DEFAULTS.pollSeconds } = {}): Promise<void> {
   await boss.work(CASE_RUN_QUEUE, { pollingIntervalSeconds, localConcurrency: maxCases }, async (jobs: Job<unknown>[]) => {
     for (const job of jobs) {
       const { caseRunId } = parseCaseRunJob(job.data);
-      console.log(`case run ${caseRunId}: ${await runCaseRun(db, pool, caseRunId, deps)}`);
+      const outcome = await runCaseRun(db, pool, caseRunId, deps);
+      if (outcome === "polling") {
+        const [run] = await db.select({ mode: caseRuns.mode }).from(caseRuns).where(eq(caseRuns.id, caseRunId));
+        await enqueueCaseRun(boss, { caseRunId }, { startAfterSeconds: run?.mode === "mock" ? MOCK_POLL_SECONDS : batchPollSeconds });
+      } else console.log(`case run ${caseRunId}: ${outcome}`);
     }
   });
+  for (const r of await batchRunsToResume(db)) await enqueueCaseRun(boss, { caseRunId: r.id });
   await boss.work(CASE_RUN_FAILED_QUEUE, { pollingIntervalSeconds, includeMetadata: true }, async (jobs: JobWithMetadata<unknown>[]) => {
     for (const job of jobs) {
       const { caseRunId } = parseCaseRunJob(job.data);

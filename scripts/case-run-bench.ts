@@ -9,6 +9,10 @@
 //       request with a 429. Prints one JSON line: timings, query counts, retries, duplicates, budget, and a
 //       fingerprint of every verdict and finding keyed by the candidate's passages (not its row id), so runs
 //       can be compared for identical results.
+//   ... --execution batch [--batch-size 100 --batches-in-flight 10]
+//       the same run in economy execution: the fake Message Batches API (eval/mockPacketBatch.ts) answers with the
+//       same mock replies, every batch ending at once; the run ticks until done. Its fingerprint must match the
+//       standard run's. Batch timing here is the pipeline's own import cost, never the provider's turnaround.
 //
 // Mock latency measures the pipeline's own overhead and how well it overlaps waiting; it says nothing about
 // the real provider's throughput or rate limits.
@@ -26,12 +30,14 @@ import { loadEvidenceFixtures, missingFixtureFiles, openEvaluationDatabase, read
 import { mockPacketReply } from "../server/src/eval/mockPacketModel";
 import { caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, runCaseRun, type CasePacketModel } from "../server/src/jobs/caseRun";
 import { ProviderLimiter, UNLIMITED } from "../server/src/jobs/limiter";
+import { FakeBatchProvider } from "../server/src/eval/mockPacketBatch";
 
 const { values } = parseArgs({
   options: {
     "database-env": { type: "string" }, load: { type: "boolean" }, "latency-ms": { type: "string", default: "100" },
     "rate-limit-every": { type: "string", default: "0" }, label: { type: "string", default: "" }, budget: { type: "string", default: "10000" },
     concurrency: { type: "string", default: "1" }, "pool-max": { type: "string", default: "10" }, "profile-queries": { type: "boolean" },
+    execution: { type: "string", default: "standard" }, "batch-size": { type: "string", default: "100" }, "batches-in-flight": { type: "string", default: "10" },
   },
 });
 
@@ -112,18 +118,22 @@ async function main() {
     // retry-after (1 s) on a virtual clock that advances instead of waiting.
     let skew = 0;
     const limiter = new ProviderLimiter({ ...UNLIMITED, maxInFlight: concurrency }, { now: () => Date.now() + skew, sleep: async (ms) => { skew += ms; } });
-    const deps = { adjudicator: () => model, minilm: "off" as const, concurrency, limiter };
+    const batch = values.execution === "batch";
+    const fakeBatches = new FakeBatchProvider({ model: PACKET_MODEL });
+    const deps = { adjudicator: () => model, minilm: "off" as const, concurrency, limiter, batch: () => ({ provider: fakeBatches, settings: { batchSize: Number(values["batch-size"]), inFlight: Number(values["batches-in-flight"]) } }) };
 
     const run = await createCaseRun(db, caseId, { mode: "live", budgetUsd: Number(values.budget) });
     const t0 = performance.now();
     const afterRetrieval = await runCaseRun(db, pool, run.id, deps);
     const retrievalMs = performance.now() - t0;
     if (afterRetrieval !== "awaiting_confirmation") throw new Error(`retrieval ended ${afterRetrieval}`);
-    await confirmCaseRun(db, run.id, { budgetUsd: Number(values.budget) });
+    await confirmCaseRun(db, run.id, { budgetUsd: Number(values.budget), execution: batch ? "batch" : "standard", retentionAcknowledged: batch });
 
     const probe = instrument(pool);
     const t1 = performance.now();
-    const status = await runCaseRun(db, pool, run.id, deps);
+    let status = await runCaseRun(db, pool, run.id, deps);
+    let ticks = 1;
+    while (status === "polling") { status = await runCaseRun(db, pool, run.id, deps); ticks++; }
     const adjudicationMs = performance.now() - t1;
     probe.stop();
 
@@ -140,7 +150,7 @@ async function main() {
     const [{ runSeconds }] = (await db.execute<{ runSeconds: number }>(sql`select extract(epoch from (finished_at - started_at))::float as "runSeconds" from case_runs where id = ${run.id}`)).rows;
     void caseRuns;
     console.log(JSON.stringify({
-      label: values.label, runId: run.id, status, concurrency, latencyMs, packets,
+      label: values.label, runId: run.id, status, execution: values.execution, ...(batch ? { ticks, providerBatches: fakeBatches.submissions, estimate: report.estimate } : {}), concurrency, latencyMs, packets,
       retrievalSeconds: +(retrievalMs / 1000).toFixed(1), adjudicationSeconds: +(adjudicationMs / 1000).toFixed(1), runSeconds: +runSeconds.toFixed(1),
       packetsPerMinute: Math.round(packets / (adjudicationMs / 60_000)),
       wallMsPerPacket: +(adjudicationMs / packets).toFixed(1),
