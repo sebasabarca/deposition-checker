@@ -16,12 +16,16 @@ const QUALIFYING = /\b(but|however|although|though|except|unless|only|maybe|perh
 const NEGATIVE_QUESTION = /\b(not|never|no)\b|n't\b/i;
 const TAG_QUESTION = /,\s*(did|didn't|do|don't|does|doesn't|is|isn't|was|wasn't|are|aren't|were|weren't|have|haven't|will|won't|right|correct)(\s+(you|he|she|it|they|we|i|that|there))?\s*\??\s*$/i;
 
+// A turn marker at the start of a sentence ("A: No.", "A. No, sir.", "A No.") isn't testimony: transcripts
+// in archive or printed form keep it in the stored line, and it must not turn a plain answer uncertain.
+// After splitting on periods, "A." leaves a sentence that is only "a", dropped here too.
+const TURN_MARKER = /^[qa](?::|\s+|$)\s*/;
 const sentences = (text: string) =>
   text
     .toLowerCase()
     .replace(/[’]/g, "'")
     .split(/[.!?]+/)
-    .map((s) => s.replace(/\s+/g, " ").trim())
+    .map((s) => s.replace(/\s+/g, " ").trim().replace(TURN_MARKER, ""))
     .filter(Boolean);
 
 export function readAnswer(question: string, answer: string): AnswerReading {

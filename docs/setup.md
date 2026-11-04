@@ -75,5 +75,5 @@ Paid commands are listed in `docs/commands.md`. Each one needs `ANTHROPIC_API_KE
 ## 8. Agent tools (optional)
 
 - **Claude Code:** reads `CLAUDE.md`.
-- **Codex:** reads `AGENTS.md`. Sign in with `codex login` using the developer's ChatGPT account; no OpenAI API key is needed. Check with `codex login status`.
+- **Subagents:** the implementer and evaluator roles are defined in `.claude/agents/` (see "Agents" in `CLAUDE.md`).
 - **Graphify:** `uv tool install graphifyy`, then `graphify update .` builds the local code graph in `graphify-out/`, git-ignored and offline. See the graphify section of `CLAUDE.md` for its limits.

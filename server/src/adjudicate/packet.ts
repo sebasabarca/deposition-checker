@@ -90,7 +90,7 @@ export function untilGap<T extends { page: number }>(from: { page: number }, nea
   return { lines: kept, gap: false };
 }
 
-async function loadSide(db: Database, depositionId: number, groupId: number, session: "A" | "B"): Promise<PacketExchange> {
+export async function loadSide(db: Database, depositionId: number, groupId: number, session: "A" | "B"): Promise<PacketExchange> {
   const parts = await db
     .select({ id: exchanges.id, partCount: exchanges.partCount, witnessId: exchanges.witnessId })
     .from(exchanges)

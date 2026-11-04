@@ -4,8 +4,8 @@ Seven milestones. A milestone is complete only when its acceptance criteria pass
 
 | # | Milestone | Status |
 |---|---|---|
-| 1 | Foundation, repository readiness and agent setup | **Complete** (November 3, 2026): baseline reproduced, misfiled documents excluded, Claude/Codex instructions in place. See `docs/baseline-m1.md` |
-| 2 | Packet-versus-pairwise adjudication validation | Next. Handoff: `docs/milestone-2-handoff.md` |
+| 1 | Foundation, repository readiness and agent setup | **Complete** (November 3, 2026): baseline reproduced, misfiled documents excluded, agent instructions in place (Codex was removed on November 3; development uses Claude Code only). See `docs/baseline-m1.md` |
+| 2 | Packet-versus-pairwise adjudication validation | In progress: offline infrastructure built and tested; $3 calibration ($0.48) and $6 pilot ($2.89; 60 packets, 269 pairs, both arms, 30 repeats) run and independently evaluated; see `docs/milestone-2-results.md`. Both arms found 21/21 synthetic but only 1/4 real targets; packets cost 32% less. Real-world detection is not yet validated; next: verifier fixes and a `packet-v2` prompt (not started). Handoff: `docs/milestone-2-handoff.md` |
 | 3 | Cheap evidence screening | Not started |
 | 4 | Independent audit of deferred evidence | Not started |
 | 5 | Cost optimization: under $10 per corpus-1-sized case | Not started |

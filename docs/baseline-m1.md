@@ -75,7 +75,7 @@ The Hutchinson case (16) counts two active documents, 54 and 56.
   - Both documents were excluded with the existing command. Every line, exchange, analysis, finding and review count is unchanged before and after.
   - Backups: `data/raw/backups/m1-docs-58-64-before.json`, `m1-counts-before.json` and `m1-counts-after.json`.
   - To undo: `update depositions set excluded_reason = null where id in (58, 64)`.
-- **Agent instructions.** `CLAUDE.md` went from 32,376 to about 9,700 bytes. The repository map and the command list moved verbatim to `docs/architecture.md` and `docs/commands.md`, which Claude and Codex share. `AGENTS.md` was a stale copy of an older `CLAUDE.md` (14,864 bytes, still describing v1 and files since removed). It is now a 3,465-byte Codex brief with the delegated-task contract.
+- **Agent instructions.** `CLAUDE.md` went from 32,376 to about 9,700 bytes. The repository map and the command list moved verbatim to `docs/architecture.md` and `docs/commands.md`, which Claude and Codex share. `AGENTS.md` was a stale copy of an older `CLAUDE.md` (14,864 bytes, still describing v1 and files since removed); it became a short Codex brief, and was removed later on November 3 when development moved to Claude Code only (the task contract now lives in `CLAUDE.md`, "Agents", and `.claude/agents/`).
 - **Graphify.**
   - A code-only, local graph (`.graphifyignore`), git-ignored together with `.claude/worktrees/`.
   - `graphify update .` rebuilds it in about 3 seconds. It passes with network access denied by `sandbox-exec`, and its indexing modules load no network library.

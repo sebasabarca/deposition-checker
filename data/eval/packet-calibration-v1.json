@@ -1,0 +1,159 @@
+{
+  "version": "packet-pilot-v1-subset",
+  "createdOn": "2026-11-04T03:34:56.294Z",
+  "inputs": {
+    "data/raw/retrieval/m1-baseline/eval-c1/packets-pool-triaged-c1v2-default-within-case.json": "fd758d3b86e82fa69ea134dcfeccd7f8665fe52834e5bbc256a7537af0d4c53a",
+    "data/raw/retrieval/round2/agent-6/frozen-v2/benchmark.json": "afe43270130956d4b3aa285a392e3b4d71cc43d035bb92af33681da17dfa1d82",
+    "data/raw/retrieval/round2/agent-6/heldout-c1v2.json": "900488357fdd99dc8516227a6bbda03be2270dd85dd4302e0d1f439b401a2cd1",
+    "data/raw/retrieval/round2/agent-6/frozen-v2/items.json": "e4f41a6aa4332b44a343e95e320efe7a83a7dde14620739f9c6347db02714f69",
+    "data/raw/retrieval/m1-baseline/eval-c2/packets-pool-triaged-c2v2-default-within-case.json": "f752c77d3feadaf5b8270f1a7ec2697088bd65b2c225863241fac9ad86c2356b",
+    "data/raw/retrieval/round2/agent-6/frozen-corpus2-v2/benchmark.json": "c43028c3af8a7b054df438137996f5eb1629c3548e22a23427ecd7a7c5a164d3",
+    "data/raw/retrieval/round2/agent-6/frozen-corpus2-v2/items.json": "b1ba13ab1d91a151dcf1c021159fc325979922e16dec64246d7ea0f8a5548564"
+  },
+  "corpora": [
+    {
+      "corpus": "c1",
+      "evidence": "real",
+      "seed": 1,
+      "quota": 5,
+      "packetIds": [
+        "issue-31",
+        "issue-118",
+        "star-1249",
+        "star-1504",
+        "star-2182"
+      ],
+      "reasons": {
+        "issue-31": "target",
+        "star-2182": "target",
+        "star-1249": "target",
+        "issue-118": "target",
+        "star-1504": "control"
+      },
+      "labelledCovered": [
+        "limo-suv",
+        "CW-001",
+        "C02",
+        "C07",
+        "C01"
+      ],
+      "labelledNotInSample": [
+        "C03",
+        "NC-002",
+        "C06",
+        "C08",
+        "N01",
+        "N02",
+        "N03",
+        "N04",
+        "N05",
+        "N07",
+        "N08",
+        "NC-001",
+        "C04",
+        "C05",
+        "N09",
+        "CW-002"
+      ],
+      "labelledInNoPacket": [
+        "C03",
+        "NC-002",
+        "C06",
+        "N01",
+        "N03",
+        "N04",
+        "N05",
+        "N07",
+        "N08",
+        "N09"
+      ]
+    },
+    {
+      "corpus": "c2",
+      "evidence": "synthetic",
+      "seed": 1,
+      "quota": 7,
+      "packetIds": [
+        "issue-5",
+        "issue-6",
+        "issue-27",
+        "issue-29",
+        "issue-34",
+        "issue-53",
+        "issue-63"
+      ],
+      "reasons": {
+        "issue-27": "control",
+        "issue-34": "control",
+        "issue-29": "target",
+        "issue-5": "target",
+        "issue-63": "target",
+        "issue-6": "control",
+        "issue-53": "control"
+      },
+      "labelledCovered": [
+        "A01-S1",
+        "A01-N2",
+        "A04-N2",
+        "A04-R1",
+        "A05-R1",
+        "B02-N1",
+        "B04-S2"
+      ],
+      "labelledNotInSample": [
+        "A01-S2",
+        "A01-R1",
+        "A01-N1",
+        "B01-S1",
+        "B01-S2",
+        "B01-N1",
+        "B01-N2",
+        "A02-S1",
+        "A02-S2",
+        "A02-R1",
+        "A02-N1",
+        "A02-N2",
+        "B02-S1",
+        "B02-S2",
+        "B02-R1",
+        "B02-N2",
+        "A03-S1",
+        "A03-S2",
+        "A03-R1",
+        "A03-N1",
+        "A03-N2",
+        "B03-S1",
+        "B03-S2",
+        "B03-R1",
+        "B03-N1",
+        "B03-N2",
+        "A04-S2",
+        "A04-N1",
+        "B04-S1",
+        "B04-R1",
+        "B04-N1",
+        "B04-N2",
+        "A05-S1",
+        "A05-S2",
+        "A05-N1",
+        "A05-N2",
+        "B05-S1",
+        "B05-S2",
+        "B05-R1",
+        "B05-N1",
+        "B05-N2"
+      ],
+      "labelledInNoPacket": [
+        "A02-N1",
+        "B02-S1",
+        "A03-N1",
+        "B03-R1",
+        "B04-S1",
+        "B04-N2",
+        "A05-N1"
+      ]
+    }
+  ],
+  "subsetOf": "data/eval/packet-pilot-v1.json",
+  "subsetOfSha256": "0c85f8745b918cde3b1cca11dc0656eec5585dbc92755ef05c99b324281945c6"
+}

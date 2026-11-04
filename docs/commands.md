@@ -1,6 +1,6 @@
 # Development commands
 
-Every development command, for Claude Code and Codex. Commands that call a paid model say so: run them only with the developer's approval and a USD limit. Add a command here only once it exists and works.
+Every development command, for the lead Claude Code session and its subagents. Commands that call a paid model say so: run them only with the developer's approval and a USD limit. Add a command here only once it exists and works.
 
 ## Tests
 
@@ -49,3 +49,4 @@ Each Vitest worker uses its own database, `<TEST_DATABASE_URL name without _test
 - Database tests in `tests/db/` run only when `TEST_DATABASE_URL` is set (it must name a database ending in `_test`; the tests wipe each worker's copy of it); otherwise they are skipped
 
 Requires a `.env` with `ANTHROPIC_API_KEY`, `DATABASE_URL` and `TEST_DATABASE_URL`. Live analyses call a model only when `ALLOW_PAID_CALLS=true` is also set; leave it unset in development and tests. See `.env.example`, whose database URLs match `docker-compose.yml`. Add new commands here only once they exist and work.
+- `npx tsx scripts/packet-benchmark.ts sample|dry-run`: the Milestone 2 packet-versus-pairwise evaluation. `sample` freezes the pilot sample (`data/eval/packet-pilot-v1.json`, item keys and input checksums only); `dry-run` loads both corpora's fixtures into `TEST_DATABASE_URL` (wipes it), builds every request from stored lines, runs both arms with the label-blind mock, verifies, scores, and prices the paid pilot from the serialized requests; no API call. Reports quote testimony, so they go to the git-ignored `data/raw/packet-pilot/`. `subset --from <sample> --packets c1:<id>,... --out <file>` freezes a smaller sample (the calibration is `data/eval/packet-calibration-v1.json`); `prepare-db --database pilot|rehearsal` creates that persistent database (`deposition_checker_pilot` or `deposition_checker_pilot_rehearsal`, never ending in `_test`, so tests can't wipe it), migrates it without dropping anything and loads both corpora's fixtures once; `run --mock --approved-usd <n> --database rehearsal --sample <file>` rehearses the paid loop offline; `run --execute --approved-usd <n> --database pilot --sample <file>` is the paid run (needs `ALLOW_PAID_CALLS=true` on that command; records every call in the pilot database and `calls.jsonl`): run it only with approval

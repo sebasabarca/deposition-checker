@@ -29,7 +29,7 @@ Development priorities, in order: correct evidence, reliable retrieval, defensib
 
 ## Repository map and commands
 
-Shared by Claude Code and Codex (`AGENTS.md`); read the part you need, not the whole file:
+Shared by the lead session and every subagent; read the part you need, not the whole file:
 
 - `docs/architecture.md`: what every module and file does. Read it before adding a module, and keep it current when you add or move one.
 - `docs/commands.md`: every script and command, with which ones are paid. Add a command there only once it exists and works.
@@ -92,9 +92,14 @@ Read both `SKILL.md` files before writing frontend code, and follow them. They l
 - `client/src/types.ts` hand-duplicates the server's response types, so update both when the API shape changes. Client tests (`tests/client/`) run under vitest but are excluded from the root typecheck; `npm run build --prefix client` checks them.
 - Keep the scoring constants in `README.md` in sync with the code.
 
-## Delegating to Codex and subagents
+## Agents (Claude Code only)
 
-Claude Code leads: architecture, experiment design, integration, reviewing significant changes and resolving conflicting findings. Codex (`codex exec`, signed in with the developer's ChatGPT account, no API key) takes well-scoped work: TypeScript in one module, tests, local refactors, database integration, bug fixes. Its brief format and reply format are in `AGENTS.md`; every brief names the objective, allowed files, acceptance criteria, tests, budget and restrictions, and output format. Parallel tasks run in separate git worktrees with disjoint files, each with its own `TEST_DATABASE_URL` (for example `…/deposition_checker_agent_a_test`; the test workers' databases derive from it, so two worktrees never touch the same one). An independent reviewer, not the implementer, checks acceptance. No agent pushes, commits without approval or makes paid model calls.
+Development uses Claude Code alone. The lead session plans, makes architectural decisions, delegates, reviews, integrates and runs final validation. Two subagent roles are defined in `.claude/agents/`:
+
+- `implementer`: one assigned feature in the files it owns; runs targeted tests and fixes its own failures.
+- `evaluator`: an independent check of an implementation against its acceptance criteria and the frozen benchmarks and labels; it changes no code and reports regressions and unsupported claims.
+
+Spawn a subagent only for work that runs in parallel or needs an independent read; do small or sequential changes directly. Every brief states the objective, the files the agent owns (it touches nothing else), acceptance criteria, tests to run, budget and restrictions, and the reply format. Give the agent the facts it needs instead of having it re-explore the repository. Parallel agents work in separate git worktrees with disjoint files, each with its own `TEST_DATABASE_URL` (for example `…/deposition_checker_agent_a_test`; the test workers' databases derive from it). Agents reply with a short summary of actual results (commands run and their counts), never logs, and never claim success from unit tests alone. The implementer never certifies its own work: the evaluator or the lead checks acceptance. No agent pushes, commits without approval, or makes paid model calls.
 
 ## Git workflow
 

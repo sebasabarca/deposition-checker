@@ -1109,3 +1109,7 @@ Account menu (Profile, Sign out) with a profile page for name, email (needs the 
 ## November 2: no model or provider names in the product
 
 Everything a user sees now says "Veridict's analysis" (and "second reading" for the fallback) instead of Claude, Fable, Opus, Sonnet or Anthropic: the app, Help, the report, the landing page, the API's display names, source labels, score labels and error messages. Stored rows keep the real model IDs. The landing screenshots were retaken from the app with the new wording.
+
+### November 3, 2026: Codex removed; Claude Code only
+
+On the developer's instruction, Codex was removed from the project workflow (the Codex CLI stays installed on the machine; no account was changed). Removed: `AGENTS.md` and `.codex/hooks.json` (the Impeccable design hook for Codex). `CLAUDE.md` now describes one lead Claude Code session with two subagent roles defined in `.claude/agents/` (`implementer`, `evaluator`). Earlier entries that mention Codex reviews are kept as history. Milestone 2's packet loader, reply verifier and harness were first drafted by Codex before the change and were reviewed, corrected and tested by Claude; that work is unchanged.

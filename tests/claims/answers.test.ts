@@ -16,6 +16,12 @@ describe("readAnswer", () => {
     }
   });
 
+  it("ignores a turn marker kept in the stored line (archive and printed transcripts)", () => {
+    for (const a of ["A: No.", "A: No, he did not.", "A. No, sir.", "A No.", "A: No. A: I never did."]) expect(readAnswer(Q, a), a).toBe("denies");
+    for (const a of ["A: Yes.", "A. Yes, sir.", "A Correct."]) expect(readAnswer(Q, a), a).toBe("affirms");
+    for (const a of ["A: I believe so.", "A lot of people did.", "A.", "A: Yes, but only in Europe."]) expect(readAnswer(Q, a), a).toBe("uncertain");
+  });
+
   it("leaves anything else uncertain", () => {
     for (const a of ["Yes, but only in Europe.", "I believe so.", "Not exactly.", "Uh-huh.", "In a narrow sense.", "Yes. No.", ""]) {
       expect(readAnswer(Q, a), a).toBe("uncertain");

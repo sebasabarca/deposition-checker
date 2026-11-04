@@ -1,6 +1,6 @@
 # Architecture: repository map
 
-What every module and file does, for Claude Code (`CLAUDE.md`) and Codex (`AGENTS.md`). Keep it current when a module or file is added, moved or removed.
+What every module and file does, for the lead Claude Code session and its subagents (`CLAUDE.md`). Keep it current when a module or file is added, moved or removed.
 
 **Existing:**
 - `server/src/index.ts`: Express app with the case, analysis, finding and deposition endpoints from `api/` when Postgres is reachable
@@ -39,3 +39,4 @@ What every module and file does, for Claude Code (`CLAUDE.md`) and Codex (`AGENT
 - `docs/agent-log.md`: log of agent sessions
 
 **Planned v2 modules** (folders under `server/src/`, each with one public entry point; see `DESIGN.md`, Modules section): `ingest/`, `claims/`, `retrieve/`, `adjudicate/`, `verify/`, `score/`, `costs/`, `jobs/`, `api/`, `eval/`. Only `claims/` and `adjudicate/` may call a model, and every such call goes through `costs/`.
+- Packet adjudication (Milestone 2, evaluation only; never used by normal analyses): the contract in `server/src/adjudicate/packetSchema.ts` (strict per-pair verdicts, three abstentions) and `packetPrompt.ts` (`packet-v1`, the pure formatter); the client `packetModel.ts` (the only file here that calls the API for packets); `packetLoad.ts` resolves frozen retrieval items to stored lines and builds issue and pairwise packets; `server/src/verify/packet.ts` checks a reply per pair: completeness, source (Layer 1 per side, each side's own witness), attribution (Layer 2) and the model's classification, kept separate; `server/src/eval/packetBenchmark.ts` (sample selection, scoring by label, cost) and `mockPacketModel.ts` (label-blind); `scripts/packet-benchmark.ts` runs it
