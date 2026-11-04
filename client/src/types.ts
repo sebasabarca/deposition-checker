@@ -291,3 +291,27 @@ export type CaseAnalysisView = {
   findings: { id: string; pair_id: string; relationship: "within_witness" | "cross_witness"; classification: "incompatible" | "uncertain" | "compatible"; priority: "high" | "medium" | "low"; topic: string; summary: string; citations: [CaseAnalysisCitation, CaseAnalysisCitation] }[];
   unverified: number;
 };
+
+// Mirrors server/src/jobs/caseRun.ts (CaseRunReport, caseRunFindings) and docs/case-run-api.md: a whole-case run
+// over every witness and session of a case. A mock run uses the deterministic test model: no model, no cost.
+export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | "adjudicating" | "completed" | "incomplete" | "failed" | "blocked_budget" | "blocked_credentials" | "cancelled" | "interrupted";
+export type CoverageState = "complete" | "processed_with_unread" | "partial";
+export type CaseRunEstimate = { packets: number; listedPairs: number; splitPackets: number; oversizePackets: number; expectedUsd: number; noCacheUsd: number; largestPacketWorstCaseUsd: number; recommendedBudgetUsd: number; note: string };
+export type CaseRun = {
+  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; error: string | null; model: string;
+  createdAt: string; startedAt: string | null; finishedAt: string | null; confirmedAt: string | null; cancelRequested: boolean;
+  estimate: CaseRunEstimate | null;
+  coverageState: CoverageState; complete: boolean; incompleteReasons: string[];
+  candidates: { total: number; adjudicated: number; incomplete: number; pending: number; deferred: number; uncovered: number; excluded: number; sameWitness: number; crossWitness: number };
+  packets: { total: number; adjudicated: number; incomplete: number; failed: number; notStarted: number; inProgress: number; uncertain: number; retryable: number };
+  findings: { type: string; priority: string; scored: boolean; n: number }[];
+  requests: { total: number; answered: number; failedNotBilled: number; uncertain: number; open: number };
+  cost: { recordedCalls: number; costUsd: number; budget: { limitUsd: number; spentUsd: number; reservedUsd: number } | null };
+};
+export type CaseRunSide = { exchange: string; depositionId: number; witnessId: number | null; witness: string | null; takenOn: string | null; range: string | null; lines: { id: number; at: string; text: string }[] };
+export type CaseRunFinding = {
+  id: number; crossWitness: boolean; type: string; priority: string; score: number | null; band: string | null; unscoredReason: string | null; evidenceStatus: string; reviewState: string;
+  verification: { a: { status: string | null; lineIds: number[] }; b: { status: string | null; lineIds: number[] } };
+  a: CaseRunSide; b: CaseRunSide;
+  model: { origin: "model" | "fixture"; model: string; promptVersion: string; outcome: string | null; verdict: unknown };
+};

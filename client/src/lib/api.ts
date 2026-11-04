@@ -1,7 +1,7 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseRun, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
 import type { Workspace } from "./workspace";
 
 export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
@@ -54,6 +54,15 @@ export const api = {
   workspace: () => request<Workspace>("GET", "/workspace"),
   createCase: (name: string, witness?: string) => request<CaseDetail>("POST", "/cases", { name, ...(witness ? { witness } : {}) }),
   case: (id: number) => request<CaseDetail>("GET", `/cases/${id}`),
+  // Whole-case runs (docs/case-run-api.md). A live run stops after preparation with its estimate; nothing is
+  // sent to a model until confirmCaseRun with a budget. A mock run uses the free deterministic test model.
+  caseRuns: (caseId: number) => request<{ caseRuns: CaseRun[] }>("GET", `/cases/${caseId}/case-runs`),
+  caseRun: (id: number) => request<{ caseRun: CaseRun }>("GET", `/case-runs/${id}`),
+  startCaseRun: (caseId: number, mode: "live" | "mock") => request<{ caseRun: CaseRun }>("POST", `/cases/${caseId}/case-runs`, { mode }),
+  confirmCaseRun: (id: number, budgetUsd: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/confirm`, { budgetUsd }),
+  resumeCaseRun: (id: number, budgetUsd?: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/resume`, budgetUsd === undefined ? {} : { budgetUsd }),
+  cancelCaseRun: (id: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/cancel`),
+  caseRunFindings: (id: number) => request<{ complete: boolean; incompleteReasons: string[]; findings: CaseRunFinding[] }>("GET", `/case-runs/${id}/findings`),
   caseAnalysis: (id: number) => request<{ analysis: CaseAnalysisView | null }>("GET", `/cases/${id}/case-analysis`),
   // The whole-case analysis report as a PDF file; the decisions travel with it (they're kept in this browser).
   caseAnalysisReport: async (id: number, decisions: { id: string; decision: ReviewDecision; note: string; at: string }[]) => {

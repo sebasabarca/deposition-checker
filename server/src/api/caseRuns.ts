@@ -8,13 +8,15 @@ import type { Database } from "../db/client";
 import { caseRuns, cases } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
 import { caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun } from "../jobs/caseRun";
-import { MAX_BUDGET_USD } from "./analyses";
 
 const Id = z.coerce.number().int().positive();
 const ACTIVE = ["queued", "retrieving", "awaiting_confirmation", "adjudicating"];
 const NO_ACCESS = { error: "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.", code: "no_analysis_access" };
 const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]) }).strict();
-const Budget = z.number().positive().max(MAX_BUDGET_USD);
+// A whole case is far larger than one pair of sessions (the six-document real fixtures project about $60), so
+// case runs have their own ceiling. The budget itself is always the person's explicit confirmation.
+export const MAX_CASE_RUN_BUDGET_USD = 250;
+const Budget = z.number().positive().max(MAX_CASE_RUN_BUDGET_USD);
 
 export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Router {
   const router = Router();
@@ -58,7 +60,7 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
   router.post("/case-runs/:id/confirm", async (req, res) => {
     const id = Id.safeParse(req.params.id);
     const body = z.object({ budgetUsd: Budget }).strict().safeParse(req.body ?? {});
-    if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_BUDGET_USD}).` });
+    if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
     if (outcome !== "queued") return res.status(409).json({ error: "Only a live run waiting for confirmation can be confirmed." });

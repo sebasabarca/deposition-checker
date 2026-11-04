@@ -316,6 +316,12 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run", () => {
       expect((await post(`/case-runs/${mockRun}/resume`, {})).status).toBe(409); // completed: nothing to resume, but not refused for access
       const [liveRun] = await db.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.mode, "live")).limit(1);
       expect((await post(`/case-runs/${liveRun.id}/resume`, {})).status).toBe(403);
+      // A whole case needs more than a two-session check's $20 ceiling: $60 passes validation (409 here only
+      // because this run isn't awaiting confirmation); past the case-run ceiling is refused, naming it.
+      expect((await post(`/case-runs/${mockRun}/confirm`, { budgetUsd: 60 })).status).toBe(409);
+      const over = await post(`/case-runs/${mockRun}/confirm`, { budgetUsd: 300 });
+      expect(over.status).toBe(400);
+      expect((await over.json()).error).toContain("250");
       const started = await post(`/cases/${caseId}/case-runs`, { mode: "mock" });
       expect(started.status).toBe(202);
       expect(await db.$count(verdicts)).toBeGreaterThan(0);

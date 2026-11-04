@@ -1,10 +1,10 @@
-// "Analyze case": the planned whole-case analysis, every session against every other, across witnesses.
-// Not built yet (the pipeline is in development), so the button opens an honest preview of what it will
-// cover, counted from the case's real rows, and starts nothing. Today a check covers one pair of sessions.
+// "Analyze case" in the case page's header, and the hand-authored example analysis of the sample case.
+// The real whole-case analysis is the panel in components/CaseRuns.tsx; the button takes you there.
 
 import { useEffect, useState } from "react";
+import { WHOLE_CASE_PANEL } from "./CaseRuns";
 import { ScanSearch } from "lucide-react";
-import { Badge, Button, buttonClass, Card, CardHeader, Dialog } from "./ui";
+import { Button, buttonClass, Card, CardHeader } from "./ui";
 import { api } from "../lib/api";
 import { href } from "../lib/router";
 import type { CaseAnalysisView, CaseDetail } from "../types";
@@ -24,36 +24,18 @@ export function casePairs(detail: Pick<CaseDetail, "depositions" | "analyses" | 
   return { sessions: ready.length, witnesses: witnesses.size, total, crossWitness, done };
 }
 
+// The page header's way into the whole-case panel (components/CaseRuns.tsx): scrolls to it and moves focus there.
 export function AnalyzeCase({ detail }: { detail: CaseDetail }) {
-  const [open, setOpen] = useState(false);
   const p = casePairs(detail);
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const go = () => {
+    const panel = document.getElementById(WHOLE_CASE_PANEL);
+    panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    panel?.focus({ preventScroll: true });
+  };
   return (
-    <>
-      <Button variant="secondary" onClick={() => setOpen(true)} disabled={p.sessions < 2} title={p.sessions < 2 ? "Needs at least two sessions that have been read" : undefined}>
-        <ScanSearch aria-hidden className="size-4" />Analyze case
-      </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} title="Analyze the whole case" description="Whole-case analysis is in development and can't be started yet. Nothing has been run.">
-        <div className="space-y-4 px-6 py-5 text-sm">
-          <div>
-            <p className="font-medium">What it will check</p>
-            <p className="mt-1 text-muted">
-              Every session in this case against every other, within and across witnesses: {plural(p.sessions, "session", "sessions")} from {plural(p.witnesses, "witness", "witnesses")}, {plural(p.total, "pair", "pairs")} of sessions ({p.crossWitness} across witnesses).
-            </p>
-          </div>
-          <div>
-            <p className="font-medium">What is checked today</p>
-            <p className="mt-1 text-muted">
-              {p.done} of {plural(p.total, "pair", "pairs")} checked, one pair of sessions at a time. To check a pair now, close this and select two sessions on the case page.
-            </p>
-          </div>
-          <div className="flex items-center justify-between gap-3 border-t border-rule pt-4">
-            <Badge tone="neutral">Coming soon</Badge>
-            <Button onClick={() => setOpen(false)}>Close</Button>
-          </div>
-        </div>
-      </Dialog>
-    </>
+    <Button variant="secondary" onClick={go} disabled={p.sessions < 2} title={p.sessions < 2 ? "Needs at least two sessions that have been read" : undefined}>
+      <ScanSearch aria-hidden className="size-4" />Analyze case
+    </Button>
   );
 }
 

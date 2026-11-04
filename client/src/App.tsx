@@ -1,6 +1,7 @@
 import { AnalysesPage } from "./pages/AnalysesPage";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { CaseAnalysisPage } from "./pages/CaseAnalysisPage";
+import { CaseRunPage } from "./pages/CaseRunPage";
 import { CasePage } from "./pages/CasePage";
 import { CasesPage } from "./pages/CasesPage";
 import { DepositionPage } from "./pages/DepositionPage";
@@ -56,6 +57,7 @@ export default function App() {
       {route.name === "case" && <CasePage key={route.id} id={route.id} />}
       {route.name === "report" && <ReportPage key={route.id} id={route.id} />}
       {route.name === "case_analysis" && <CaseAnalysisPage key={route.id} id={route.id} />}
+      {route.name === "case_run" && <CaseRunPage key={route.id} id={route.id} />}
       {route.name === "depositions" && <DepositionsPage caseId={route.caseId} />}
       {route.name === "deposition" && <DepositionPage key={route.id} id={route.id} page={route.page} q={route.q} mark={route.mark} />}
       {route.name === "findings" && <FindingsPage />}

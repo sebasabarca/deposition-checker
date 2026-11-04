@@ -1,6 +1,6 @@
 # Case-run API: contract for the frontend
 
-A **case run** analyses every witness and session of a case at once. Code is in `server/src/jobs/caseRun.ts`, routes in `server/src/api/caseRuns.ts`, and the response type is `CaseRunReport` in `caseRun.ts`. The client keeps its own copy of server response types in `client/src/types.ts`, so add these there when the screen is built.
+A **case run** analyses every witness and session of a case at once. Code is in `server/src/jobs/caseRun.ts`, routes in `server/src/api/caseRuns.ts`, and the response type is `CaseRunReport` in `caseRun.ts`. The client keeps its own copy of server response types in `client/src/types.ts` (`CaseRun`, `CaseRunFinding`); the screens are `client/src/components/CaseRuns.tsx` and `client/src/pages/CaseRunPage.tsx`.
 
 Every route is under `/api`. They sit behind the existing sign-in, `sameOrigin` and `scopeToOrg` middleware, so a run in another organization's case answers 404.
 
@@ -122,5 +122,5 @@ The existing endpoints are unchanged:
 ## Not in this contract yet
 
 - An estimate before any run exists. Today the estimate is the `awaiting_confirmation` stage of a live run, because building the pool is too heavy for an API request.
-- Concurrency: packets are read one at a time.
+- Budgets: a confirmed or resumed budget can be at most `MAX_CASE_RUN_BUDGET_USD` ($250), apart from the $20 ceiling of a two-session check.
 - Findings filters or paging: the list returns everything, in retrieval order (the same whatever order parallel packets finished in).

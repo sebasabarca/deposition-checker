@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } 
 import { ArrowRight, ArrowRightLeft, FileText, FileUp, GripVertical, Pencil, X } from "lucide-react";
 import { CaseAnalysisAction, CaseAnalysisSummary, useCaseAnalysis } from "../components/CaseAnalysis";
 import { CaseFindings } from "../components/CaseFindings";
+import { CaseRunPanel } from "../components/CaseRuns";
 import { CheckAgain, estimateText, NO_ACCESS, useEstimate, useStartCheck } from "../components/CheckAgain";
 import { useUser } from "../lib/session";
 import { DangerZone } from "../components/DangerZone";
@@ -71,6 +72,8 @@ export function CasePage({ id }: { id: number }) {
       <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
 
       <CaseFindings analyses={analyses} />
+
+      <CaseRunPanel caseId={id} readySessions={detail.depositions.filter((d) => d.status === "ready").length} witnesses={detail.witnesses.filter((w) => w.depositions.length > 0).length} />
 
       {detail.depositions.length === 0 ? (
         <Empty title="No depositions in this case yet" action={<Button onClick={() => add.open(id)}>Add deposition</Button>}>Add two sessions of the same witness, as PDF or text, to check them against each other.</Empty>
@@ -340,7 +343,7 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
   const state = checkState(selected, detail.depositions, detail.analyses);
   const estimate = useEstimate(detail.case.id, state.kind === "new" ? state.a : null, state.kind === "new" ? state.b : null);
   const user = useUser();
-  const blocked = !user?.emailVerified ? "Verify your email before running checks." : !user.analysisAccess ? NO_ACCESS : null;
+  const blocked = !user?.emailVerified ? "Verify your email before running checks." : !user.analysisAccess ? `${NO_ACCESS} To try the pipeline at no cost, use "Run with the test model" under Whole-case analysis.` : null;
   const message = { pick: "Select one more session: of the same witness, or of another witness to compare their accounts.", too_many: "Select exactly two sessions. An analysis compares two.", not_ready: "Both sessions must finish reading first.", no_date: "Add the date of both sessions first. The dates decide which testimony came first." };
   const cross = "cross" in state && state.cross;
   const pair = () => {

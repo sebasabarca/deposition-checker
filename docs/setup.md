@@ -4,7 +4,8 @@ What was actually tested on November 3, 2026 (macOS, `docs/baseline-m1.md`):
 
 - **Clean clone:** `npm ci`, typecheck, the tests without a database, and the client build. All passed.
 - **Database, tests and evaluations:** migrations, the full test suite and the real-data evaluations passed against the existing Docker Postgres.
-- **Not tested:** creating the Postgres volume from nothing, and the production image (`Dockerfile`, `compose.prod.yml`, see `docs/deploy.md`).
+- **Fresh install, November 4, 2026:** a clean clone on Node 24.22 and npm 11.19, `npm install`, a Postgres volume created from nothing (`npm run db:up`, which also made the test database), `npm run db:migrate` (38 migrations), `npm run dev`, then registration, upload, a test-model whole-case run and the paid-confirmation flow in Chrome; `npm test` gave 1,308 passed and 59 skipped (private data). See the README's Quick start.
+- **Not tested:** the production image (`Dockerfile`, `compose.prod.yml`, see `docs/deploy.md`).
 
 ## 1. Tools
 

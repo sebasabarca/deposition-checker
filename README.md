@@ -1,112 +1,211 @@
-# Deposition Checker
+# Veridict (Deposition Checker)
 
-Finds potential contradictions in a witness's sworn testimony across deposition sessions, and shows a lawyer both passages side by side, verbatim, at their page:line.
+Veridict finds places where deposition testimony may conflict: the same witness across sessions, or two witnesses against each other. It shows each potential contradiction as the two passages of stored testimony side by side, cited by page and line.
 
-- **Retrieval.** Two retrieval paths find candidate pairs of exchanges: structured claims and full-text search.
-- **Classification.** Claude Sonnet classifies each pair as direct, inferential, a likely false positive, or insufficient evidence.
-- **Verification and scoring.** Code checks every citation against the stored transcript, reads who actually said what, and scores the assessment with a fixed, published rubric. Claude never returns a score.
-- **Where findings go.** Findings whose citations can't be verified aren't scored: they go to a "Needs your review" section.
+**How it works:**
+- **Retrieval.** Code finds candidate pairs of exchanges across sessions.
+- **Classification.** Claude classifies each pair, for example as a direct contradiction, an inferential one, or likely compatible.
+- **Verification and scoring.** Code checks every citation against the stored transcript, checks who said what, and scores the evidence with a fixed rubric. Claude never returns a score.
+- **Unverified findings** are kept apart for manual checking.
 
-## Setup
+The app never says a witness lied, and it draws no legal conclusions.
 
-The full guide, including what has and hasn't been tested on a fresh machine, is `docs/setup.md`.
+## Quick start
 
-**Requirements:**
-- Node.js 22.12 or newer (`.nvmrc` selects 24);
-- Docker (for Postgres 16);
-- an Anthropic API key, only for live analyses.
+These steps were run on a fresh clone with a brand-new database on November 4, 2026 (macOS, Node 24.22, npm 11.19, Docker Desktop with Compose v2). They need no API key and cost nothing.
+
+### Prerequisites
+
+- **Operating system:** macOS (tested). Linux should work the same way but hasn't been tested. On Windows, use WSL2 (not tested).
+- **Node.js 22.12 or newer**, with npm. Node 24 is recommended, and `.nvmrc` selects it.
+- **Docker** with Compose v2, which runs PostgreSQL 16 for you. Nothing else needs installing.
+- **An Anthropic API key, only for paid analyses.** Everything below works without one.
+- **Optional:** `brew install tesseract poppler` to read scanned PDFs. Without them, scanned pages are marked "needs OCR".
+
+### Install and start
 
 ```bash
-cp .env.example .env        # fill in the values below
-npm install                 # also installs client/
-npm run db:up               # Postgres in Docker, with a separate _test database
-npm run db:migrate          # apply drizzle/ migrations to DATABASE_URL
-npm run dev                 # API (3001), worker, and the app (http://localhost:5173)
+git clone https://github.com/sebasabarca/deposition-checker.git
+cd deposition-checker
+nvm install && nvm use          # or any Node 22.12+; skip if you don't use nvm
+npm install                     # also installs the client (client/)
+cp .env.example .env            # the defaults work as they are with the Docker database
+npm run db:up                   # starts PostgreSQL in Docker and creates the dev and test databases
+npm run db:migrate              # creates the tables (every migration in drizzle/)
+npm run dev                     # API on :3001, background worker, and the app
 ```
 
-| Variable | Purpose |
+Open **http://localhost:5173**.
+
+`npm run dev` starts three processes in one terminal, with prefixed output:
+- `[server]` is the API;
+- `[worker]` is the background worker, which reads uploads and runs analyses;
+- `[client]` is the web app.
+
+All three must stay running. `npm start` and `npm run worker` start the API and worker separately if you prefer.
+
+npm 11 may warn that some packages' install scripts were not run (esbuild, onnxruntime-node and others). The app, the tests and the build work without them, so you can ignore the warning.
+
+### Environment variables (`.env`)
+
+| Variable | Needed? | What it is |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes (default works) | The app's database. The default points at the Docker database. |
+| `TEST_DATABASE_URL` | For database tests | A separate database that tests **empty on every run**. Its name must end in `_test`. |
+| `ANTHROPIC_API_KEY` | Paid analyses only | Read only by the server and worker; never sent to the browser. Leave the placeholder to stay free. |
+| `ALLOW_PAID_CALLS` | Paid analyses only | Must be `true` for any model call. Keep it `false`: with `false`, nothing can be sent to a model or charged. |
+| `APP_URL` | Default works | Where links in emails point. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | No | Without them, emails (account verification, password reset) are printed in the `npm run dev` terminal instead of sent. |
+| `CASE_RUN_*`, `PROVIDER_*` | No | Concurrency and provider rate limits for whole-case analyses. Conservative defaults; see the comments in `.env.example`. |
+
+## First-time walkthrough
+
+### 1. Create an account
+
+1. In the app, choose **Create an account**.
+2. Find the verification link. No email service is configured in development, so the link is printed in the `npm run dev` terminal: look for a line containing `verify?token=`. Open that link in the same browser.
+   - Or mark the account verified from a second terminal: `npm run admin -- verify you@example.com`.
+3. A short tour opens the first time. Use **Skip** to close it.
+
+### 2. Create a case and upload two depositions
+
+The repository includes invented, synthetic transcripts you can upload: `data/eval/independent-cross-v1/transcripts/`, from the fictional case *Delgado v. Northbay Logistics*. For example:
+
+| File | Witness | Date taken (from its cover) |
+| --- | --- | --- |
+| `A01_witness1.txt` | Raymond Oduya | October 7, 2025 |
+| `A01_witness2.txt` | Carla J. Brennick | October 9, 2025 |
+
+1. **Cases → New case**, then name it.
+2. On the case page, choose **Add deposition**. Enter the witness, choose the file, then **Add deposition**. Repeat for the second file.
+3. The worker reads each file into page:line references. Wait until both show **Ready**: a few seconds for these files.
+4. Each session needs its date. Use **Enter date** in its row.
+   - Known issue: for these files the app may suggest a date taken from inside the testimony, labelled "the transcript says". Check it against the cover date.
+
+PDF, text (`.txt`, `.asc`), RTF and Word (`.docx`) are accepted, up to 50 MB each.
+
+### 3. Compare two depositions
+
+There are two ways to compare two depositions.
+
+- **Free, with the test model.** On the case page, under **Whole-case analysis**, choose **Run with the test model (free)**. On a case holding two depositions, this compares exactly those two through the real pipeline: retrieval, evidence packets, citation checks and scoring. A deterministic stand-in replaces the model.
+  - Its results are labelled **Test model results** on every finding.
+  - They show how the app works; they are not an analysis of the testimony.
+- **Paid, with Claude.** Tick two sessions on the case page: two of one witness, or one each of two witnesses. A bar at the bottom shows the estimated cost and a **Check these sessions** or **Compare these witnesses** button.
+  - This needs paid access for your account and a configured API key (see step 5).
+  - Paid two-session checks were not exercised in the verification above.
+
+### 4. Review contradictions
+
+When a run shows **Finished**, choose **View findings**. Findings are grouped into lanes: potential contradictions, needs context, unverified, and compatible or dismissed. Each finding shows:
+
+- **The two passages:** the stored transcript lines, side by side at page:line, with the cited lines highlighted;
+- **The checks:** whether code verified each citation against the stored text;
+- **The model's reading:** the model's explanation, labelled as the model's (or as test model output).
+
+**Read in full** opens the deposition at the cited page. Everything is stored: reload the page or come back later, and the run and its findings are still there. The case page shows the latest whole-case run, with **Earlier runs** below it; two-session checks are listed under **Analyses**.
+
+### 5. Analyze an entire case, with a cost estimate first
+
+**Analyze entire case** (or **Analyze case** at the top of the case page) compares every session with every other, same witness and across witnesses.
+
+1. **Preparing.** Veridict finds the candidate pairs and builds evidence packets. Nothing is sent to a model at this stage.
+2. **Estimate.** It shows the estimated cost, a recommended spending limit, and the number of packets and pairs, with a warning:
+   - larger cases cost more;
+   - the run stops at your limit;
+   - unread pairs are never counted as reviewed.
+3. **Confirm.** Nothing is charged until you enter a spending limit (at most $250), tick **I authorize Veridict to spend up to $…**, and choose **Start paid analysis**.
+4. **Progress and control.** While the run is in progress, the panel shows packets read, pairs with a verdict, and the amount spent. **Cancel** stops it, and **Resume** continues a stopped run, with a higher limit if it stopped at the old one.
+
+The cost depends on the case. On the project's six-document real test corpus, the estimate was about $60; a small case like the two files above estimates about $1.
+
+**Preparing an estimate needs paid access for the account.** New accounts don't have it. To try the whole flow without any possibility of a charge, grant access while keeping `ALLOW_PAID_CALLS=false`:
+
+```bash
+npm run admin -- grant-analysis you@example.com
+```
+
+Confirming then stops at once with **Paid calls are off on this server: nothing was sent and nothing was charged**.
+
+**Running a real paid analysis** needs a real `ANTHROPIC_API_KEY` and `ALLOW_PAID_CALLS=true`, then a restart of `npm run dev`. Set a spending limit you're willing to pay. It is a hard stop, enforced before every request.
+
+**Coverage** is always shown in one of three states:
+- **Complete coverage:** every candidate pair was read.
+- **Read, with pairs set aside:** every packet was read, but retrieval set some pairs aside. The reasons are listed.
+- **Partial: work left:** some pairs haven't been read yet.
+
+## What is real, what is an example, and what is a test
+
+| Label in the app | What it is |
 | --- | --- |
-| `DATABASE_URL` | The development database. |
-| `TEST_DATABASE_URL` | A separate database for tests. Its name must end in `_test`, because the tests empty it. |
-| `ANTHROPIC_API_KEY` | Read only by the server and worker; it never reaches the browser. |
-| `ALLOW_PAID_CALLS` | Must be `true` for a live analysis to call Claude. Leave it unset in development and tests: demo analyses never call a model. |
+| No label (model name shown) | Output from a real Claude call, recorded with its token use and cost. |
+| **Test model results / Test model output** | The free deterministic stand-in. It exercises the pipeline only and says nothing about the testimony. |
+| **Example** (and "No model was called for it") | Hand-written example assessments in the sample case below. No model produced them. |
+| **Verbatim testimony** | Always the stored transcript lines, never text a model wrote. |
 
-## Using it
+## Sample case (prepared demo)
 
-1. **Create a case** (Cases → New case).
-2. **Upload deposition PDFs** on the case page: a text-based transcript, up to 50 MB, with the witness and, optionally, the session date. The worker reads each file in the background, and the table updates as it does. Re-uploading the same file returns the existing session instead of processing it twice.
-3. **Compare two sessions:** choose two Ready sessions of the same witness.
-   - **Demo:** no model calls, no cost. It replays stored Claude assessments where they exist, labelled as such, and counts the pairs that have none.
-   - **Live:** calls Claude for each selected pair under a budget (default $3). It stops before any call the budget can't cover, and can be resumed with more budget.
-4. **Review the findings.** The analysis page shows progress as stored counts, then four sections:
-   - potential contradictions;
-   - likely compatible testimony;
-   - insufficient evidence;
-   - needs your review.
-
-   Open a finding to see both passages side by side, with the cited lines highlighted, the model's explanation (labelled as interpretation), how each citation was checked, and why it scored what it did.
-
-The score is **assessment support**: how strongly the evidence supports the proposed classification under rubric v1 (see `DESIGN.md`, "Confidence scoring"). It is not a probability that the witness contradicted themself. For a likely-compatible finding, it is support for "compatible".
-
-## Demo
-
-With the Ellison depositions ingested (`scripts/ingest.ts`) and `npm run dev` running:
+A self-contained case that needs no other data and no model: two invented witnesses (Elena Marsh and Owen Calder), two sessions each, about a fire at an invented warehouse. Run it once your account exists, with `npm run dev` running:
 
 ```bash
-npx tsx scripts/demo.ts
+npx tsx scripts/demo-case.ts --email you@example.com
 ```
 
-This stores the synthetic fixture cases and starts two demo analyses through the API. Neither calls a model.
-- **U.S. v. Oracle, Lawrence Ellison.** The six stored Sonnet assessments from the October 29 pilot are replayed; all six found the pairs compatible. The other 294 selected pairs have no stored assessment and are counted as such.
-- **Marcus Webb (synthetic, clearly labelled).** Five stored Sonnet assessments (prompt adjudicate-v2) are replayed: two potential contradictions, two likely compatible, and one for review.
+Open **"Sample case: Harbor Street warehouse fire"**. It holds two example analyses with eight hand-written findings, and an example whole-case analysis (**Open case analysis**).
 
-The synthetic testimony is invented and is labelled as a fixture throughout. A replayed assessment says it was produced by an earlier Sonnet run. Prepared fixture verdicts say they were not produced by a model.
+- **Invented testimony:** each session's original text says so.
+- **Real checks:** every finding still goes through the real checks. Citations are matched to the stored lines, the speaker is checked, and code calculates the score.
+- **Page and line numbers:** these come from laying the text out at 25 lines per page. They are not a real transcript's pagination.
 
-### Multi-witness demo case (hand-authored)
-
-A self-contained sample case that needs no other data and no model: two witnesses (Elena Marsh and Owen Calder), two sessions each, about a fire at an invented warehouse.
-
-```bash
-npm run db:up && npm run db:migrate
-npm run dev                         # then register an account in the app (or verify one: npm run admin -- verify <email>)
-npx tsx scripts/demo-case.ts --email <your account email>
-```
-
-Open the case **"Sample case: Harbor Street warehouse fire"**. It holds two completed demo analyses with eight findings: three direct contradictions, two inferential ones, one that needs context and two that are likely compatible.
-
-**What is real and what is not:**
-
-- **Invented testimony.** The testimony and the people are invented (`server/src/data/demoCase.ts`). Each session's original text file starts with a line saying so, and "View original text" opens that file.
-- **Hand-written assessments.** The findings are example assessments written by hand. No model produced them, and they are not benchmark labels: no evaluation reads them.
-- **Real checks.** Each assessment goes through the same pipeline as a model's reply:
-  - its citations are checked against the stored lines (Layer 1);
-  - its speaker attribution is checked (Layer 2);
-  - code calculates its score.
-
-  So a citation that didn't match the testimony would show as unverified.
-- **Labelled.** The case is named "Sample case", and its analyses carry an "Example" badge. The case's findings card notes "example findings, written by hand". Each finding, when opened, says "Demo: a prepared example assessment for synthetic testimony. Not produced by a model" and badges its explanation "Prepared example, not model output". The analysis page says "This is an example analysis. No model was called for it".
-- **Page and line numbers.** Page:line references come from laying the invented text out at 25 lines per page, as for the other synthetic fixtures. They are not the pagination of a real transcript.
-
-Running the command again changes nothing. To remove the case, delete it from the case page.
+Running the command again changes nothing; delete the case from its page to remove it.
 
 ## Tests
 
 ```bash
-npm test                          # all tests; Postgres tests run when TEST_DATABASE_URL is set
-npm run typecheck                 # server, scripts and tests
-npm run build --prefix client     # typechecks and builds the app
+npm test                         # every test; database tests use TEST_DATABASE_URL (emptied on each run)
+npm run typecheck                # server, scripts and tests
+npm run build --prefix client    # typechecks and builds the web app
 ```
 
-The end-to-end test (upload both Ellison PDFs, parse them, analyse, read the result) runs when `data/raw/ellison/*.pdf` exist (`scripts/spike/download.sh`). No test calls a model.
+On a fresh clone with the Docker database: **1,308 passed, 59 skipped**. The skipped tests need private real transcripts that aren't in the repository (`data/raw/`, git-ignored); they print why they skip. No test calls a model or needs an API key.
+
+`npx tsx scripts/evidence.ts eval-real` and `npx tsx scripts/facts.ts eval-real` need the same private files, and say which are missing.
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| `npm install` says the engine is unsupported | Use Node 22.12 or newer (`nvm install && nvm use`). |
+| `npm run db:up` fails: port 5432 already in use | Another PostgreSQL is running. Stop it, or map another port in a `compose.override.yml` (`ports: !override ["5433:5432"]`) and change both URLs in `.env` to `5433`. |
+| `npm run db:up` says Docker isn't running | Start Docker Desktop, then run it again. |
+| The app says "The server can't be reached" | The API isn't running: check the `[server]` lines in the `npm run dev` terminal. |
+| Uploads stay "Processing" | The worker isn't running: check the `[worker]` lines. |
+| A check can't start: "Date needed" | Enter each session's date on the case page. |
+| "Paid checks aren't enabled for this account" | Expected for new accounts. Use the free test model, or `npm run admin -- grant-analysis <email>`. |
+| No verification email arrives | In development it is printed in the `npm run dev` terminal, or use `npm run admin -- verify <email>`. |
+| Database tests are skipped | Set `TEST_DATABASE_URL` in `.env` (the default works with `npm run db:up`). |
+
+## Safety
+
+- Never commit `.env`, API keys, passwords or real deposition files. `.env` and `data/raw/` are git-ignored.
+- `.env.example` holds placeholders only.
+- Keep `ALLOW_PAID_CALLS=false` unless you mean to spend. Any paid run also needs an account with paid access and an explicit spending limit.
+- Accounts you create locally are local test accounts; there is no shared or production account.
+
+## More documentation
+
+- `docs/setup.md`: development setup in more detail.
+- `docs/commands.md`: every script, and which ones are paid.
+- `docs/architecture.md`: what each module does.
+- `docs/case-run-api.md`: the whole-case analysis API.
+- `DESIGN.md`: the design.
 
 ## Known limitations
 
-- **New analyses use `adjudicate-v3`, ten independent requests at once.** In a live 40-pair comparison it found all 7 labelled contradictions and wrongly flagged 2 of 9 compatible pairs. That is a small sample, and a 300-pair run has not happened yet. Batching was tested and rejected. One-at-a-time remains as a fallback.
-- **No claim tagging for new uploads.** It is paid (Haiku), so Path A uses only claims already tagged; a new upload is retrieved by Path B alone.
-- **Demo mode can only replay what exists.** For the real Ellison sessions, that is six assessments.
-- **Live analyses run one pair at a time.** About 5 s per pair, so roughly 25 minutes for 300 pairs.
-- **No authentication or per-user access control.** This is a local application.
-- **Review state isn't editable in the UI yet.** That covers confirming or dismissing a finding.
+- **Paid analyses haven't been re-verified here.** The paid two-session check and a paid whole-case run need a funded API key. They were not run in the November 4 verification; only their confirmations and safeguards were.
+- **Free mode on fresh uploads.** The free test model exercises the pipeline but doesn't judge testimony. The older "demo" mode of two-session checks only replays stored assessments, so it finds nothing on new uploads, and the app doesn't offer it.
+- **Session date suggestions** can pick a date from the testimony instead of the cover. Always confirm the date.
+- **Whole-case limits are per worker process:** with several workers, divide the `PROVIDER_*` limits between them.
 
 ## How I used AI
 
