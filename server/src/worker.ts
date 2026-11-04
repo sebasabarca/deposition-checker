@@ -10,7 +10,7 @@ import { caseRunSettings, ProviderLimiter } from "./jobs/limiter";
 import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
 import { anthropicPacketBatches } from "./adjudicate/packetBatch";
 import { FakeBatchProvider } from "./eval/mockPacketBatch";
-import { batchSettings } from "./jobs/caseRunBatch";
+import { batchSettings, economyAllowed } from "./jobs/caseRunBatch";
 import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
 
 const SHUTDOWN_GRACE_MS = 60_000;
@@ -37,7 +37,7 @@ async function main() {
   // provider (no network); its batches live in this process, so a worker restart loses them and the run sees
   // them as missing, which exercises the same recovery as a real lost result.
   const batches = batchSettings(process.env);
-  const live = paidCallsAllowed(process.env) ? anthropicPacketBatches() : null;
+  const live = paidCallsAllowed(process.env) && economyAllowed(process.env) ? anthropicPacketBatches() : null;
   const fake = new FakeBatchProvider({ processingMs: 4_000 });
   await startCaseRunWorkers(
     boss, db, pool,

@@ -201,7 +201,7 @@ async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunD
   if (run.execution === "batch") {
     const batch = deps.batch?.(run) ?? null;
     if (!batch) {
-      await update(db, run.id, { status: "blocked_credentials", error: "Economy case runs need the analysis key and ALLOW_PAID_CALLS=true on this server. Nothing was sent.", finishedAt: new Date() });
+      await update(db, run.id, { status: "blocked_credentials", error: "Paid economy runs are off on this server: they need the analysis key, ALLOW_PAID_CALLS=true and ALLOW_ECONOMY_ANALYSIS=true. Nothing was sent.", finishedAt: new Date() });
       return "blocked_credentials";
     }
     if (run.status !== "adjudicating") {
@@ -393,7 +393,7 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
       expectedUsd: round2(expectedUsd * BATCH_MULTIPLIER), noCacheUsd: round2(economyNoCache), worstCaseUsd: round2(worstTotal), worstCasePerBatchUsd: round2(perBatch),
       recommendedBudgetUsd: Math.ceil((economyNoCache + perBatch) * 100) / 100, batchSize: BATCH_DEFAULTS.batchSize, discount: BATCH_MULTIPLIER,
     },
-    assumptions: COST_ASSUMPTIONS, note: "A projection from packet size and measured output per pair, not a measurement; the budget is a hard stop.",
+    assumptions: COST_ASSUMPTIONS, note: "A projection from packet size and measured output per pair, not a measurement. The limit is enforced by Veridict (each request reserves its worst case before it is sent), not by the provider.",
   };
   await db.update(caseRuns).set({ progress: sql`${caseRuns.progress} || ${JSON.stringify({ estimate })}::jsonb`, updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
   return (await ledgerOf(db, run.id))!;

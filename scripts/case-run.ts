@@ -28,7 +28,7 @@ import { sql } from "drizzle-orm";
 import { anthropicPacketAdjudicator } from "../server/src/adjudicate/packetModel";
 import { anthropicPacketBatches } from "../server/src/adjudicate/packetBatch";
 import { FakeBatchProvider } from "../server/src/eval/mockPacketBatch";
-import { batchSettings } from "../server/src/jobs/caseRunBatch";
+import { batchSettings, economyAllowed } from "../server/src/jobs/caseRunBatch";
 import { connect } from "../server/src/db/client";
 import { COST_ASSUMPTIONS, projectCost } from "../server/src/eval/screeningBenchmark";
 import { paidCallsAllowed } from "../server/src/jobs/analysis";
@@ -58,7 +58,7 @@ async function main() {
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency takes a whole number of at least 1.");
   const limiter = new ProviderLimiter({ ...caseRunSettings(process.env).limits, maxInFlight: concurrency });
   const settings = batchSettings(process.env);
-  const live = paidCallsAllowed(process.env) ? anthropicPacketBatches() : null;
+  const live = paidCallsAllowed(process.env) && economyAllowed(process.env) ? anthropicPacketBatches() : null;
   const fake = new FakeBatchProvider();
   const execution: CaseRunDeps = { adjudicator, minilm, concurrency, limiter, batch: (r) => (r.mode === "mock" ? { provider: fake, settings } : live ? { provider: live, settings } : null) };
   // An economy run is checked again until it stops; a standard run returns at once.
@@ -96,6 +96,7 @@ async function main() {
     if (values.mock === values.live) throw new Error("Choose one of --plan, --mock or --live.");
     if (values.live && (!values.execute || !values.budget)) throw new Error("A live run needs --budget <usd> and --execute.");
     if (values.live && !paidCallsAllowed(process.env)) throw new Error("Paid calls are off (ANTHROPIC_API_KEY and ALLOW_PAID_CALLS=true are both required).");
+    if (values.live && values.economy && !economyAllowed(process.env)) throw new Error("Paid economy runs are off: set ALLOW_ECONOMY_ANALYSIS=true only once a real pilot is authorized.");
     if (values.live && values.economy && !values["acknowledge-retention"]) throw new Error("A live economy run needs --acknowledge-retention: the provider stores batch inputs and results for 29 days.");
     const run = await createCaseRun(db, caseId, { mode: values.live ? "live" : "mock", budgetUsd: Number(values.budget ?? 0), confirmed: values.live === true, execution: values.economy ? "batch" : "standard" });
     console.log(`case run ${run.id}: ${await runUntilStopped(run.id)}`);

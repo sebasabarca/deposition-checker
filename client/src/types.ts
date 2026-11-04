@@ -302,7 +302,8 @@ export type CaseRunEstimate = { packets: number; listedPairs: number; splitPacke
 export type CaseRunExecution = "standard" | "batch";
 export type CaseRunBatches = { total: number; submitting: number; processing: number; awaitingImport: number; imported: number; notSubmitted: number; unknown: number; oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number> };
 export type CaseRun = {
-  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
+  // economyAvailable: paid economy runs can be confirmed on this server (ALLOW_ECONOMY_ANALYSIS).
+  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; economyAvailable?: boolean; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
   createdAt: string; startedAt: string | null; finishedAt: string | null; confirmedAt: string | null; cancelRequested: boolean;
   estimate: CaseRunEstimate | null;
   coverageState: CoverageState; complete: boolean; incompleteReasons: string[];

@@ -56,6 +56,7 @@ npm 11 may warn that some packages' install scripts were not run (esbuild, onnxr
 | `ALLOW_PAID_CALLS` | Paid analyses only | Must be `true` for any model call. Keep it `false`: with `false`, nothing can be sent to a model or charged. |
 | `APP_URL` | Default works | Where links in emails point. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | No | Without them, emails (account verification, password reset) are printed in the `npm run dev` terminal instead of sent. |
+| `ALLOW_ECONOMY_ANALYSIS` | No | Leave empty. Paid Economy analyses run only when this is `true` as well as `ALLOW_PAID_CALLS`; it stays off until a real pilot is authorized. Free test-model runs don't need it. |
 | `CASE_RUN_*`, `PROVIDER_*` | No | Concurrency and provider rate limits for whole-case analyses, and the batch size, batches in flight and check interval of Economy runs (`CASE_RUN_BATCH_*`). Conservative defaults; see the comments in `.env.example`. |
 
 ## First-time walkthrough
@@ -134,7 +135,11 @@ Both modes read the same prepared evidence packets with the same model, prompt, 
 | Cancel | Stops at once; requests in flight finish | Asks Anthropic to cancel the open batches; requests already running may still finish and are charged. The panel shows "Cancelling…" until the next check, within about a minute |
 | If the server restarts | A request in flight may have been charged; it is never resent automatically | Nothing is lost; the run continues from the database |
 
-Economy never switches to Fast on its own. An expired or failed batch request isn't charged and is retried once; a request whose outcome is unknown is counted as charged and retried only if you ask. **Test economy mode (free)** runs the whole economy flow with the test model and a simulated batch provider.
+Economy never switches to Fast on its own. An expired or failed batch request isn't charged and is retried once; a request whose outcome is unknown is counted as charged and retried only if you ask. If the server stops while sending a batch, Veridict looks for it at Anthropic and takes it back only when its results carry exactly the request IDs it sent; otherwise the batch is marked unknown and nothing is sent again until you decide.
+
+**Paid Economy is off by default.** It needs `ALLOW_ECONOMY_ANALYSIS=true` on the server, on top of `ALLOW_PAID_CALLS=true`; until then the Economy choice is shown but disabled. Fast, and both free test modes, work without it.
+
+**The three Economy figures** for the six-document test corpus mean different things: about **$29.77** is the expected spend (projected from measured output per pair, with the shared instructions cached); **$54.49** is the recommended limit, the no-cache projection ($43.00) plus room for one full batch of 100 requests at their largest possible cost, so batches can run without waiting on each other; **$433.12** is the theoretical worst case if every request used its whole output allowance, which never happens in practice but is what a running request reserves. **Test economy mode (free)** runs the whole economy flow with the test model and a simulated batch provider.
 
 **Preparing an estimate needs paid access for the account.** New accounts don't have it. To try the whole flow without any possibility of a charge, grant access while keeping `ALLOW_PAID_CALLS=false`:
 
@@ -144,7 +149,7 @@ npm run admin -- grant-analysis you@example.com
 
 Confirming then stops at once with **Paid calls are off on this server: nothing was sent and nothing was charged**.
 
-**Running a real paid analysis** needs a real `ANTHROPIC_API_KEY` and `ALLOW_PAID_CALLS=true`, then a restart of `npm run dev`. Set a spending limit you're willing to pay. It is a hard stop, enforced before every request.
+**Running a real paid analysis** needs a real `ANTHROPIC_API_KEY` and `ALLOW_PAID_CALLS=true` (and, for Economy, `ALLOW_ECONOMY_ANALYSIS=true`), then a restart of `npm run dev`. Set a spending limit you're willing to pay. Veridict enforces it itself: before any request is sent, its largest possible cost (every input token at the highest input rate, and its full output allowance) is reserved against the limit, so recorded spending can't pass it. Anthropic doesn't know about this limit, so also set a spend limit on the API workspace in the Anthropic Console as a second guard.
 
 **Coverage** is always shown in one of three states:
 - **Complete coverage:** every candidate pair was read.

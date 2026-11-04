@@ -34,8 +34,27 @@ export type PacketBatchProvider = {
   retrieve(batchId: string): Promise<BatchState>;
   results(batchId: string): AsyncIterable<BatchResult>; // only once the batch has ended
   cancel(batchId: string): Promise<void>;
-  list(createdAfter: Date): AsyncIterable<BatchState>; // newest first, down to createdAfter
+  list(createdAfter: Date): AsyncIterable<BatchState>; // batches created since createdAfter, in any order
 };
+
+// A failure while reading from the provider (a dropped results stream, say), as opposed to one in our own code.
+export class ProviderStreamError extends Error {}
+async function* fromProvider<T>(items: AsyncIterable<T>): AsyncIterable<T> {
+  const it = items[Symbol.asyncIterator]();
+  for (;;) {
+    let next: IteratorResult<T>;
+    try {
+      next = await it.next();
+    } catch (e) {
+      throw e instanceof Anthropic.APIError ? e : new ProviderStreamError(e instanceof Error ? e.message : String(e));
+    }
+    if (next.done) return;
+    yield next.value;
+  }
+}
+// How many listed batches a crash recovery reads at most. The list's order isn't relied on: every batch read is
+// filtered by its creation time.
+export const LIST_SCAN_LIMIT = 2_000;
 
 export const requestBody = (r: PacketBatchRequest) => ({ custom_id: r.customId, params: packetRequestParams(formatIssuePacket(r.packet), r.packet.pairs.length) });
 // The bytes a request adds to a batch's body, for the 256 MB limit.
@@ -62,7 +81,7 @@ export function anthropicPacketBatches(client = new Anthropic({ maxRetries: 0 })
       const batch = await batches.retrieve(batchId);
       const latencyMs = batch.ended_at ? new Date(batch.ended_at).getTime() - new Date(batch.created_at).getTime() : null;
       // Streamed line by line: a large batch's results are never held in memory at once.
-      for await (const item of await batches.results(batchId)) {
+      for await (const item of fromProvider(await batches.results(batchId))) {
         const r = item.result;
         if (r.type === "succeeded") {
           const text = r.message.content.find((b) => b.type === "text");
@@ -77,9 +96,10 @@ export function anthropicPacketBatches(client = new Anthropic({ maxRetries: 0 })
       await batches.cancel(batchId);
     },
     async *list(createdAfter) {
-      for await (const b of batches.list({ limit: 100 })) {
-        if (new Date(b.created_at) < createdAfter) return;
-        yield stateOf(b);
+      let read = 0;
+      for await (const b of fromProvider(batches.list({ limit: 100 }))) {
+        if (++read > LIST_SCAN_LIMIT) return;
+        if (new Date(b.created_at) >= createdAfter) yield stateOf(b);
       }
     },
   };

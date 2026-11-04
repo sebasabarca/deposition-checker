@@ -27,9 +27,9 @@ import { randomBytes } from "node:crypto";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { classifyFailure, closeRequest, openRequest } from "../adjudicate/requests";
-import { PROVIDER_MAX_BYTES, PROVIDER_MAX_REQUESTS, requestBytes, totalOf, type BatchResult, type BatchState, type PacketBatchProvider, type PacketBatchRequest } from "../adjudicate/packetBatch";
+import { PROVIDER_MAX_BYTES, PROVIDER_MAX_REQUESTS, ProviderStreamError, requestBytes, totalOf, type BatchResult, type BatchState, type PacketBatchProvider, type PacketBatchRequest } from "../adjudicate/packetBatch";
 import { formatIssuePacket, maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_SYSTEM_PROMPT, type IssuePacket } from "../adjudicate/packetPrompt";
-import { BudgetExceeded, closeFailed, failureIsUnbilled, inputTokenBound, maxBatchRequestCost, recordCall, releaseUnbilled, reserve, settle } from "../costs";
+import { BudgetExceeded, closeFailed, inputTokenBound, maxBatchRequestCost, recordCall, releaseUnbilled, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { adjudicationRequests, caseRunBatches, caseRuns, screeningEntries, witnesses } from "../db/schema";
 import { claimNext, markFailed } from "../screen/ledger";
@@ -43,6 +43,11 @@ export type BatchSettings = { batchSize: number; maxBytes: number; inFlight: num
 export const BATCH_DEFAULTS: BatchSettings = { batchSize: 100, maxBytes: 32 * 1024 * 1024, inFlight: 10, pollSeconds: 60, reconcileWindowMs: 10 * 60_000 };
 export const MOCK_POLL_SECONDS = 2;
 const LIST_SKEW_MS = 2 * 60_000; // provider and server clocks may differ
+
+// Paid economy runs stay off until a person turns them on (ALLOW_ECONOMY_ANALYSIS=true), on top of
+// ALLOW_PAID_CALLS: the Batch API keeps testimony 29 days and hasn't been validated with a real pilot yet. Fast
+// runs and test-model runs (fast or economy) don't depend on it.
+export const economyAllowed = (env: Record<string, string | undefined>) => env.ALLOW_ECONOMY_ANALYSIS === "true";
 
 export function batchSettings(env: Record<string, string | undefined>): BatchSettings {
   const int = (name: string, fallback: number, max: number) => {
@@ -77,6 +82,11 @@ const OPEN: Batch["status"][] = ["submitting", "submitted", "canceling", "ended"
 const asDb = (tx: unknown) => tx as Database;
 // The provider no longer has the batch (deleted, or a test-model batch lost with its worker): it can't end on its
 // own, so it is treated as ended with no results, which leaves each request uncertain.
+// Statuses that prove the provider refused a batch before creating it. Anything else (a timeout, a dropped
+// connection, a 5xx, an unexpected 4xx such as 408 or 409) may hide an accepted batch, so it is left `submitting`
+// for reconcile to find by custom ID, and is never resubmitted on its own.
+const REFUSED = new Set([400, 401, 403, 404, 413, 422, 429]);
+const refused = (e: unknown) => e instanceof Anthropic.APIError && typeof e.status === "number" && REFUSED.has(e.status);
 const notFound = (e: unknown) => typeof e === "object" && e !== null && (e as { status?: number }).status === 404;
 
 export async function runBatchTick(db: Database, run: CaseRun, ledgerId: number, deps: BatchDeps): Promise<CaseRunStatus | "polling"> {
@@ -178,7 +188,7 @@ async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entr
     }
     // Errored (not a bad request) or expired: not billed, so retried once in a later batch.
     if ((last.errorKind === "batch_errored" || last.errorKind === "expired") && last.retryOf === null) return send(last.round ?? 1, last.id);
-    if (last.errorKind === "canceled") {
+    if (last.errorKind === "canceled" || last.errorKind === "test_batch_lost") {
       await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: its batch was cancelled", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
       return null;
     }
@@ -258,7 +268,7 @@ async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[
       state = await deps.provider.submit(written.requests);
     } catch (e) {
       const f = classifyFailure(e);
-      if (failureIsUnbilled(e)) {
+      if (refused(e)) {
         // Refused: no batch exists. The requests changed nothing; their entries are decided again next tick.
         await notSubmitted(db, written.batch, e);
         if (f.status === "rate_limited") return { budgetMessage: null, fatal: null };
@@ -292,43 +302,50 @@ async function adopt(db: Database, batch: Batch, state: BatchState, recovery: st
     .where(eq(caseRunBatches.id, batch.id));
 }
 
-// A batch row left `submitting` belongs to a runner that died between writing it and saving the provider's ID.
-// The provider's list is the only record: a batch created since the row with the same number of requests, not
-// already known, is this one (confirmed by custom_id when its results can be read). None after the window:
-// submission_unknown, and its requests are treated as possibly billed.
+// A batch row left `submitting` belongs to a runner that died between writing it and saving the provider's ID, or
+// whose submit call failed in a way that doesn't prove the provider refused it. The provider's batch list is the only
+// record, and a batch carries no label, so a listed batch is adopted only on proof of identity: once it has ended,
+// its results carry exactly this batch's custom IDs (each holds 48 random bits). The request count and creation
+// time only narrow the search; they are never taken as proof. While a possible match is still processing, the row
+// waits in `submitting` (a batch always ends within 24 hours). With no possible match after the window, the row
+// becomes submission_unknown: its requests are counted as billed and their packets are sent again only when a
+// person resumes with retryUncertain. Nothing here ever submits.
 async function reconcile(db: Database, run: CaseRun, deps: BatchDeps, s: BatchSettings, now: () => number) {
   for (const b of await batchesOf(db, run.id, ["submitting"])) {
     const since = new Date(b.createdAt.getTime() - LIST_SKEW_MS);
     const known = new Set((await db.select({ id: caseRunBatches.providerBatchId }).from(caseRunBatches).where(sql`${caseRunBatches.providerBatchId} is not null`)).map((r) => r.id));
-    const ours = new Set((await db.select({ id: adjudicationRequests.customId }).from(adjudicationRequests).where(eq(adjudicationRequests.caseRunBatchId, b.id))).map((r) => r.id));
+    const ours = new Set((await db.select({ id: adjudicationRequests.customId }).from(adjudicationRequests).where(eq(adjudicationRequests.caseRunBatchId, b.id))).map((r) => r.id!));
     let found: BatchState | null = null;
-    let how = "";
+    let processing = 0;
     try {
       const candidates: BatchState[] = [];
       for await (const x of deps.provider.list(since)) if (!known.has(x.id) && totalOf(x.counts) === b.requestCount) candidates.push(x);
       for (const c of candidates) {
-        if (c.status !== "ended") continue;
-        for await (const r of deps.provider.results(c.id)) {
-          if (ours.has(r.customId)) { found = c; how = "its results carry this batch's custom IDs"; break; }
-        }
-        if (found) break;
-      }
-      const unended = candidates.filter((c) => c.status !== "ended");
-      if (!found && unended.length === 1 && candidates.length === 1) { found = unended[0]; how = "the only unclaimed batch of the same size created since; to be confirmed by custom ID when its results arrive"; }
-      else if (!found && unended.length > 1) {
-        await db.update(caseRunBatches).set({ error: `${unended.length} provider batches could be this one; waiting for them to end to match custom IDs`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
-        continue;
+        if (c.status !== "ended") { processing++; continue; }
+        if (await carriesExactly(deps.provider, c.id, ours)) { found = c; break; }
       }
     } catch (e) {
-      await db.update(caseRunBatches).set({ error: `could not list the provider's batches: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+      await db.update(caseRunBatches).set({ error: `could not check the provider's batches: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
       continue;
     }
     if (found) {
-      await adopt(db, b, found, `Recovered after a crash during submission: provider batch ${found.id} (${how}).`);
+      await adopt(db, b, found, `Recovered after a crash during submission: provider batch ${found.id}, whose results carry exactly this batch's ${ours.size} custom IDs.`);
+      continue;
+    }
+    if (processing > 0) {
+      await db.update(caseRunBatches).set({ error: `submission outcome unknown: ${processing} provider batch${processing === 1 ? "" : "es"} of the same size still processing; checked by custom ID once ${processing === 1 ? "it ends" : "they end"}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+      continue;
+    }
+    if (run.mode === "mock") {
+      // A test-model run costs nothing, so an unconfirmed submission is simply queued again.
+      for (const r of await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.caseRunBatchId, b.id), eq(adjudicationRequests.status, "sent")))) {
+        await closeRequest(db, r.id, { status: "aborted", errorKind: "test_batch_lost", error: "The test-model batch couldn't be confirmed after a restart; its packet is sent again." });
+      }
+      await db.update(caseRunBatches).set({ status: "not_submitted", recovery: "Test-model batch not found after a restart; its packets were queued again.", updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
       continue;
     }
     if (now() - b.createdAt.getTime() < s.reconcileWindowMs) continue;
-    const note = "The worker stopped while submitting this batch and the provider's list shows no matching batch. It may still have been accepted, so its requests are counted in full and their packets are not sent again unless someone resumes with retryUncertain.";
+    const note = "The worker stopped while submitting this batch, and no batch in the provider's list carries its custom IDs. It may still have been accepted, so its requests are counted in full and their packets are not sent again unless someone resumes with retryUncertain.";
     for (const r of await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.caseRunBatchId, b.id), eq(adjudicationRequests.status, "sent")))) {
       if (r.reservationId !== null) await closeFailed(db, r.reservationId, new Error("batch submission outcome unknown"));
       await closeRequest(db, r.id, { status: "failed", errorKind: "uncertain", error: note });
@@ -336,6 +353,16 @@ async function reconcile(db: Database, run: CaseRun, deps: BatchDeps, s: BatchSe
     // Their packets fail when advanced: each one's last request is uncertain.
     await db.update(caseRunBatches).set({ status: "submission_unknown", recovery: note, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
   }
+}
+
+// Whether an ended batch's results are exactly these custom IDs: every one present, nothing else.
+async function carriesExactly(provider: PacketBatchProvider, batchId: string, ours: Set<string>) {
+  const seen = new Set<string>();
+  for await (const r of provider.results(batchId)) {
+    if (!ours.has(r.customId)) return false;
+    seen.add(r.customId);
+  }
+  return seen.size === ours.size;
 }
 
 async function poll(db: Database, run: CaseRun, deps: BatchDeps, cancelling: boolean) {
@@ -356,7 +383,18 @@ async function poll(db: Database, run: CaseRun, deps: BatchDeps, cancelling: boo
         .set({ providerStatus: st.status, requestCounts: st.counts, expiresAt: st.expiresAt, lastPolledAt: new Date(), error: null, updatedAt: new Date(), ...(ended ? { status: "ended", endedAt: st.endedAt ?? new Date() } : {}) })
         .where(eq(caseRunBatches.id, b.id));
     } catch (e) {
+      if (notFound(e) && run.mode === "mock") {
+        // A test-model batch lives in its worker's memory and is gone after a restart. Nothing was billed (the test
+        // model costs nothing), so its packets simply go back to the queue. Never for a live run: see below.
+        for (const r of await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.caseRunBatchId, b.id), eq(adjudicationRequests.status, "sent")))) {
+          await closeRequest(db, r.id, { status: "aborted", errorKind: "test_batch_lost", error: "The test-model batch was lost with a worker restart; its packet is sent again." });
+        }
+        await db.update(caseRunBatches).set({ status: "imported", importedAt: new Date(), error: "Test-model batch lost with a worker restart; its packets were queued again.", lastPolledAt: new Date(), updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
+        continue;
+      }
       if (notFound(e)) {
+        // A live batch the provider no longer has (deleted): it may have run and been billed, so its requests end
+        // uncertain when imported, counted in full and resent only on retryUncertain.
         await db.update(caseRunBatches).set({ status: "ended", endedAt: new Date(), error: "The provider no longer has this batch; its requests have no results.", lastPolledAt: new Date(), updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
         continue;
       }
@@ -381,7 +419,7 @@ async function importBatch(db: Database, run: CaseRun, b: Batch, deps: BatchDeps
       deps.faults?.afterResultRecorded?.(r.customId);
     }
   } catch (e) {
-    if (!(e instanceof Anthropic.APIError)) throw e; // ours (database, a bug): the job fails and is retried
+    if (!(e instanceof Anthropic.APIError) && !(e instanceof ProviderStreamError)) throw e; // ours (database, a bug): the job fails and is retried
     if (!notFound(e)) {
       await db.update(caseRunBatches).set({ error: `results import stopped, resumed next check: ${(e instanceof Error ? e.message : String(e)).slice(0, 500)}`, updatedAt: new Date() }).where(eq(caseRunBatches.id, b.id));
       return;

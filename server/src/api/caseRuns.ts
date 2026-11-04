@@ -8,6 +8,7 @@ import type { Database } from "../db/client";
 import { caseRuns, cases } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
 import { caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun } from "../jobs/caseRun";
+import { economyAllowed } from "../jobs/caseRunBatch";
 
 const Id = z.coerce.number().int().positive();
 const ACTIVE = ["queued", "retrieving", "awaiting_confirmation", "adjudicating"];
@@ -21,8 +22,14 @@ const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execu
 export const MAX_CASE_RUN_BUDGET_USD = 250;
 const Budget = z.number().positive().max(MAX_CASE_RUN_BUDGET_USD);
 
-export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Router {
+// env: where the economy flag is read (process.env; tests pass their own).
+export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; boss: PgBoss; env?: Record<string, string | undefined> }): Router {
   const router = Router();
+  // Every report says whether paid economy runs can be confirmed here, so the UI offers the choice only then.
+  const reportOf = async (id: number) => {
+    const r = await caseRunReport(db, id);
+    return r && { ...r, economyAvailable: economyAllowed(env) };
+  };
 
   router.post("/cases/:id/case-runs", async (req, res) => {
     const caseId = Id.safeParse(req.params.id);
@@ -34,27 +41,27 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     if (active) return res.status(409).json({ error: `Case run ${active.id} is still running for this case.`, caseRunId: active.id });
     const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard" });
     await enqueueCaseRun(boss, { caseRunId: run.id });
-    return res.status(202).json({ caseRun: await caseRunReport(db, run.id) });
+    return res.status(202).json({ caseRun: await reportOf(run.id) });
   });
 
   router.get("/cases/:id/case-runs", async (req, res) => {
     const caseId = Id.safeParse(req.params.id);
     if (!caseId.success) return res.status(400).json({ error: "The case ID must be a positive number." });
     const ids = await db.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, caseId.data)).orderBy(desc(caseRuns.id));
-    return res.json({ caseRuns: await Promise.all(ids.map((r) => caseRunReport(db, r.id))) });
+    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))) });
   });
 
   router.get("/case-runs/:id", async (req, res) => {
     const id = Id.safeParse(req.params.id);
     if (!id.success) return res.status(400).json({ error: "The case run ID must be a positive number." });
-    const report = await caseRunReport(db, id.data);
+    const report = await reportOf(id.data);
     return report ? res.json({ caseRun: report }) : res.status(404).json({ error: "Case run not found." });
   });
 
   router.get("/case-runs/:id/findings", async (req, res) => {
     const id = Id.safeParse(req.params.id);
     if (!id.success) return res.status(400).json({ error: "The case run ID must be a positive number." });
-    const report = await caseRunReport(db, id.data);
+    const report = await reportOf(id.data);
     if (!report) return res.status(404).json({ error: "Case run not found." });
     return res.json({ complete: report.complete, incompleteReasons: report.incompleteReasons, findings: await caseRunFindings(db, id.data) });
   });
@@ -65,12 +72,13 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     const id = Id.safeParse(req.params.id);
     const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
+    if (body.data.execution === "batch" && !economyAllowed(env)) return res.status(409).json({ error: "Economy analysis isn't enabled on this server yet. Use Fast analysis, or the free test model.", code: "economy_disabled" });
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
     if (outcome === "no_acknowledgement") return res.status(400).json({ error: "Economy analysis stores the testimony with the AI provider for up to 29 days. Confirm that you understand this to use it.", code: "retention_not_acknowledged" });
     if (outcome !== "queued") return res.status(409).json({ error: "Only a live run waiting for confirmation can be confirmed." });
     await enqueueCaseRun(boss, { caseRunId: id.data });
-    return res.status(202).json({ caseRun: await caseRunReport(db, id.data) });
+    return res.status(202).json({ caseRun: await reportOf(id.data) });
   });
 
   // retryUncertain: also retry packets whose failed request may have been billed (it could be paid twice).
@@ -87,7 +95,7 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     if (outcome === "lower_budget") return res.status(400).json({ error: "A budget can only be raised, not lowered." });
     if (outcome !== "queued") return res.status(409).json({ error: `Only a stopped run can be resumed; this one is ${outcome}.` });
     await enqueueCaseRun(boss, { caseRunId: id.data });
-    return res.status(202).json({ caseRun: await caseRunReport(db, id.data) });
+    return res.status(202).json({ caseRun: await reportOf(id.data) });
   });
 
   // No new packet is started; the one in flight finishes and is kept.
@@ -102,10 +110,10 @@ export function caseRunRoutes({ db, boss }: { db: Database; boss: PgBoss }): Rou
     if (run.execution === "batch" && run.status === "adjudicating") {
       await db.update(caseRuns).set({ cancelRequestedAt: new Date(), updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
       await enqueueCaseRun(boss, { caseRunId: run.id });
-      return res.status(202).json({ caseRun: await caseRunReport(db, run.id) });
+      return res.status(202).json({ caseRun: await reportOf(run.id) });
     }
     await db.update(caseRuns).set({ cancelRequestedAt: new Date(), updatedAt: new Date(), ...(run.runnerId === null ? { status: "cancelled", error: "Cancelled before it started.", finishedAt: new Date() } : {}) }).where(eq(caseRuns.id, run.id));
-    return res.status(202).json({ caseRun: await caseRunReport(db, run.id) });
+    return res.status(202).json({ caseRun: await reportOf(run.id) });
   });
 
   return router;

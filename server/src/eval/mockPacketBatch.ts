@@ -49,7 +49,7 @@ export class FakeBatchProvider implements PacketBatchProvider {
     if (mode === "invalid") throw apiError(400, "invalid request");
     if (mode === "lost_unaccepted") throw new Anthropic.APIConnectionError({ message: "connection reset before the request was sent" });
     const at = this.now();
-    const batch: FakeBatch = { id: `msgbatch_fake_${n}_${at}`, createdAt: at, endsAt: at + (this.options.processingMs ?? 0), requests, canceledAt: null };
+    const batch: FakeBatch = { id: `msgbatch_fake_${n}_${at}_${Math.random().toString(36).slice(2, 10)}`, createdAt: at, endsAt: at + (this.options.processingMs ?? 0), requests, canceledAt: null };
     this.batches.set(batch.id, batch);
     for (const r of requests) {
       this.sentPerPacket.set(r.packet.id, (this.sentPerPacket.get(r.packet.id) ?? 0) + 1);

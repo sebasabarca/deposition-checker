@@ -166,13 +166,15 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {(["standard", "batch"] as const).map((x) => {
             const m = modeEstimate(e, x);
+            const off = x === "batch" && !run.economyAvailable;
             return (
-              <label key={x} className={cx("flex cursor-pointer gap-3 rounded-lg border border-line px-4 py-3 transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover", !m && "cursor-not-allowed opacity-60")}>
-                <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
+              <label key={x} className={cx("flex cursor-pointer gap-3 rounded-lg border border-line px-4 py-3 transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover", (!m || off) && "cursor-not-allowed opacity-60 hover:bg-transparent")}>
+                <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || off} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold">{EXECUTION[x].label}</span>
                   <span className="mt-0.5 block text-sm text-muted">{EXECUTION[x].description}</span>
                   <span className="mt-1.5 block text-sm tabular-nums">{m ? <>Estimated <strong className="font-semibold">{cost(m)}</strong></> : "Prepare a new estimate to see this mode's cost."}</span>
+                  {off && <span className="mt-1 block text-xs text-muted">Not enabled on this server yet. You can try it free with <strong className="font-semibold">Test economy mode</strong>.</span>}
                 </span>
               </label>
             );

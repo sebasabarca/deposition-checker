@@ -9,9 +9,9 @@ import type { PgBoss } from "pg-boss";
 import { caseRunRoutes } from "../../server/src/api";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PACKET_MODEL } from "../../server/src/adjudicate/packetPrompt";
+import { PACKET_MODEL, type IssuePacket } from "../../server/src/adjudicate/packetPrompt";
 import type { Database } from "../../server/src/db/client";
-import { budgets, candidates, caseRunBatches, caseRuns, depositions, findings, llmCalls, verdicts } from "../../server/src/db/schema";
+import { budgets, candidates, caseRunBatches, caseRuns, depositions, findings, llmCalls, screeningEntries, verdicts } from "../../server/src/db/schema";
 import { FakeBatchProvider, type FakeBatchOptions } from "../../server/src/eval/mockPacketBatch";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
@@ -198,8 +198,93 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
     expect(await drive(run.id, batchDeps(p))).toBe("completed");
     expect(Math.max(...[...p.sentPerPacket.values()])).toBe(1);
     const [recovered] = await db.select().from(caseRunBatches).where(and(eq(caseRunBatches.caseRunId, run.id), sql`${caseRunBatches.recovery} is not null`));
-    expect(recovered.recovery).toMatch(/Recovered after a crash during submission/);
+    expect(recovered.recovery).toMatch(/Recovered after a crash during submission: .* carry exactly this batch's \d+ custom IDs/);
     expect(await fingerprint(run.id)).toEqual(await fingerprint(liveBaseline));
+  }, 120_000);
+
+  it("adopts a lost batch only on its custom IDs: a same-size batch is never taken as proof, and nothing is resubmitted", async () => {
+    // The first submission is accepted but its reply is lost, and it takes a long time; a batch of the same size
+    // from somewhere else (another run, another environment) appears in the list at the same moment.
+    const p = fake({ processingMs: 30 * 60_000, onSubmit: (n) => (n === 1 ? "lost_accepted" : "ok") });
+    const run = await liveRun();
+    expect(await runCaseRun(db, pool, run.id, batchDeps(p))).toBe("polling");
+    const [row] = await db.select().from(caseRunBatches).where(and(eq(caseRunBatches.caseRunId, run.id), eq(caseRunBatches.seq, 1)));
+    expect(row.status).toBe("submitting");
+    const lost = [...p.batches.values()][0];
+    await p.submit(lost.requests.map((r, i) => ({ customId: `other-${i}`, packet: r.packet }))); // the decoy: same size, other IDs
+    const submissions = p.submissions;
+    // While both are processing, nothing can be proven: the row waits, past the 10-minute window, and nothing is resent.
+    for (let i = 0; i < 2; i++) { clock.t += 12 * 60_000; expect(await runCaseRun(db, pool, run.id, batchDeps(p))).toBe("polling"); }
+    const [waiting] = await db.select().from(caseRunBatches).where(eq(caseRunBatches.id, row.id));
+    expect(waiting.status).toBe("submitting");
+    expect(waiting.error).toMatch(/2 provider batches of the same size still processing/);
+    expect([...lost.requests].every((r) => p.sentPerPacket.get(r.packet.id) === 2)).toBe(true); // ours and the decoy only
+    // Once they end, the custom IDs decide: ours is adopted, the decoy is not.
+    expect(await drive(run.id, batchDeps(p), { step: 60_000 })).toBe("completed");
+    const [adopted] = await db.select().from(caseRunBatches).where(eq(caseRunBatches.id, row.id));
+    expect(adopted.providerBatchId).toBe(lost.id);
+    expect(p.submissions - submissions).toBeGreaterThan(0); // later batches only
+    expect(await fingerprint(run.id)).toEqual(await fingerprint(liveBaseline));
+  }, 120_000);
+
+  it("never adopts a same-size batch with other custom IDs: the submission stays unknown for a person to resolve", async () => {
+    const p = fake({ onSubmit: (n) => (n === 1 ? "lost_unaccepted" : "ok") });
+    const run = await liveRun();
+    expect(await runCaseRun(db, pool, run.id, batchDeps(p))).toBe("polling");
+    const [row] = await db.select().from(caseRunBatches).where(and(eq(caseRunBatches.caseRunId, run.id), eq(caseRunBatches.seq, 1)));
+    const reqs = await db.execute<{ n: number }>(sql`select count(*)::int as n from adjudication_requests where case_run_batch_id = ${row.id}`);
+    const packets = (await db.select().from(screeningEntries).where(sql`${screeningEntries.id} in (select screening_entry_id from adjudication_requests where case_run_batch_id = ${row.id})`)).length;
+    expect(packets).toBe(reqs.rows[0].n);
+    // A decoy of exactly the same size, created after the row, ends at once.
+    const decoy = { id: "decoy", passages: [], pairs: [] } as unknown as IssuePacket;
+    await p.submit(Array.from({ length: row.requestCount }, (_, i) => ({ customId: `decoy-${i}`, packet: decoy })));
+    expect(await drive(run.id, batchDeps(p), { step: 60_000 })).toBe("incomplete");
+    const [after] = await db.select().from(caseRunBatches).where(eq(caseRunBatches.id, row.id));
+    expect(after.status).toBe("submission_unknown");
+    expect(after.providerBatchId).toBeNull();
+  }, 120_000);
+
+  it("re-queues a test-model run's batches lost with a worker restart, and finishes with the same findings", async () => {
+    const before = fake({ processingMs: 60_000 });
+    const run = await createCaseRun(db, caseId, { mode: "mock", execution: "batch" });
+    expect(await runCaseRun(db, pool, run.id, batchDeps(before))).toBe("polling");
+    // The worker restarts: its in-memory fake provider (and every batch in it) is gone.
+    expect(await drive(run.id, batchDeps(fake()))).toBe("completed");
+    expect(await fingerprint(run.id)).toEqual(await fingerprint(mockBaseline));
+    expect(await duplicates(run.id)).toBe(0);
+    expect((await caseRunReport(db, run.id))!.requests.uncertain).toBe(0);
+    // A live run's vanished batch stays uncertain: it may have run and been billed.
+    const gone = fake({ processingMs: 60_000 });
+    const live = await liveRun();
+    expect(await runCaseRun(db, pool, live.id, batchDeps(gone))).toBe("polling");
+    expect(await drive(live.id, batchDeps(fake()))).toBe("incomplete");
+    expect((await caseRunReport(db, live.id))!.packets.uncertain).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("keeps spending plus reservations within the limit through expiry, retries, an uncertain submission and a cancel", async () => {
+    const limit = 0.8;
+    const watch = (runId: number, seen: { worst: number }) => async () => { const b = await budgetOf(runId); seen.worst = Math.max(seen.worst, b.spentUsd + b.reservedUsd); };
+    // Expired first sends (retried once, unbilled), long replies, and one submission whose outcome is unknown.
+    const p = fake({ outputPerPair: 4000, outcome: (_r, n) => (n === 1 ? "expired" : {}), onSubmit: (n) => (n === 2 ? "lost_unaccepted" : "ok") });
+    const run = await liveRun(limit);
+    const seen = { worst: 0 };
+    const out = await drive(run.id, batchDeps(p, { batchSize: 5, inFlight: 4 }), { step: 60_000, onTick: watch(run.id, seen) });
+    expect(["blocked_budget", "incomplete"]).toContain(out);
+    expect(seen.worst).toBeLessThanOrEqual(limit + 1e-9);
+    const b = await budgetOf(run.id);
+    expect(b.spentUsd).toBeLessThanOrEqual(limit + 1e-9);
+    expect(b.reservedUsd).toBe(0);
+    // The recorded calls never cost more than what was charged against the limit.
+    expect((await caseRunReport(db, run.id))!.cost.costUsd).toBeLessThanOrEqual(b.spentUsd + 1e-9);
+    // A cancel releases what didn't run and settles what did, without passing the limit.
+    const q = fake({ processingMs: 10 * 60_000, completeOnCancel: 2, outputPerPair: 4000 });
+    const cancelled = await liveRun(limit);
+    const seen2 = { worst: 0 };
+    expect(await drive(cancelled.id, batchDeps(q, { batchSize: 5, inFlight: 4 }), {
+      onTick: async (i) => { await watch(cancelled.id, seen2)(); if (i === 0) await db.update(caseRuns).set({ cancelRequestedAt: new Date() }).where(eq(caseRuns.id, cancelled.id)); },
+    })).toBe("cancelled");
+    expect(seen2.worst).toBeLessThanOrEqual(limit + 1e-9);
+    expect((await budgetOf(cancelled.id)).reservedUsd).toBe(0);
   }, 120_000);
 
   it("never resubmits a batch whose submission can't be confirmed: it waits, then needs a decision", async () => {
@@ -324,7 +409,8 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
     const boss = { send: async (_q: string, data: unknown) => { sent.push(data); return null; } } as unknown as PgBoss;
     const app = express();
     app.use(express.json());
-    app.use("/api", caseRunRoutes({ db, boss }));
+    let env: Record<string, string> = { ALLOW_ECONOMY_ANALYSIS: "true" };
+    app.use("/api", (req, res, next) => caseRunRoutes({ db, boss, env })(req, res, next));
     const server = await listen(app);
     const post = (path: string, body: unknown) => fetch(`${server.url}/api${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     try {
@@ -337,6 +423,14 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
 
       const live = (await (await post(`/cases/${caseId}/case-runs`, { mode: "live" })).json()).caseRun;
       expect(await runCaseRun(db, pool, live.id, batchDeps(fake()))).toBe("awaiting_confirmation");
+      // Paid economy stays off unless the server enables it; the report says so, and fast still works.
+      env = {};
+      const off = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch", retentionAcknowledged: true });
+      expect(off.status).toBe(409);
+      expect((await off.json()).code).toBe("economy_disabled");
+      expect((await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun.economyAvailable).toBe(false);
+      env = { ALLOW_ECONOMY_ANALYSIS: "true" };
+      expect((await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun.economyAvailable).toBe(true);
       const refused = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch" });
       expect(refused.status).toBe(400);
       expect((await refused.json()).code).toBe("retention_not_acknowledged");
