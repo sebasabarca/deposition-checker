@@ -31,7 +31,7 @@ describe.skipIf(!existsSync(`${RAW}/ellison/p3171.pdf`) || !existsSync(`${RAW}/e
     for (const expected of ellison) {
       it(`${expected.doc} reads exactly as it did before the physical-line fallback`, async () => {
         const { parserVersion, ...read } = await readDeposition(bytes(`${RAW}/ellison/${expected.doc}.pdf`), undefined, async () => ({ available: false, reason: "off" }));
-        expect(parserVersion).toMatch(/-r10$/);
+        expect(parserVersion).toMatch(/-r11$/);
         expect(createHash("sha256").update(JSON.stringify(read)).digest("hex")).toBe(expected.sha256);
       }, TIMEOUT);
     }

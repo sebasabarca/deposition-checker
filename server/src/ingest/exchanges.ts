@@ -29,6 +29,7 @@ export type AttributedLine = SourceLine & {
   role: SpeakerRole;
   speakerName: string | null; // when the transcript names the speaker: "MR. RILL", "MR. SCOTT"
   segments?: SpeakerSegment[]; // speaker changes inside the line (archive statements only; segments.ts)
+  labelledQuestion?: true; // the examiner's turn in a transcript with no Q./A. markers ("MS. PARK: Which unit?"); see colloquyExaminers
 };
 
 // A line's role inside an exchange. `unknown` text (after a redaction gap, before any speaker
@@ -180,12 +181,44 @@ export const surnameOf = (name: string) => name.trim().replace(/,?\s+(?:jr|sr|ii
 // segment: finds speaker changes inside a line (archive statements; segments.ts); an unmarked line after
 // one continues its last segment's speaker.
 export type Segmenter = (text: string, witnessSurname?: string) => SpeakerSegment[];
+
+type Mark = { turn: TurnMarker; name: string | null };
+const TITLED = /^(?:MR|MS|MRS|DR)\. /;
+
+// Some transcripts print no Q./A. markers: every turn opens with its speaker's label ("MS. PARK: Which
+// unit?" / "THE WITNESS: Unit 6."). There the examining attorney's turns are the questions. Who examines,
+// by line: the attorney the latest "BY MS. PARK:" heading names; before any heading, the titled attorney
+// whose turn comes right before more than half of the witness's turns (an objection between them counts
+// for the objector). Null where no one qualifies, and for every line of a document that has a single
+// Q-marked turn or no witness turn: those keep the existing rules unchanged.
+export function colloquyExaminers(marks: readonly Mark[]): (string | null)[] {
+  const none = marks.map(() => null);
+  if (marks.some((m) => m.turn === "Q") || !marks.some((m) => m.turn === "A")) return none;
+  const before = new Map<string, number>();
+  let witnessTurns = 0;
+  let last: Mark | null = null;
+  for (const m of marks) {
+    if (m.turn === "A") {
+      witnessTurns++;
+      if (last?.turn === "colloquy" && last.name && TITLED.test(last.name)) before.set(last.name, (before.get(last.name) ?? 0) + 1);
+    }
+    if (m.turn !== null && m.turn !== "parenthetical") last = m;
+  }
+  const [top] = [...before].sort((a, b) => b[1] - a[1]);
+  let examiner = top && top[1] * 2 > witnessTurns ? top[0] : null;
+  return marks.map((m) => (m.turn === "examiner" ? (examiner = m.name) : examiner));
+}
+
 export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, witnessSurname?: string, segment?: Segmenter): AttributedLine[] {
   const result: AttributedLine[] = [];
   let noteOpen = false;
   let speaker: AttributedLine | null = null; // the last line that wasn't a note, with nothing redacted since
+  const marks = lines.map((line) => markLine(line.rawText, line.indentX, layout, witnessSurname, line.ocrConfidence !== undefined));
+  const examiners = colloquyExaminers(marks);
   lines.forEach((line, index) => {
-    const { turn, name } = markLine(line.rawText, line.indentX, layout, witnessSurname, line.ocrConfidence !== undefined);
+    const { name } = marks[index];
+    const labelledQuestion = marks[index].turn === "colloquy" && name !== null && name === examiners[index];
+    const turn = labelledQuestion ? "Q" : marks[index].turn;
     const previous = result[index - 1];
     const continuesTurn = previous !== undefined && isContiguous(lines[index - 1], line, layout);
     if (!continuesTurn) speaker = null;
@@ -194,7 +227,7 @@ export function attributeSpeakers(lines: SourceLine[], layout: LayoutProfile, wi
     const from = tail ? { role: tail.role, speakerName: tail.name } : before;
     let attributed: AttributedLine;
     if (turn !== null) {
-      attributed = { ...line, index, turn, role: ROLE_OF_TURN[turn], speakerName: name };
+      attributed = { ...line, index, turn, role: ROLE_OF_TURN[turn], speakerName: name, ...(labelledQuestion ? { labelledQuestion: true as const } : {}) };
     } else if (continuesTurn) {
       attributed = { ...line, index, turn, role: from.role, speakerName: from.speakerName };
     } else {
@@ -265,10 +298,14 @@ export function buildExchanges(lines: AttributedLine[], layout: LayoutProfile): 
     const gap = i > 0 && !isContiguous(lines[i - 1], line, layout);
     if (gap) close(true);
 
+    // An examiner's labelled turn starts a new exchange once the witness has answered, so "MR. DIAZ: You
+    // can answer." after an objection stays with the question it lets the witness answer; and after lines
+    // with no speaker at all (an "EXAMINATION" heading), as a "BY MS. PARK:" heading would.
     const startsNew =
       !current ||
       line.turn === "examiner" ||
-      (line.turn === "Q" && current.members.some((m) => m.role === "question" || m.role === "answer"));
+      (line.turn === "Q" && current.members.some((m) => m.role === "answer" || (m.role === "question" && !line.labelledQuestion))) ||
+      (line.labelledQuestion === true && current.members.every((m) => m.role === "unknown"));
     if (startsNew) {
       close(false);
       current = { members: [], startsAfterGap: gap || i === 0 };
@@ -328,6 +365,7 @@ function labelOf(line: AttributedLine): string {
 function turnText(line: AttributedLine): string {
   const t = line.rawText.trim();
   if (line.turn === null) return t;
+  if (line.labelledQuestion) return t.replace(COLLOQUY, "").trim();
   if (line.role === "attorney" || line.role === "witness") return stripMarker(t);
   if (line.role === "colloquy" && line.turn === "colloquy") return t.replace(COLLOQUY, "").trim();
   return t;
