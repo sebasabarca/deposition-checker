@@ -62,6 +62,33 @@ This stores the synthetic fixture cases and starts two demo analyses through the
 
 The synthetic testimony is invented and is labelled as a fixture throughout. A replayed assessment says it was produced by an earlier Sonnet run. Prepared fixture verdicts say they were not produced by a model.
 
+### Multi-witness demo case (hand-authored)
+
+A self-contained sample case that needs no other data and no model: two witnesses (Elena Marsh and Owen Calder), two sessions each, about a fire at an invented warehouse.
+
+```bash
+npm run db:up && npm run db:migrate
+npm run dev                         # then register an account in the app (or verify one: npm run admin -- verify <email>)
+npx tsx scripts/demo-case.ts --email <your account email>
+```
+
+Open the case **"Sample case: Harbor Street warehouse fire"**. It holds two completed demo analyses with eight findings: three direct contradictions, two inferential ones, one that needs context and two that are likely compatible.
+
+**What is real and what is not:**
+
+- **Invented testimony.** The testimony and the people are invented (`server/src/data/demoCase.ts`). Each session's original text file starts with a line saying so, and "View original text" opens that file.
+- **Hand-written assessments.** The findings are example assessments written by hand. No model produced them, and they are not benchmark labels: no evaluation reads them.
+- **Real checks.** Each assessment goes through the same pipeline as a model's reply:
+  - its citations are checked against the stored lines (Layer 1);
+  - its speaker attribution is checked (Layer 2);
+  - code calculates its score.
+
+  So a citation that didn't match the testimony would show as unverified.
+- **Labelled.** The case is named "Sample case", and its analyses carry an "Example" badge. The case's findings card notes "example findings, written by hand". Each finding, when opened, says "Demo: a prepared example assessment for synthetic testimony. Not produced by a model" and badges its explanation "Prepared example, not model output". The analysis page says "This is an example analysis. No model was called for it".
+- **Page and line numbers.** Page:line references come from laying the invented text out at 25 lines per page, as for the other synthetic fixtures. They are not the pagination of a real transcript.
+
+Running the command again changes nothing. To remove the case, delete it from the case page.
+
 ## Tests
 
 ```bash

@@ -21,6 +21,7 @@ Each Vitest worker uses its own database, `<TEST_DATABASE_URL name without _test
 - `npx tsx scripts/eval-review.ts build|import`: builds the human review set (tracked references in `data/eval/review-set-v1.json`, testimony in the git-ignored sheet `data/eval/review/review-set-v1.csv`), or copies the filled-in sheet back; no API call. Retrieval code must never read this set
 - `npx tsx scripts/interrupt-analysis.ts --analysis <id>`: closes out an analysis whose worker is gone, counting any open request in full; no API call
 - `npx tsx scripts/demo.ts [--fresh]`: with `npm run dev` running, stores the synthetic fixture cases and starts demo analyses (Ellison, Webb) through the API; no model calls
+- `npx tsx scripts/demo-case.ts --email <account email>`: seeds the hand-authored multi-witness demo case (`server/src/data/demoCase.ts`: two witnesses, two sessions each, eight prepared example assessments) into that account, through the real ingestion, verification and scoring; writes the sessions' original text to `data/uploads`; no model calls; a second run changes nothing. See README, "Multi-witness demo case"
 - `npx vitest run -t "<test name>"`: one test
 - `npm run typecheck`: `tsc --noEmit` over `server/`, `scripts/` and `tests/` (not the client)
 - `npm run build --prefix client`: typechecks and builds the client

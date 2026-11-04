@@ -1,9 +1,9 @@
 // The findings bar of one analysis: the four categories as tabs, and under them every finding of the
-// open category as a numbered chip, coloured by its decision, with labelled Previous and Next. Sticky,
+// open category as a numbered button with its decision as a dot, with labelled Previous and Next. Sticky,
 // so the testimony below it keeps the full width. j and k step through the findings, as in a mail
 // reader; past the last one of a category, Next goes on to the next category.
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, CircleHelp } from "lucide-react";
 import { displayRef } from "../lib/insights";
 import { GROUP_LABEL } from "../lib/labels";
@@ -25,13 +25,6 @@ export const DECISION_DOT: Record<ReviewDecision | "unreviewed", string> = {
   confirmed: "bg-ok",
   needs_context: "bg-context",
   dismissed: "bg-faint",
-};
-
-const CHIP: Record<ReviewDecision | "unreviewed", string> = {
-  unreviewed: "bg-sheet text-ink ring-control",
-  confirmed: "bg-ok-bg text-ok ring-ok/35",
-  needs_context: "bg-context-bg text-context ring-context/35",
-  dismissed: "bg-rule text-faint ring-transparent line-through",
 };
 
 // The deposition's own references, as stored; unnumbered text reads "Line N".
@@ -67,56 +60,51 @@ export function FindingBar({ findings, analysisId, selected, group, onGroup, onH
           </button>
         </div>
         {inGroup.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 py-3">
-            <nav aria-label={`${GROUP_LABEL[group]}: findings`} className="min-w-0 flex-1" data-tour="finding-chips">
-              <div className="flex items-baseline gap-2 text-sm">
-                <span className="flex-none font-semibold tabular-nums">{open ? `Finding ${at + 1} of ${inGroup.length}` : `${inGroup.length} findings`}</span>
-                {open && <span className="truncate text-muted">{open.subject ?? open.explanation}</span>}
-              </div>
-              <ol className="mt-2 flex flex-wrap gap-1.5">
-                {inGroup.map((f, i) => {
-                  const d = decisionOf(f.reviewState);
-                  const here = f.id === selected;
-                  return (
-                    <li key={f.id}>
-                      <a
-                        href={href.analysis(analysisId, f.id)}
-                        aria-current={here ? "true" : undefined}
-                        aria-label={`Finding ${i + 1}, ${REVIEW_LABEL[d]}`}
-                        title={`${i + 1}. ${f.subject ?? f.explanation} · ${REVIEW_LABEL[d]}`}
-                        className={cx("flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm font-medium tabular-nums ring-1 ring-inset transition-shadow hover:ring-navy", CHIP[d], here && "ring-2 ring-navy font-semibold")}
-                      >
-                        {i + 1}
-                      </a>
-                    </li>
-                  );
-                })}
-              </ol>
-            </nav>
-            <div className="flex flex-none flex-col items-end gap-2 max-sm:w-full max-sm:items-stretch" data-tour="finding-steps">
-              <div className="flex gap-2 max-sm:[&>*]:flex-1">
-                {prev !== undefined
-                  ? <a href={href.analysis(analysisId, prev)} className={buttonClass("secondary")} title="Previous finding (k)"><ArrowLeft aria-hidden className="size-4" />Previous</a>
-                  : <span aria-disabled className={cx(buttonClass("secondary"), "pointer-events-none opacity-45")}><ArrowLeft aria-hidden className="size-4" />Previous</span>}
-                {forward !== undefined
-                  ? <a href={href.analysis(analysisId, forward)} className={buttonClass("primary")} title={next !== undefined ? "Next finding (j)" : `First finding in ${GROUP_LABEL[nextGroup!]} (j)`}>{next !== undefined ? "Next" : `Next: ${GROUP_LABEL[nextGroup!]}`}<ArrowRight aria-hidden className="size-4" /></a>
-                  : <span aria-disabled className={cx(buttonClass("primary"), "pointer-events-none opacity-45")}>Next<ArrowRight aria-hidden className="size-4" /></span>}
-              </div>
-              <Legend />
-            </div>
-          </div>
+          <FindingSteps
+            label={`${GROUP_LABEL[group]}: findings`}
+            heading={open ? `Finding ${at + 1} of ${inGroup.length}` : `${inGroup.length} findings`}
+            summary={open ? (open.subject ?? open.explanation) : null}
+            chips={inGroup.map((f) => ({ key: String(f.id), current: f.id === selected, decision: decisionOf(f.reviewState), title: f.subject ?? f.explanation, href: href.analysis(analysisId, f.id) }))}
+            previous={prev !== undefined ? { href: href.analysis(analysisId, prev), title: "Previous finding (k)" } : undefined}
+            next={forward !== undefined ? { href: href.analysis(analysisId, forward), title: next !== undefined ? "Next finding (j)" : `First finding in ${GROUP_LABEL[nextGroup!]} (j)`, label: next !== undefined ? "Next" : `Next: ${GROUP_LABEL[nextGroup!]}` } : undefined}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function Legend() {
+type Step = { href?: string; onClick?: () => void; title?: string; label?: string };
+
+// One row under the category tabs: which finding is open and its summary, a numbered button per finding
+// with its decision as a dot, and Previous and Next. Shared by the analysis of two sessions (links) and the
+// whole-case analysis (buttons), so both read the same.
+export function FindingSteps({ label, heading, summary, chips, previous, next }: {
+  label: string; heading: string; summary: string | null;
+  chips: { key: string; current: boolean; decision: ReviewDecision | "unreviewed"; title: string; href?: string; onClick?: () => void }[];
+  previous?: Step; next?: Step;
+}) {
+  const step = (s: Step | undefined, variant: "primary" | "secondary", children: ReactNode) =>
+    s === undefined ? <span aria-disabled className={cx(buttonClass(variant), "pointer-events-none opacity-45")}>{children}</span>
+    : s.href !== undefined ? <a href={s.href} title={s.title} className={buttonClass(variant)}>{children}</a>
+    : <button type="button" onClick={s.onClick} title={s.title} className={buttonClass(variant)}>{children}</button>;
   return (
-    <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted max-sm:hidden">
-      {(["unreviewed", "confirmed", "needs_context", "dismissed"] as const).map((d) => (
-        <span key={d} className="flex items-center gap-1.5"><span aria-hidden className={cx("size-2.5 rounded-full", DECISION_DOT[d])} />{REVIEW_LABEL[d]}</span>
-      ))}
-    </p>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 py-3">
+      <p className="min-w-0 flex-1 truncate text-sm"><span className="font-semibold tabular-nums">{heading}</span>{summary && <> <span className="text-muted">{summary}</span></>}</p>
+      <nav aria-label={label} data-tour="finding-chips">
+        <ol className="flex flex-wrap gap-1.5">
+          {chips.map((c, i) => {
+            const cls = cx("relative flex size-8 items-center justify-center rounded-md text-sm tabular-nums ring-1 ring-inset transition-shadow", c.current ? "bg-sheet font-semibold text-ink ring-2 ring-ink" : "text-muted ring-line hover:bg-hover hover:ring-navy");
+            const body = <>{i + 1}<span aria-hidden className={cx("absolute -top-1 -right-1 size-2.5 rounded-full", DECISION_DOT[c.decision])} /></>;
+            const a11y = { "aria-current": c.current ? ("true" as const) : undefined, "aria-label": `Finding ${i + 1}, ${REVIEW_LABEL[c.decision]}`, title: `${i + 1}. ${c.title} · ${REVIEW_LABEL[c.decision]}` };
+            return <li key={c.key}>{c.href !== undefined ? <a href={c.href} className={cls} {...a11y}>{body}</a> : <button type="button" onClick={c.onClick} className={cls} {...a11y}>{body}</button>}</li>;
+          })}
+        </ol>
+      </nav>
+      <span className="flex flex-none gap-2 max-sm:w-full max-sm:[&>*]:flex-1" data-tour="finding-steps">
+        {step(previous, "secondary", <><ArrowLeft aria-hidden className="size-4" />{previous?.label ?? "Previous"}</>)}
+        {step(next, "primary", <>{next?.label ?? "Next"}<ArrowRight aria-hidden className="size-4" /></>)}
+      </span>
+    </div>
   );
 }

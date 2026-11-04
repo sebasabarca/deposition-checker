@@ -6,6 +6,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "../db/client";
 import { analyses, candidates, cases, depositions, findings, orgs, witnesses } from "../db/schema";
+import { caseAnalysisView } from "./caseAnalysis";
 
 const Id = z.coerce.number().int().positive();
 const Name = z.string().trim().min(1).max(200);
@@ -117,6 +118,13 @@ export function caseRoutes({ db }: { db: Database }): Router {
     const detail = await caseDetail(db, id.data);
     if (!detail) return res.status(404).json({ error: "Case not found." });
     return res.json(detail);
+  });
+
+  // The case's stored whole-case analysis, resolved to stored transcript lines; null when it has none.
+  router.get("/cases/:id/case-analysis", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    if (!id.success) return res.status(400).json({ error: "The case ID must be a positive number." });
+    return res.json({ analysis: await caseAnalysisView(db, id.data) });
   });
 
   router.post("/cases/:id/witnesses", async (req, res) => {

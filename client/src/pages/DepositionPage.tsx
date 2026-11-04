@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, Pencil } from "lucide-react";
 import { DangerZone } from "../components/DangerZone";
 import { TranscriptRows } from "../components/FindingView";
 import { useNow } from "../components/CheckProgress";
-import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, fieldClass, inputClass, Loading, PageHeader, selectClass } from "../components/ui";
+import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, fieldClass, inputClass, Loading, PageHeader, selectClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
 import { api } from "../lib/api";
 import { inMarkedRange, isActive } from "../lib/insights";
@@ -62,7 +62,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
   return (
     <>
       <PageHeader
-        above={kase && <a href={href.case(kase.case.id)} className="mb-1 inline-block text-sm text-muted hover:text-ink">{kase.case.name}</a>}
+        above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }, ...(kase ? [{ label: kase.case.name, href: href.case(kase.case.id) }] : [])]} />}
         title={<>{d.witness.name}<span className="font-normal text-muted">, {formatDate(d.takenOn)}</span></>}
         description={[d.originalFilename ?? `Deposition #${d.id}`, d.pageCount && d.validation?.layout !== "text-unnumbered-v1" ? `${d.pageCount} ${d.pageCount === 1 ? "page" : "pages"}` : null, d.stored.lines ? `${d.stored.lines.toLocaleString()} lines` : null].filter(Boolean).join(" · ")}
         actions={<a href={api.depositionOriginal(d.id)} target={downloadOnly ? undefined : "_blank"} rel="noreferrer" className={buttonClass("secondary")}><ExternalLink aria-hidden className="size-3.5" />{downloadOnly ? `Download original ${FORMAT[d.sourceFormat]}` : `View original ${isText ? "text" : "PDF"}`}</a>}
@@ -137,7 +137,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
               <Row label="Status"><Badge tone={s.tone} dot>{s.label}</Badge></Row>
               <DateRow d={d} onSaved={setD} editing={editingDate} setEditing={setEditingDate} />
               <Row label="Witness"><span className="flex items-center gap-2"><span className="font-medium">{d.witness.name}</span><ChangeButton label="Change witness" onClick={() => setMoving("witness")} /></span></Row>
-              <Row label="Case"><span className="flex items-center gap-2">{kase ? <a href={href.case(kase.case.id)} className="min-w-0 truncate font-medium hover:underline">{kase.case.name}</a> : "–"}<ChangeButton label="Change case" onClick={() => setMoving("case")} /></span></Row>
+              <Row label="Case"><span className="flex min-w-0 items-center justify-end gap-2">{kase ? <a href={href.case(kase.case.id)} className="min-w-0 truncate font-medium hover:underline">{kase.case.name}</a> : "–"}<ChangeButton label="Change case" onClick={() => setMoving("case")} /></span></Row>
               <Row label="Source">{d.sourceFormat === "pdf" && d.validation?.ocr ? "Scanned PDF, read from the page images" : FORMAT[d.sourceFormat]}</Row>
               {d.validation?.ocr?.meanConfidence != null && <Row label="Reading accuracy">{d.validation.ocr.meanConfidence}% average</Row>}
               <Row label="Pages">{d.pageCount ?? "–"}</Row>
@@ -305,8 +305,8 @@ function MoveDialog({ d, mode, onClose }: { d: DepositionView; mode: "witness" |
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 px-5 py-2.5">
-      <dt className="text-muted">{label}</dt>
-      <dd className="text-right tabular-nums">{children}</dd>
+      <dt className="flex-none text-muted">{label}</dt>
+      <dd className="min-w-0 text-right tabular-nums">{children}</dd>
     </div>
   );
 }

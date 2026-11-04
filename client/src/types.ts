@@ -275,3 +275,19 @@ export type FindingDetail = {
 
 export type TranscriptLine = { id: number; page: number; lineNo: number; pdfPage: number; speaker: string; text: string; ocrConfidence: number | null };
 export type DepositionLines = { page: number | null; pages: number[]; lines: TranscriptLine[]; hits: TranscriptLine[]; moreHits: boolean };
+
+// Mirrors server/src/api/caseAnalysis.ts: a stored hand-authored whole-case analysis, every citation
+// resolved by code to the stored transcript lines (only those are shown).
+export type CaseAnalysisLine = { id: number; ref: string; text: string; role: string; highlighted: boolean };
+export type CaseAnalysisCitation = { sessionId: string; witness: string; date: string; depositionId: number | null; status: "verified" | "unverified"; reason: string | null; range: string | null; lines: CaseAnalysisLine[] };
+export type CaseAnalysisSession = { id: string; witness: string; date: string; depositionId: number | null };
+export type CaseAnalysisView = {
+  provenance: { origin: "hand_authored_demo"; source_basis: string; authoring_method: string; live_model_execution: false; model: null; analysis_run_id: null };
+  execution: { status: "not_run"; paid_calls: 0; cost_usd: 0; claims_live_analysis: false };
+  coverage: { sessions_total: number; witnesses_total: number; unique_pairs_total: number; pairs_complete: number; pairs_deferred: number; pairs_unprocessed: number; findings_total: number; findings_by_classification: Record<string, number>; coverage_claim: string };
+  edits: string;
+  sessions: CaseAnalysisSession[];
+  pairs: { pair_id: string; session_ids: [string, string]; relationship: "within_witness" | "cross_witness"; status: "complete" | "deferred" | "unprocessed"; finding_count: number; sessions: CaseAnalysisSession[] }[];
+  findings: { id: string; pair_id: string; relationship: "within_witness" | "cross_witness"; classification: "incompatible" | "uncertain" | "compatible"; priority: "high" | "medium" | "low"; topic: string; summary: string; citations: [CaseAnalysisCitation, CaseAnalysisCitation] }[];
+  unverified: number;
+};

@@ -36,7 +36,7 @@ Every finding is shown as the two passages of real testimony side by side, cited
 
 - Name: Veridict. Logo: navy V with a slate-blue stroke and a serif wordmark (`client/public/veridict-logo.png`).
 - The user pinned the look: a dark navy sidebar, a light grey canvas with plain white panels, a serif voice for titles, and testimony set like a transcript in a monospace with a line-number gutter.
-- Collapsible sidebar with Overview, Cases, Depositions, Findings, Analyses and Help. No breadcrumbs.
+- Collapsible sidebar with Overview, Cases, Depositions, Findings, Analyses and Help. Detail pages (case, deposition, analysis) show a breadcrumb back to their case and to Cases.
 
 ## Evidence on Hand
 

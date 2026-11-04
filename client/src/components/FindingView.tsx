@@ -9,7 +9,7 @@ import { displayRef, LOW_OCR_CONFIDENCE, ocrPassage } from "../lib/insights";
 import { ATTRIBUTION_LEVEL, COMPONENT, DISAGREEMENT, EVIDENCE_STRENGTH_NOTE, formatDate, KNOWLEDGE_BASIS, LOCATION, ORIGIN, SAME_EVENT, SPEAKER, VERIFICATION } from "../lib/labels";
 import { href } from "../lib/router";
 import type { EvidenceLine, EvidenceSide, FindingDetail } from "../types";
-import { Alert, Button, cx, Dialog, ModelMark, OcrMark, TestimonyMark } from "./ui";
+import { Alert, Button, cx, Dialog, HumanMark, ModelMark, OcrMark, TestimonyMark } from "./ui";
 
 export function Passage({ label, side }: { label: string; side: EvidenceSide }) {
   const ocr = ocrPassage(side);
@@ -141,7 +141,8 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
     <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-md font-semibold">{contradiction && f.cross ? "Why the accounts may conflict" : contradiction ? "Why the statements may conflict" : f.classification === "false_positive" ? "Why they may be compatible" : "Assessment"}</h2>
-        <ModelMark />
+        {/* A prepared demo assessment was written by a person: never badge it as the model's reading. */}
+        {f.source.kind === "fixture" ? <HumanMark>Prepared example, not model output</HumanMark> : <ModelMark />}
       </div>
       <p className="font-serif text-[17px] leading-7">{a.explanation}</p>
       {f.direct ? (

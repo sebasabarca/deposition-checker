@@ -1,26 +1,28 @@
 // Add depositions from anywhere: one or more files (PDF, or a court reporter's text, RTF or Word
-// export) into one drop zone, or text pasted in. Case and witness are shared by the batch; each file
-// may carry its date, and a date left empty is looked for on the transcript's cover and confirmed in
-// the case before any check.
+// export) into one drop zone, or text pasted in. The case is shared by the batch; each file has its
+// own witness (guessed from its name when it matches a witness in the case) and may carry its date.
+// A date left empty is looked for on the transcript's cover and confirmed in the case before any check.
 
 import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { ClipboardPaste, FileText, UploadCloud, X } from "lucide-react";
-import { api } from "../lib/api";
+import { ClipboardPaste, FileText, RotateCw, UploadCloud, X } from "lucide-react";
+import { api, DEPOSITION_ADDED } from "../lib/api";
+import { guessWitness, needsWitness, runLimited, type UploadState } from "../lib/bulkUpload";
 import { describeText } from "../lib/textTranscript";
 import { href } from "../lib/router";
 import { useUser } from "../lib/session";
 import type { CaseSummary } from "../types";
-import { Alert, Button, cx, Dialog, Field, fieldClass, inputClass, selectClass } from "./ui";
+import { Alert, Badge, Button, cx, Dialog, Field, fieldClass, inputClass, selectClass, type Tone } from "./ui";
 import { DateInput } from "./DateInput";
 
 const MAX_UPLOAD_MB = 50; // server/src/api/depositions.ts
 const NEW_CASE = "new";
+const CONCURRENT_UPLOADS = 3;
 const PLAIN = /\.(txt|text|asc)$/i; // read here to preview its shape
 const SUPPORTED = /\.(pdf|txt|text|asc|rtf|docx)$/i;
 const PROPRIETARY = /\.(ptx|ptz|lef|ptf)$/i; // server/src/ingest/formats.ts
 const ACCEPT = "application/pdf,.pdf,text/plain,.txt,.asc,.rtf,application/rtf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-type Item = { key: string; file: File; takenOn: string; shape: ReturnType<typeof describeText> | null; state: "waiting" | "sending" | "added" | "failed"; error?: string };
+type Item = { key: string; file: File; witness: string; takenOn: string; shape: ReturnType<typeof describeText> | null; state: UploadState; error?: string };
 
 // Why a file can't be sent, in plain words; null when it can.
 function problemOf(f: File): string | null {
@@ -32,7 +34,7 @@ function problemOf(f: File): string | null {
 
 export function AddDeposition({ open, caseId, onClose }: { open: boolean; caseId?: number; onClose: () => void }) {
   return (
-    <Dialog open={open} onClose={onClose} title="Add depositions" description="One or more sessions of one witness. Veridict reads each into page and line references before they can be checked." size="xl">
+    <Dialog open={open} onClose={onClose} title="Add depositions" description="One or more sessions, of one witness or several. Veridict reads each into page and line references before they can be checked." size="xl">
       <Form presetCase={caseId} onClose={onClose} />
     </Dialog>
   );
@@ -51,6 +53,7 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
   const [pastedDate, setPastedDate] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [doneCase, setDoneCase] = useState<number | null>(null);
 
   useEffect(() => {
     api.cases().then((r) => {
@@ -63,24 +66,59 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
     api.case(Number(caseChoice)).then((d) => {
       const names = d.witnesses.map((w) => w.name);
       setWitnesses(names);
-      setWitness((w) => w || names[0] || "");
+      // Only a case with one witness pre-fills the batch witness; with several, each file is matched by name.
+      setWitness((w) => w || (names.length === 1 ? names[0] : ""));
+      setItems((all) => all.map((i) => (i.witness || i.state === "added" ? i : { ...i, witness: guessWitness(i.file.name, names) })));
     }).catch(() => setWitnesses([]));
   }, [caseChoice]);
 
   const update = (key: string, change: Partial<Item>) => setItems((all) => all.map((i) => (i.key === key ? { ...i, ...change } : i)));
   const addFiles = (files: File[]) => {
     setError(null);
-    const added = files.map((file): Item => ({ key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`, file, takenOn: "", shape: null, state: "waiting" }));
+    setDoneCase(null);
+    const added = files.map((file): Item => ({ key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`, file, witness: guessWitness(file.name, witnesses) || witness.trim(), takenOn: "", shape: null, state: "waiting" }));
     setItems((all) => [...all.filter((i) => i.state !== "added"), ...added]);
     for (const item of added) if (PLAIN.test(item.file.name)) item.file.text().then((t) => update(item.key, { shape: describeText(t) })).catch(() => undefined);
   };
   const remove = (key: string) => setItems((all) => all.filter((i) => i.key !== key));
+  const applyWitness = (onlyEmpty: boolean) => setItems((all) => all.map((i) => (i.state === "added" || (onlyEmpty && i.witness.trim()) ? i : { ...i, witness: witness.trim() })));
 
   const pastedShape = useMemo(() => (pasting && pasted.trim() ? describeText(pasted) : null), [pasting, pasted]);
-  const sendable = pasting ? (pasted.trim() ? 1 : 0) : items.filter((i) => i.state !== "added" && !problemOf(i.file)).length;
+  const sendableItems = items.filter((i) => !problemOf(i.file));
+  const pending = sendableItems.filter((i) => i.state !== "added");
+  const missing = pending.filter(needsWitness).length;
+  const addedCount = sendableItems.length - pending.length;
+  const failedCount = pending.filter((i) => i.state === "failed").length;
+  const sendable = pasting ? (pasted.trim() ? 1 : 0) : pending.length;
   const caseReady = caseChoice === NEW_CASE ? newCase.trim().length > 0 : /^\d+$/.test(caseChoice);
   const verified = useUser()?.emailVerified ?? false;
-  const ready = verified && sendable > 0 && caseReady && witness.trim().length > 0 && !busy;
+  const ready = verified && sendable > 0 && caseReady && (pasting ? witness.trim().length > 0 : missing === 0) && !busy;
+
+  // Creates the new case once, so a retry adds to the case just made.
+  const targetCase = async () => {
+    if (caseChoice !== NEW_CASE) return Number(caseChoice);
+    const id = (await api.createCase(newCase.trim())).case.id;
+    setCaseChoice(String(id));
+    return id;
+  };
+  const send = async (target: number, item: Item): Promise<number | null> => {
+    update(item.key, { state: "sending", error: undefined });
+    try {
+      const { deposition } = await api.upload(target, item.file, item.witness.trim(), item.takenOn || undefined);
+      update(item.key, { state: "added" });
+      window.dispatchEvent(new CustomEvent(DEPOSITION_ADDED, { detail: { caseId: target } }));
+      return deposition.id;
+    } catch (err) {
+      update(item.key, { state: "failed", error: (err as Error).message });
+      return null;
+    }
+  };
+  const retry = async (item: Item) => {
+    if (!/^\d+$/.test(caseChoice) || needsWitness(item)) return;
+    setBusy(true);
+    if ((await send(Number(caseChoice), item)) !== null && pending.length === 1) setDoneCase(Number(caseChoice));
+    setBusy(false);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -88,38 +126,46 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
     setBusy(true);
     setError(null);
     try {
-      const target = caseChoice === NEW_CASE ? (await api.createCase(newCase.trim())).case.id : Number(caseChoice);
-      if (caseChoice === NEW_CASE) setCaseChoice(String(target)); // a retry adds to the case just made
-      const name = witness.trim();
+      const target = await targetCase();
       if (pasting) {
+        const name = witness.trim();
         const body = new File([pasted], `Pasted transcript, ${name}${pastedDate ? ` ${pastedDate}` : ""}.txt`, { type: "text/plain" });
         const { deposition } = await api.upload(target, body, name, pastedDate || undefined);
         onClose();
         window.location.hash = href.deposition(deposition.id);
         return;
       }
-      // One at a time, so a failure is reported against its file and the rest still go through.
-      const queue = items.filter((i) => i.state !== "added" && !problemOf(i.file));
+      // A few at a time; a failure is reported against its file and the rest still go through.
+      const queue = pending;
       const added: number[] = [];
-      for (const item of queue) {
-        update(item.key, { state: "sending", error: undefined });
-        try {
-          const { deposition } = await api.upload(target, item.file, name, item.takenOn || undefined);
-          added.push(deposition.id);
-          update(item.key, { state: "added" });
-        } catch (err) {
-          update(item.key, { state: "failed", error: (err as Error).message });
-        }
-      }
-      if (added.length === queue.length) {
+      await runLimited(queue, CONCURRENT_UPLOADS, async (item) => {
+        const id = await send(target, item);
+        if (id !== null) added.push(id);
+      });
+      if (added.length === queue.length && addedCount === 0) {
         onClose();
         window.location.hash = added.length === 1 ? href.deposition(added[0]) : href.case(target);
-      } else setBusy(false);
+        return;
+      }
+      if (added.length === queue.length) setDoneCase(target);
+      setBusy(false);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
     }
   };
+  const openCase = (id: number) => {
+    onClose();
+    window.location.hash = href.case(id);
+  };
+
+  const status = busy && !pasting && sendableItems.length > 0
+    ? `Sending… ${addedCount} of ${sendableItems.length} added`
+    : !pasting && failedCount > 0
+      ? `${addedCount} of ${sendableItems.length} added. ${failedCount} ${failedCount === 1 ? "file" : "files"} failed: try again, or remove ${failedCount === 1 ? "it" : "them"}.`
+      : !pasting && missing > 0
+        ? `${missing} ${missing === 1 ? "file needs" : "files need"} a witness before you can add ${missing === 1 ? "it" : "them"}.`
+        : "The original is stored exactly as uploaded. Nothing is sent to a model until you start a check.";
 
   return (
     <form onSubmit={submit} className="flex max-h-[calc(100dvh-8rem)] flex-col">
@@ -137,11 +183,23 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
               <input id={`${ids}-newcase`} className={inputClass} value={newCase} onChange={(e) => setNewCase(e.target.value)} maxLength={200} placeholder="Webb v. Harlow Logistics" />
             </Field>
           )}
-          <Field label="Witness" htmlFor={`${ids}-witness`} hint={`${witnesses.length ? "Pick a witness in this case or type a new name. " : ""}Every file you add here is a session of this witness.`}>
-            <input id={`${ids}-witness`} autoFocus className={inputClass} list={`${ids}-witnesses`} value={witness} onChange={(e) => setWitness(e.target.value)} required maxLength={200} placeholder="Marcus Webb" disabled={busy} />
+          <Field
+            label="Witness"
+            htmlFor={`${ids}-witness`}
+            hint={pasting
+              ? `${witnesses.length ? "Pick a witness in this case or type a new name. " : ""}The pasted text is a session of this witness.`
+              : "New files get this witness unless their name matches another witness in the case. Each file's witness can be changed in its row."}
+          >
+            <input id={`${ids}-witness`} autoFocus className={inputClass} list={`${ids}-witnesses`} value={witness} onChange={(e) => setWitness(e.target.value)} required={pasting} maxLength={200} placeholder="Marcus Webb" disabled={busy} />
             <datalist id={`${ids}-witnesses`}>{witnesses.map((w) => <option key={w} value={w} />)}</datalist>
           </Field>
-          <p className="text-xs leading-5 text-muted">Leave a date empty and Veridict looks for it on the transcript's cover. You confirm it in the case before running a check. You can change the date, witness or case later from the deposition's page.</p>
+          {!pasting && items.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <button type="button" onClick={() => applyWitness(true)} disabled={busy || !witness.trim()} className="text-sm font-medium text-info hover:underline disabled:opacity-50 disabled:hover:no-underline">Fill empty rows</button>
+              <button type="button" onClick={() => applyWitness(false)} disabled={busy || !witness.trim()} className="text-sm font-medium text-info hover:underline disabled:opacity-50 disabled:hover:no-underline">Use for every file</button>
+            </div>
+          )}
+          <p className="text-xs leading-5 text-muted">Leave a date empty and Veridict reads it from the transcript's cover. You confirm it on the case page before running a check. You can change the date, witness or case later from the deposition's page.</p>
         </div>
 
         <div className="min-w-0 space-y-4 px-6 py-5">
@@ -170,7 +228,10 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
               <DropZone onFiles={addFiles} compact={items.length > 0} disabled={busy} />
               {items.length > 0 && (
                 <ul className="divide-y divide-rule rounded-lg border border-line" aria-label="Files to add">
-                  {items.map((item) => <FileRow key={item.key} item={item} disabled={busy} onDate={(d) => update(item.key, { takenOn: d })} onRemove={() => remove(item.key)} />)}
+                  {items.map((item) => (
+                    <FileRow key={item.key} item={item} witnessList={`${ids}-witnesses`} disabled={busy}
+                      onChange={(change) => update(item.key, change)} onRemove={() => remove(item.key)} onRetry={() => retry(item)} />
+                  ))}
                 </ul>
               )}
               <button type="button" onClick={() => setPasting(true)} disabled={busy} className="flex items-center gap-1.5 text-sm font-medium text-info hover:underline disabled:opacity-50">
@@ -181,13 +242,18 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
 
           {!verified && <Alert tone="warn" title="Verify your email first">Open the link we emailed you, then add depositions. You can send a new link from the banner at the top of the page.</Alert>}
           {error && <Alert>{error}</Alert>}
+          {!pasting && !busy && doneCase !== null && pending.length === 0 && (
+            <Alert tone="info" title={`${addedCount} of ${sendableItems.length} added`} action={<Button variant="secondary" onClick={() => openCase(doneCase)}>Open the case</Button>}>
+              Confirm any dates read from the transcripts on the case page, then start a check.
+            </Alert>
+          )}
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-6 py-3.5">
-        <p className="text-xs text-faint">The original is stored exactly as uploaded. Nothing is sent to a model until you start a check.</p>
+        <p aria-live="polite" className={cx("text-xs tabular-nums", missing > 0 || failedCount > 0 ? "text-ink" : "text-faint")}>{status}</p>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>{doneCase !== null && pending.length === 0 ? "Close" : "Cancel"}</Button>
           <Button type="submit" disabled={!ready}>{busy ? "Adding…" : sendable > 1 ? `Add ${sendable} depositions` : "Add deposition"}</Button>
         </div>
       </div>
@@ -195,37 +261,62 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
   );
 }
 
-function FileRow({ item, disabled, onDate, onRemove }: { item: Item; disabled: boolean; onDate: (iso: string) => void; onRemove: () => void }) {
+const STATUS: Record<UploadState, { tone: Tone; label: string }> = {
+  waiting: { tone: "neutral", label: "Waiting" },
+  sending: { tone: "active", label: "Sending" },
+  added: { tone: "good", label: "Added" },
+  failed: { tone: "bad", label: "Failed" },
+};
+
+function FileRow({ item, witnessList, disabled, onChange, onRemove, onRetry }: { item: Item; witnessList: string; disabled: boolean; onChange: (change: Partial<Item>) => void; onRemove: () => void; onRetry: () => void }) {
   const id = useId();
   const problem = problemOf(item.file);
   const size = item.file.size / 1024 / 1024;
+  const editable = !problem && (item.state === "waiting" || item.state === "failed");
+  const missing = !problem && needsWitness(item);
+  const status = STATUS[item.state];
   return (
     <li className="px-4 py-3">
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+      <div className="flex items-start gap-3">
         <FileText aria-hidden className="mt-0.5 size-4 flex-none text-slate" strokeWidth={1.75} />
-        <div className="min-w-0 flex-1 basis-48">
+        <div className="min-w-0 flex-1">
           <p className="truncate font-medium" title={item.file.name}>{item.file.name}</p>
           <p className="text-xs text-muted tabular-nums">
             {size.toFixed(size < 1 ? 2 : 1)} MB
             {item.shape && item.shape.lines > 0 && (item.shape.numbered ? " · page and line numbers found" : " · no page and line numbers: cited by line")}
-            {item.state === "sending" && " · sending…"}
-            {item.state === "added" && " · added"}
           </p>
         </div>
-        {!problem && item.state !== "added" && (
-          <div className="flex flex-none items-center gap-2">
-            <label htmlFor={id} className="text-xs text-muted">Date taken</label>
-            <DateInput id={id} value={item.takenOn} onChange={onDate} />
-          </div>
+        {problem ? <Badge tone="warn">Can't add</Badge> : <Badge tone={status.tone} dot={item.state === "sending"}>{status.label}</Badge>}
+        {item.state === "failed" && !missing && (
+          <Button variant="secondary" disabled={disabled} onClick={onRetry} aria-label={`Try again: ${item.file.name}`}>
+            <RotateCw aria-hidden className="size-3.5" />Try again
+          </Button>
         )}
         {item.state !== "sending" && item.state !== "added" && (
-          <button type="button" onClick={onRemove} disabled={disabled} aria-label={`Remove ${item.file.name}`} className="flex size-7 flex-none items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink disabled:opacity-50">
+          <button type="button" onClick={onRemove} disabled={disabled} aria-label={`Remove ${item.file.name}`} className="-mr-1.5 flex size-7 flex-none items-center justify-center rounded-md text-muted hover:bg-hover hover:text-ink disabled:opacity-50">
             <X aria-hidden className="size-4" />
           </button>
         )}
       </div>
-      {problem && <p className="mt-2 text-sm text-context">{problem}</p>}
-      {item.error && <p className="mt-2 text-sm text-conflict">{item.error}</p>}
+      {editable && (
+        <div className="mt-2.5 grid gap-x-3 gap-y-2 pl-7 sm:grid-cols-[minmax(0,1fr)_10.5rem]">
+          <div className="text-sm">
+            <label htmlFor={`${id}-witness`} className="text-xs text-muted">Witness</label>
+            <input id={`${id}-witness`} className={cx(inputClass, "mt-1")} list={witnessList} value={item.witness} maxLength={200} disabled={disabled}
+              onChange={(e) => onChange({ witness: e.target.value })} aria-invalid={missing} aria-describedby={missing ? `${id}-missing` : undefined} />
+            {missing && <p id={`${id}-missing`} className="mt-1 text-xs text-context">Add the witness for this file.</p>}
+          </div>
+          <div className="text-sm">
+            <label htmlFor={`${id}-date`} className="text-xs text-muted">Date taken <span className="text-faint">(optional)</span></label>
+            <div className="mt-1"><DateInput id={`${id}-date`} value={item.takenOn} onChange={(d) => onChange({ takenOn: d })} /></div>
+          </div>
+        </div>
+      )}
+      {!problem && !editable && (
+        <p className="mt-1 pl-7 text-xs text-muted">{item.witness.trim()} · {item.takenOn || "date read from the transcript"}</p>
+      )}
+      {problem && <p className="mt-2 pl-7 text-sm text-context">{problem}</p>}
+      {item.error && <p className="mt-2 pl-7 text-sm text-conflict">{item.error}</p>}
     </li>
   );
 }

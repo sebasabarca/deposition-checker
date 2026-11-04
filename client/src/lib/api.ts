@@ -1,12 +1,14 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
 import type { Workspace } from "./workspace";
 
 export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
 
 export const SIGNED_OUT = "veridict:signed-out";
+// A deposition was uploaded to a case (detail: { caseId }), so an open case page reloads and shows it processing.
+export const DEPOSITION_ADDED = "veridict:deposition-added";
 export type User = { id: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean; onboarded: boolean };
 
 export class ApiError extends Error {
@@ -52,6 +54,14 @@ export const api = {
   workspace: () => request<Workspace>("GET", "/workspace"),
   createCase: (name: string, witness?: string) => request<CaseDetail>("POST", "/cases", { name, ...(witness ? { witness } : {}) }),
   case: (id: number) => request<CaseDetail>("GET", `/cases/${id}`),
+  caseAnalysis: (id: number) => request<{ analysis: CaseAnalysisView | null }>("GET", `/cases/${id}/case-analysis`),
+  // The whole-case analysis report as a PDF file; the decisions travel with it (they're kept in this browser).
+  caseAnalysisReport: async (id: number, decisions: { id: string; decision: ReviewDecision; note: string; at: string }[]) => {
+    const res = await fetch(`/api/cases/${id}/case-analysis/report.pdf`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions }) }).catch(() => null);
+    if (!res) throw new ApiError("The server can't be reached. Is it running?", 0);
+    if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The report couldn't be made (${res.status}).`, res.status);
+    return res.blob();
+  },
   addWitness: (caseId: number, name: string) => request<{ witness: { id: number; name: string } }>("POST", `/cases/${caseId}/witnesses`, { name }),
   upload: (caseId: number, file: File, witness: string, takenOn?: string) => {
     const q = new URLSearchParams({ witness, filename: file.name, ...(takenOn ? { takenOn } : {}) });

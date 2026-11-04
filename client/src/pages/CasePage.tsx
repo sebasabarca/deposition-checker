@@ -1,18 +1,22 @@
 // One case: its depositions by witness, a check of two sessions (of one witness, or one session each of
 // two witnesses), and its analyses.
 
-import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, FileText, FileUp, X } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { ArrowRight, ArrowRightLeft, FileText, FileUp, GripVertical, Pencil, X } from "lucide-react";
+import { CaseAnalysisAction, CaseAnalysisSummary, useCaseAnalysis } from "../components/CaseAnalysis";
+import { CaseFindings } from "../components/CaseFindings";
 import { CheckAgain, estimateText, NO_ACCESS, useEstimate, useStartCheck } from "../components/CheckAgain";
 import { useUser } from "../lib/session";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
-import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Empty, Loading, PageHeader, rowClass, tdClass, thClass } from "../components/ui";
-import { api } from "../lib/api";
+import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Empty, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
+import { DateInput } from "../components/DateInput";
+import { analysesOf, dateAction, moveTargets } from "../components/sessionActions";
+import { api, DEPOSITION_ADDED } from "../lib/api";
 import { checkState, isActive, pairsChecked } from "../lib/insights";
 import { analysisTitle, ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, CaseDetail, DepositionRow } from "../types";
+import type { AnalysisView, CaseAnalysisView, CaseDetail, DepositionRow } from "../types";
 
 export const sourceOf = (d: Pick<DepositionRow, "scanned" | "originalFilename">) => (/\.txt$/i.test(d.originalFilename ?? "") ? "Text" : d.scanned ? "Scanned PDF" : "PDF");
 
@@ -21,7 +25,13 @@ export function CasePage({ id }: { id: number }) {
   const [analyses, setAnalyses] = useState<AnalysisView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
+  // Dragging a session onto another witness's card: the row being dragged, the card under it, and the
+  // move waiting for confirmation (also opened from the row's Move button).
+  const [dragging, setDragging] = useState<DepositionRow | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+  const [move, setMove] = useState<{ d: DepositionRow; to: number | null } | null>(null);
   const add = useAddDeposition();
+  const caseAnalysis = useCaseAnalysis(id);
   const load = useCallback(() => {
     api.case(id)
       .then(async (d) => {
@@ -31,6 +41,13 @@ export function CasePage({ id }: { id: number }) {
       .catch((e: Error) => setError(e.message));
   }, [id]);
   useEffect(load, [load]);
+  // An upload to this case from the Add depositions dialog: reload, so the new sessions show as processing
+  // and the poll below follows them until they're ready.
+  useEffect(() => {
+    const added = (e: Event) => { if ((e as CustomEvent<{ caseId: number }>).detail?.caseId === id) load(); };
+    window.addEventListener(DEPOSITION_ADDED, added);
+    return () => window.removeEventListener(DEPOSITION_ADDED, added);
+  }, [id, load]);
   const busy = !!detail && (detail.depositions.some((d) => d.status === "processing") || detail.analyses.some((a) => isActive(a.status)));
   usePoll(busy, 3000, load);
 
@@ -43,13 +60,17 @@ export function CasePage({ id }: { id: number }) {
   return (
     <>
       <PageHeader
-        above={<a href={href.cases()} className="mb-1 inline-block text-sm text-muted hover:text-ink">Cases</a>}
+        above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
         title={detail.case.name}
         description={summary}
-        actions={<><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
+        actions={<><CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} /><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
       />
 
       <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} />
+
+      <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
+
+      <CaseFindings analyses={analyses} />
 
       {detail.depositions.length === 0 ? (
         <Empty title="No depositions in this case yet" action={<Button onClick={() => add.open(id)}>Add deposition</Button>}>Add two sessions of the same witness, as PDF or text, to check them against each other.</Empty>
@@ -57,15 +78,23 @@ export function CasePage({ id }: { id: number }) {
         detail.witnesses.filter((w) => w.depositions.length > 0).map((w) => {
           const sessions = detail.depositions.filter((d) => d.witnessId === w.id).sort((a, b) => (a.takenOn ?? "").localeCompare(b.takenOn ?? ""));
           const pairs = pairsChecked(sessions.filter((d) => d.status === "ready").map((d) => d.id), detail.analyses);
+          const target = !!dragging && dragging.witnessId !== w.id;
           return (
-            <Card key={w.id} className="overflow-hidden">
+            <div
+              key={w.id}
+              onDragOver={(e) => { if (!target) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOver(w.id); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o === w.id ? null : o)); }}
+              onDrop={(e) => { if (!target) return; e.preventDefault(); setMove({ d: dragging, to: w.id }); setDragging(null); setOver(null); }}
+            >
+            <Card className={cx("overflow-hidden transition-[outline-color] duration-150", target && "outline-2 outline-offset-2 outline-dashed outline-control", over === w.id && "bg-info-bg/40 outline-solid! outline-slate!")}>
               <CardHeader
                 title={w.name}
                 count={sessions.length}
                 description={sessions.length < 2 ? "Select one session here and one of another witness to compare their accounts, or add another session of this witness." : "Select two sessions to check them against each other, or one here and one of another witness."}
-                action={pairs.total > 0 ? <span className="text-sm text-muted tabular-nums">{pairs.checked} of {pairs.total} {pairs.total === 1 ? "pair" : "pairs"} checked</span> : undefined}
+                action={over === w.id ? <Badge tone="active">Drop to file it under {w.name}</Badge> : pairs.total > 0 ? <span className="text-sm text-muted tabular-nums">{pairs.checked} of {pairs.total} {pairs.total === 1 ? "pair" : "pairs"} checked</span> : undefined}
               />
-              <div className="overflow-x-auto">
+              {/* relative: keeps the screen-reader "Move" header inside the scroller instead of widening the page */}
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[44rem] text-sm">
                   <thead>
                     <tr>
@@ -75,24 +104,40 @@ export function CasePage({ id }: { id: number }) {
                       <th className={thClass}>Source</th>
                       <th className={cx(thClass, "text-right")}>Pages</th>
                       <th className={thClass}>Status</th>
+                      <th className={cx(thClass, "w-0")}><span className="sr-only">Move</span></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sessions.map((d) => <SessionRow key={d.id} d={d} witness={w.name} selected={selected.includes(d.id)} onToggle={() => toggle(d.id)} onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))} onUseDate={(date) => api.setDepositionDate(d.id, date).then(load).catch((e: Error) => setError(e.message))} />)}
+                    {sessions.map((d) => (
+                      <SessionRow
+                        key={d.id}
+                        d={d}
+                        witness={w.name}
+                        selected={selected.includes(d.id)}
+                        onToggle={() => toggle(d.id)}
+                        onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}
+                        onUseDate={(date) => api.setDepositionDate(d.id, date).then(load)}
+                        movable={moveTargets(detail.witnesses, w.id).length > 0}
+                        onDragStart={() => setDragging(d)}
+                        onDragEnd={() => { setDragging(null); setOver(null); }}
+                        onMove={() => setMove({ d, to: null })}
+                      />
+                    ))}
                   </tbody>
                 </table>
               </div>
             </Card>
+            </div>
           );
         })
       )}
 
       <Card className="overflow-hidden">
-        <CardHeader title="Analyses" count={analyses.length} />
-        {analyses.length === 0 ? (
+        <CardHeader title="Analyses" count={analyses.length + (caseAnalysis ? 1 : 0)} />
+        {analyses.length === 0 && !caseAnalysis ? (
           <p className="px-5 py-5 text-sm text-muted">No analyses yet. Select two sessions above to start one: two of one witness, or one each of two witnesses.</p>
         ) : (
-          <AnalysesTable analyses={analyses} />
+          <AnalysesTable analyses={analyses} caseRows={caseAnalysis ? [{ caseId: id, analysis: caseAnalysis }] : []} />
         )}
       </Card>
 
@@ -107,19 +152,49 @@ export function CasePage({ id }: { id: number }) {
         }}
       />
 
+      {move && (
+        <MoveDialog
+          d={move.d}
+          initial={move.to}
+          caseId={id}
+          targets={moveTargets(detail.witnesses, move.d.witnessId)}
+          analyses={analysesOf(detail.analyses, move.d.id)}
+          onClose={() => setMove(null)}
+          onMoved={() => { setSelected((s) => s.filter((x) => x !== move.d.id)); setMove(null); load(); }}
+        />
+      )}
+
       {selected.length > 0 && <CompareBar detail={detail} selected={selected} onClear={() => setSelected([])} />}
     </>
   );
 }
 
-function SessionRow({ d, witness, selected, onToggle, onRetry, onUseDate }: { d: DepositionRow; witness: string; selected: boolean; onToggle: () => void; onRetry: () => void; onUseDate: (date: string) => void }) {
+function SessionRow({ d, witness, selected, onToggle, onRetry, onUseDate, movable, onDragStart, onDragEnd, onMove }: { d: DepositionRow; witness: string; selected: boolean; onToggle: () => void; onRetry: () => void; onUseDate: (date: string) => Promise<void>; movable: boolean; onDragStart: () => void; onDragEnd: () => void; onMove: () => void }) {
   const s = DEPOSITION_STATUS[d.status];
   const name = d.originalFilename ?? `Deposition #${d.id}`;
   const note = d.status === "failed" || d.status === "unsupported" ? `Couldn't be read: ${d.error ?? "this file's layout isn't recognized."}` : d.status === "needs_review" ? (d.error ?? "Some pages couldn't be read.") : d.scanned ? "Scanned copy. Compare quotations with the page image." : null;
+  const action = dateAction(d);
   return (
-    <tr className={cx(rowClass, selected && "bg-info-bg hover:bg-info-bg")}>
+    <tr
+      className={cx(rowClass, selected ? "bg-info-bg hover:bg-info-bg" : action && "bg-context-bg/50 hover:bg-context-bg")}
+    >
       <td className={cx(tdClass, "align-top")}>
-        <input type="checkbox" aria-label={`Select ${witness}, ${formatDate(d.takenOn)}`} checked={selected} disabled={d.status !== "ready"} onChange={onToggle} className="size-4 rounded accent-navy" />
+        <span className="flex items-center gap-1">
+          {/* Only the grip drags (showing the whole row), so the row's checkbox, links and date boxes behave as usual. */}
+          {movable && (
+            <span
+              aria-hidden
+              draggable
+              title="Drag onto another witness"
+              onDragStart={(e) => { const row = e.currentTarget.closest("tr")!; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", name); e.dataTransfer.setDragImage(row, 16, 16); onDragStart(); }}
+              onDragEnd={onDragEnd}
+              className="-my-1 -ml-4 flex-none cursor-grab rounded px-0.5 py-1 text-faint hover:bg-rule hover:text-ink active:cursor-grabbing"
+            >
+              <GripVertical className="size-4" strokeWidth={1.75} />
+            </span>
+          )}
+          <input type="checkbox" aria-label={`Select ${witness}, ${formatDate(d.takenOn)}`} checked={selected} disabled={d.status !== "ready"} onChange={onToggle} className="size-4 rounded accent-navy" />
+        </span>
       </td>
       <td className={cx(tdClass, "align-top whitespace-nowrap")}><SessionDate d={d} onUse={onUseDate} /></td>
       <td className={cx(tdClass, "max-w-80 align-top")}>
@@ -134,26 +209,64 @@ function SessionRow({ d, witness, selected, onToggle, onRetry, onUseDate }: { d:
           {d.status === "failed" && <Button variant="secondary" className="h-6! px-2! text-xs!" onClick={onRetry}>Try again</Button>}
         </span>
       </td>
+      <td className={cx(tdClass, "align-top")}>
+        {movable && <Button variant="ghost" className="h-7! px-2! text-xs! text-muted!" title="Move to another witness" aria-label={`Move ${name} to another witness`} onClick={onMove}><ArrowRightLeft aria-hidden className="size-3.5" />Move</Button>}
+      </td>
     </tr>
   );
 }
 
 // The date taken, or what's needed instead: a date the transcript states, to confirm with one click, or a
-// link to enter it. A date that differs from the transcript's is flagged, since it decides the order.
-const smallButton = (variant: "primary" | "secondary") => buttonClass(variant, "h-7! px-2.5! text-xs!");
-function SessionDate({ d, onUse }: { d: DepositionRow; onUse: (date: string) => void }) {
+// date to enter in place. A date that differs from the transcript's is flagged, since it decides the order.
+const smallButton = (variant: "primary" | "secondary" | "ghost") => buttonClass(variant, "h-7! px-2.5! text-xs!");
+function SessionDate({ d, onUse }: { d: DepositionRow; onUse: (date: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const found = d.dateFound;
-  const differs = !!(d.takenOn && found && found.date !== d.takenOn);
-  if (d.takenOn && !differs) return <span className="font-medium tabular-nums">{formatDate(d.takenOn)}</span>;
+  const action = dateAction(d);
+  // A failed save stays in this cell, with the editor open, so the rest of the case stays on screen.
+  const save = (date: string) => {
+    setBusy(true);
+    setProblem(null);
+    onUse(date).then(() => setEditing(false), (e: Error) => setProblem(e.message)).finally(() => setBusy(false));
+  };
+  const error = problem && <span role="alert" className="block max-w-52 text-xs text-conflict">{problem}</span>;
+  const edit = () => { setValue(d.takenOn ?? found?.date ?? ""); setEditing(true); };
+
+  if (editing) {
+    const submit = (e: FormEvent) => { e.preventDefault(); if (value && !busy) save(value); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) { e.preventDefault(); setEditing(false); } };
+    return (
+      <form onSubmit={submit} onKeyDown={escape} aria-label="Date taken" className="w-52 space-y-1.5">
+        <fieldset disabled={busy} className="contents"><DateInput value={value} onChange={setValue} /></fieldset>
+        <span className="flex gap-1.5">
+          <button type="submit" disabled={!value || busy} className={smallButton("primary")}>{busy ? "Saving…" : "Save"}</button>
+          <button type="button" disabled={busy} onClick={() => { setEditing(false); setProblem(null); }} className={smallButton("secondary")}>Cancel</button>
+        </span>
+        {error}
+      </form>
+    );
+  }
+  if (!action) {
+    return (
+      <span className="group flex items-center gap-1">
+        <span className="font-medium tabular-nums">{formatDate(d.takenOn)}</span>
+        <button type="button" onClick={edit} aria-label={`Edit the date, ${formatDate(d.takenOn)}`} title="Edit date" className="rounded p-1 text-faint opacity-60 hover:bg-rule hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"><Pencil aria-hidden className="size-3.5" /></button>
+      </span>
+    );
+  }
   return (
     <div className="space-y-1.5">
       {d.takenOn ? <span className="block font-medium tabular-nums">{formatDate(d.takenOn)}</span> : null}
-      <Badge tone="warn" dot>{d.takenOn ? "Check the date" : "Date needed"}</Badge>
+      <Badge tone="warn" dot>{action === "differs" ? "Check the date" : "Date needed"}</Badge>
       {found && <span className="block text-xs text-muted">The transcript says {formatDate(found.date)}</span>}
       <span className="flex flex-wrap gap-1.5">
-        {found && found.date !== d.takenOn && <button type="button" onClick={() => onUse(found.date)} className={smallButton("primary")}>Use {formatDate(found.date)}</button>}
-        <a href={href.deposition(d.id)} className={smallButton("secondary")}>{d.takenOn ? "Edit date" : "Enter date"}</a>
+        {found && <button type="button" disabled={busy} onClick={() => save(found.date)} className={smallButton("primary")}>{busy ? "Saving…" : `Use ${formatDate(found.date)}`}</button>}
+        <button type="button" disabled={busy} onClick={edit} className={smallButton(found ? "ghost" : "primary")}>{d.takenOn ? "Edit date" : "Enter date"}</button>
       </span>
+      {error}
     </div>
   );
 }
@@ -161,18 +274,63 @@ function SessionDate({ d, onUse }: { d: DepositionRow; onUse: (date: string) => 
 // Above the sessions while any of them needs a date (or has one the transcript contradicts), since no
 // check can start without both dates.
 function DatesBanner({ depositions, witnesses }: { depositions: DepositionRow[]; witnesses: CaseDetail["witnesses"] }) {
-  const missing = depositions.filter((d) => !d.takenOn);
-  const differ = depositions.filter((d) => d.takenOn && d.dateFound && d.dateFound.date !== d.takenOn);
+  const missing = depositions.filter((d) => dateAction(d) === "missing");
+  const differ = depositions.filter((d) => dateAction(d) === "differs");
   if (missing.length + differ.length === 0) return null;
   const name = (d: DepositionRow) => `${witnesses.find((w) => w.id === d.witnessId)?.name ?? "Witness"}, ${d.originalFilename ?? `deposition #${d.id}`}`;
   return (
     <Alert tone="warn" title={missing.length ? `${missing.length} ${missing.length === 1 ? "session needs" : "sessions need"} a date` : `${differ.length} ${differ.length === 1 ? "date differs" : "dates differ"} from the transcript`}>
-      <p>The dates decide which testimony came first, so a check can't start until both sessions have one. Use the date the transcript states, or enter it, in the table below.</p>
+      <p>The dates decide which testimony came first, so a check can't start until both sessions have one. In the highlighted rows below, use the date the transcript states or enter it.</p>
       <ul className="mt-1.5 list-disc pl-5">
-        {missing.map((d) => <li key={d.id}>{name(d)}: no date{d.dateFound ? ` (the transcript says ${formatDate(d.dateFound.date)})` : ""}</li>)}
-        {differ.map((d) => <li key={d.id}>{name(d)}: entered as {formatDate(d.takenOn)}, the transcript says {formatDate(d.dateFound!.date)}</li>)}
+        {missing.map((d) => <li key={d.id}>{name(d)}: <strong className="font-semibold">Date needed</strong>{d.dateFound ? ` (the transcript says ${formatDate(d.dateFound.date)})` : ""}</li>)}
+        {differ.map((d) => <li key={d.id}>{name(d)}: <strong className="font-semibold">Check the date</strong>, entered as {formatDate(d.takenOn)}, the transcript says {formatDate(d.dateFound!.date)}</li>)}
       </ul>
     </Alert>
+  );
+}
+
+// Files a session under another witness of the case, after saying what that costs: the file is read again
+// there, and the analyses that compared it are deleted. Opened by a drop on a witness's card (target
+// chosen) or by the row's Move button (target picked here).
+function MoveDialog({ d, initial, caseId, targets, analyses, onClose, onMoved }: { d: DepositionRow; initial: number | null; caseId: number; targets: CaseDetail["witnesses"]; analyses: number; onClose: () => void; onMoved: () => void }) {
+  const [to, setTo] = useState(initial ?? targets[0]?.id);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const witness = targets.find((w) => w.id === to);
+  const name = d.originalFilename ?? `Deposition #${d.id}`;
+  const confirm = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!witness) return;
+    setBusy(true);
+    try {
+      await api.moveDeposition(d.id, caseId, witness.name);
+      onMoved();
+    } catch (err) {
+      setProblem((err as Error).message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} title="Move to another witness" description={name} size="md">
+      <form onSubmit={confirm} className="space-y-4 px-6 py-5">
+        <Field label="Witness" htmlFor="move-to">
+          <select id="move-to" autoFocus className={cx(selectClass, "w-full")} value={to} onChange={(e) => setTo(Number(e.target.value))} disabled={busy}>
+            {targets.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        </Field>
+        {witness && (
+          <Alert tone={analyses > 0 ? "warn" : "info"}>
+            The deposition will be filed under {witness.name} and read again from its stored file; its date is kept.
+            {analyses > 0 && ` ${analyses} ${analyses === 1 ? "analysis" : "analyses"} that compared it will be deleted, with their findings and decisions.`}
+          </Alert>
+        )}
+        {problem && <Alert title="This deposition couldn't be moved">{problem}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={!witness || busy}>{busy ? "Moving…" : `Move to ${witness?.name ?? "witness"}`}</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -224,7 +382,10 @@ function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selecte
   );
 }
 
-export function AnalysesTable({ analyses, caseNames }: { analyses: AnalysisView[]; caseNames?: Map<number, string> }) {
+// A case's stored whole-case analysis, listed with the pair analyses (hand-authored example; no model run).
+export type CaseAnalysisRow = { caseId: number; analysis: CaseAnalysisView };
+
+export function AnalysesTable({ analyses, caseNames, caseRows = [] }: { analyses: AnalysisView[]; caseNames?: Map<number, string>; caseRows?: CaseAnalysisRow[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[52rem] text-sm">
@@ -241,6 +402,21 @@ export function AnalysesTable({ analyses, caseNames }: { analyses: AnalysisView[
           </tr>
         </thead>
         <tbody>
+          {caseRows.map(({ caseId, analysis: c }) => (
+            <tr key={`case-${caseId}`} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.caseAnalysis(caseId))}>
+              <td className={tdClass}>
+                <a href={href.caseAnalysis(caseId)} className="font-semibold hover:underline">Whole case</a>
+                <span className="block text-xs text-muted tabular-nums">{c.coverage.sessions_total} sessions, {c.coverage.witnesses_total} witnesses · {c.coverage.pairs_complete} of {c.coverage.unique_pairs_total} pairs</span>
+              </td>
+              {caseNames && <td className={cx(tdClass, "text-muted")}>{caseNames.get(caseId) ?? "–"}</td>}
+              <td className={tdClass}><span className="flex items-center gap-1.5"><Badge tone="good" dot>Complete</Badge><Badge tone="accent">Example</Badge></span></td>
+              <td className={cx(tdClass, "text-right tabular-nums font-semibold")}>{c.coverage.findings_by_classification.incompatible ?? 0}</td>
+              <td className={cx(tdClass, "text-right tabular-nums")}>{c.coverage.findings_by_classification.uncertain ?? 0}</td>
+              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>–</td>
+              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>{formatUsd(c.execution.cost_usd)}</td>
+              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>–</td>
+            </tr>
+          ))}
           {analyses.map((r) => {
             const s = ANALYSIS_STATUS[r.status];
             const [a, b] = r.depositions;
