@@ -47,7 +47,9 @@ describe("readAnswer", () => {
   it("treats a bare yes or no to a negative or tag question as uncertain", () => {
     expect(readAnswer("You didn't sign it, did you?", "No.")).toBe("uncertain");
     expect(readAnswer("You never met him?", "Yes.")).toBe("uncertain");
-    expect(readAnswer("You signed it, right?", "Yes.")).toBe("uncertain");
+    expect(readAnswer("You didn't sign it, right?", "Yes.")).toBe("uncertain");
+    // A positive statement with a confirming tag is a plain yes-or-no question (tests/verify/readingFixes.test.ts).
+    expect(readAnswer("You signed it, right?", "Yes.")).toBe("affirms");
   });
 });
 

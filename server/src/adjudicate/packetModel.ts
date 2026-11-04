@@ -6,7 +6,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { AdjudicatorReply, CallOptions } from "./model";
-import { maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_REPLY_JSON_SCHEMA, PACKET_SYSTEM_PROMPT } from "./packetPrompt";
+import { maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, type PromptVersionId } from "./packetPrompt";
 
 export type PacketAdjudicator = {
   model: string;
@@ -15,10 +15,12 @@ export type PacketAdjudicator = {
   adjudicate(packetText: string, pairCount: number, options?: CallOptions): Promise<AdjudicatorReply>;
 };
 
-export function anthropicPacketAdjudicator(client = new Anthropic({ maxRetries: 0 })): PacketAdjudicator {
+// version selects the contract (packet-v1 by default, unchanged; packet-v2 for Milestone 2.5).
+export function anthropicPacketAdjudicator(client = new Anthropic({ maxRetries: 0 }), version: PromptVersionId = PACKET_PROMPT_VERSION): PacketAdjudicator {
+  const prompt = PACKET_PROMPTS[version];
   return {
     model: PACKET_MODEL,
-    promptVersion: PACKET_PROMPT_VERSION,
+    promptVersion: version,
     effort: PACKET_EFFORT,
     async adjudicate(packetText, pairCount, options) {
       const started = performance.now();
@@ -28,8 +30,8 @@ export function anthropicPacketAdjudicator(client = new Anthropic({ maxRetries: 
         {
           model: PACKET_MODEL,
           max_tokens: maxOutputTokensFor(pairCount),
-          system: [{ type: "text", text: PACKET_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-          output_config: { effort: PACKET_EFFORT, format: { type: "json_schema", schema: PACKET_REPLY_JSON_SCHEMA } },
+          system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral" } }],
+          output_config: { effort: PACKET_EFFORT, format: { type: "json_schema", schema: prompt.jsonSchema } },
           messages: [{ role: "user", content: packetText }],
         },
         { signal: options?.signal },

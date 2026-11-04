@@ -12,6 +12,9 @@
 //            packet and its pairwise requests from stored lines, runs both arms with the label-blind mock
 //            model, verifies and scores them, and prices the paid pilot from the actual serialized requests.
 //            No API call. The report quotes testimony, so it goes under the git-ignored data/raw/.
+//   compare  --runs <dir>,<dir>,... --sample <file> [--out <file under data/raw>]
+//            Read-only, no database: scores each run's pairs.json (from rescore) on the same sample's packets
+//            (by corpus and packet id, main requests only) with exact-match and review-oriented metrics.
 //   rescore  --run <report dir> --database pilot|rehearsal
 //            Read-only: rebuilds the run's requests from that database, re-verifies its saved replies and writes
 //            pairs.json (every pair's outcome, citations and attribution readings, by arm) into the run folder.
@@ -39,8 +42,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { classifyFailure } from "../server/src/adjudicate/requests";
 import { anthropicPacketAdjudicator, type PacketAdjudicator } from "../server/src/adjudicate/packetModel";
 import { buildIssuePacket, pairwisePackets, resolvePassages } from "../server/src/adjudicate/packetLoad";
-import { formatIssuePacket, maxOutputTokensFor, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_REPLY_JSON_SCHEMA, PACKET_SYSTEM_PROMPT, type IssuePacket } from "../server/src/adjudicate/packetPrompt";
-import { parsePacketReply } from "../server/src/adjudicate/packetSchema";
+import { maxOutputTokensFor, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPT_VERSION_V2, PACKET_PROMPT_VERSION_V3, PACKET_PROMPTS, type IssuePacket, type PromptVersionId } from "../server/src/adjudicate/packetPrompt";
+import { parseVerdictsLenient, VERDICT_SCHEMAS } from "../server/src/adjudicate/packetSchema";
 import { callCost, recordCall, tokensFromUsage } from "../server/src/costs";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -48,11 +51,12 @@ import pg from "pg";
 import { connect, type Database } from "../server/src/db/client";
 import { PARSER_VERSION } from "../server/src/ingest";
 import { loadEvidenceFixtures, openEvaluationDatabase, type EvidenceFixture } from "../server/src/eval/evidenceFixtures";
-import { mockPacketReply } from "../server/src/eval/mockPacketModel";
+import { mockPacketReply, mockPacketReplyV2, mockPacketReplyV3 } from "../server/src/eval/mockPacketModel";
 import { costOf, estimateRequestCost, labelFor, scoreArm, selectPilotSample, type PairResult } from "../server/src/eval/packetBenchmark";
 import type { FrozenItem, FrozenPair } from "../server/src/retrieve/frozen";
 import type { PacketSet } from "../server/src/retrieve/grouping";
-import { verifyPacketReply } from "../server/src/verify/packet";
+import { verifyPacketReply, type AnyPairVerdict } from "../server/src/verify/packet";
+import type { PairVerdict, PairVerdictV2 } from "../server/src/adjudicate/packetSchema";
 
 const R = "data/raw/retrieval/round2/agent-6";
 // The two corpora, as the Milestone 1 baseline evaluated them (docs/baseline-m1.md).
@@ -68,12 +72,18 @@ const priced = (usd: number | null) => { if (usd === null) throw new Error(`${PA
 // One request's worst case: input at one token per UTF-8 byte of system prompt, request and schema, which
 // over-counts real tokens about three to four times and so also covers the cached system prompt's 1.25x
 // cache-write rate and the structured-output framing; output at max_tokens; times (1 + retries).
-const schemaText = JSON.stringify(PACKET_REPLY_JSON_SCHEMA);
+// The contract this invocation runs (--prompt; packet-v1 by default). rescore takes it from the run's report.
+let PROMPT: PromptVersionId = PACKET_PROMPT_VERSION;
+const contract = () => PACKET_PROMPTS[PROMPT];
+// Lenient for every contract: valid verdicts are kept and each malformed one is reported, never dropped.
+const parseReply = (text: string | null) => parseVerdictsLenient<AnyPairVerdict>(text, VERDICT_SCHEMAS[PROMPT] as never);
+const mockReply = (packet: IssuePacket) => (PROMPT === PACKET_PROMPT_VERSION_V3 ? mockPacketReplyV3(packet) : PROMPT === PACKET_PROMPT_VERSION_V2 ? mockPacketReplyV2(packet) : mockPacketReply(packet));
+const schemaTextOf = () => JSON.stringify(contract().jsonSchema);
 function estimateOne(r: { text: string; packet: IssuePacket }, retries = 0) {
-  return estimateRequestCost({ systemChars: PACKET_SYSTEM_PROMPT.length, userChars: r.text.length, schemaChars: schemaText.length, systemBytes: Buffer.byteLength(PACKET_SYSTEM_PROMPT), userBytes: Buffer.byteLength(r.text), schemaBytes: Buffer.byteLength(schemaText), maxOutputTokens: maxOutputTokensFor(r.packet.pairs.length), retries, pairs: r.packet.pairs.length, model: PACKET_MODEL });
+  return estimateRequestCost({ systemChars: contract().system.length, userChars: r.text.length, schemaChars: schemaTextOf().length, systemBytes: Buffer.byteLength(contract().system), userBytes: Buffer.byteLength(r.text), schemaBytes: Buffer.byteLength(schemaTextOf()), maxOutputTokens: maxOutputTokensFor(r.packet.pairs.length), retries, pairs: r.packet.pairs.length, model: PACKET_MODEL });
 }
 function worstOf(r: { text: string; packet: IssuePacket }, retries: number) {
-  return priced(estimateRequestCost({ systemChars: PACKET_SYSTEM_PROMPT.length, userChars: r.text.length, schemaChars: schemaText.length, systemBytes: Buffer.byteLength(PACKET_SYSTEM_PROMPT), userBytes: Buffer.byteLength(r.text), schemaBytes: Buffer.byteLength(schemaText), maxOutputTokens: maxOutputTokensFor(r.packet.pairs.length), retries, pairs: r.packet.pairs.length, model: PACKET_MODEL }).worstCase.usd);
+  return priced(estimateRequestCost({ systemChars: contract().system.length, userChars: r.text.length, schemaChars: schemaTextOf().length, systemBytes: Buffer.byteLength(contract().system), userBytes: Buffer.byteLength(r.text), schemaBytes: Buffer.byteLength(schemaTextOf()), maxOutputTokens: maxOutputTokensFor(r.packet.pairs.length), retries, pairs: r.packet.pairs.length, model: PACKET_MODEL }).worstCase.usd);
 }
 
 const readJson = <T>(p: string) => JSON.parse(readFileSync(p, "utf8")) as T;
@@ -190,7 +200,9 @@ async function buildRequests(db: Database, sample: Sample, docIdsOf: (c: CorpusI
     const chosen = set.packets.filter((p) => s.packetIds.includes(p.id));
     const keys = new Set(chosen.flatMap((p) => p.items));
     const items = readJson<FrozenItem[]>(`${k.frozen}/items.json`).filter((i) => keys.has(i.key));
-    const r = await resolvePassages(db, items, docIds);
+    // packet-v2 loads each passage's adjacent exchanges, keyed back to the frozen items where they exist.
+    const groupKey = new Map(readJson<FrozenItem[]>(`${k.frozen}/items.json`).map((i) => [`${i.document}#${i.groupId}`, i.key]));
+    const r = await resolvePassages(db, items, docIds, contract().adjacent ? { keyOfGroup: (d, g) => groupKey.get(`${d}#${g}`) ?? null } : undefined);
     unresolved.push(...r.unresolved.map((u) => ({ corpus: c, ...u })));
     for (const p of chosen) {
       const built = buildIssuePacket(p, r.passages);
@@ -199,8 +211,8 @@ async function buildRequests(db: Database, sample: Sample, docIdsOf: (c: CorpusI
       const byId = new Map(built.packet.passages.map((x) => [x.id, x.key]));
       const keysOf = (q: IssuePacket) => new Map(q.pairs.map((x) => [x.pairId, [byId.get(x.a)!, byId.get(x.b)!] as [string, string]]));
       const reason = s.reasons[p.id];
-      requests.push({ arm: "packet", corpus: c, evidence: k.evidence, packetId: p.id, packet: built.packet, text: formatIssuePacket(built.packet), pairKeys: keysOf(built.packet), reason });
-      for (const one of pairwisePackets(built.packet)) requests.push({ arm: "pairwise", corpus: c, evidence: k.evidence, packetId: p.id, packet: one, text: formatIssuePacket(one), pairKeys: keysOf(one), reason });
+      requests.push({ arm: "packet", corpus: c, evidence: k.evidence, packetId: p.id, packet: built.packet, text: contract().format(built.packet), pairKeys: keysOf(built.packet), reason });
+      for (const one of pairwisePackets(built.packet)) requests.push({ arm: "pairwise", corpus: c, evidence: k.evidence, packetId: p.id, packet: one, text: contract().format(one), pairKeys: keysOf(one), reason });
     }
   }
   return { requests, unbuilt, unresolved };
@@ -208,10 +220,10 @@ async function buildRequests(db: Database, sample: Sample, docIdsOf: (c: CorpusI
 
 // The paid estimate from the serialized requests: expected and worst case, per arm.
 function estimate(requests: Request[]) {
-  const schemaChars = JSON.stringify(PACKET_REPLY_JSON_SCHEMA).length;
+  const schemaChars = schemaTextOf().length;
   const out: Record<string, { requests: number; pairs: number; expectedUsd: number; worstCaseUsd: number; expectedTokens: number; worstCaseTokens: number; maxOutputTokens: number }> = {};
   for (const r of requests) {
-    const e = estimateRequestCost({ systemChars: PACKET_SYSTEM_PROMPT.length, userChars: r.text.length, schemaChars, systemBytes: Buffer.byteLength(PACKET_SYSTEM_PROMPT), userBytes: Buffer.byteLength(r.text), schemaBytes: Buffer.byteLength(JSON.stringify(PACKET_REPLY_JSON_SCHEMA)), maxOutputTokens: maxOutputTokensFor(r.packet.pairs.length), retries: RETRIES, pairs: r.packet.pairs.length, model: PACKET_MODEL });
+    const e = estimateRequestCost({ systemChars: contract().system.length, userChars: r.text.length, schemaChars, systemBytes: Buffer.byteLength(contract().system), userBytes: Buffer.byteLength(r.text), schemaBytes: Buffer.byteLength(schemaTextOf()), maxOutputTokens: maxOutputTokensFor(r.packet.pairs.length), retries: RETRIES, pairs: r.packet.pairs.length, model: PACKET_MODEL });
     const x = (out[r.arm] ??= { requests: 0, pairs: 0, expectedUsd: 0, worstCaseUsd: 0, expectedTokens: 0, worstCaseTokens: 0, maxOutputTokens: 0 });
     x.requests++;
     x.pairs += r.packet.pairs.length;
@@ -230,8 +242,11 @@ type Usage = { inputTokens: number; outputTokens: number; cacheReadTokens?: numb
 type Reply = { text: string | null; usage: Usage; spentUsd?: number; stopReason?: string | null; error?: string; attempts: number };
 
 function resultsOf(r: Request, v: ReturnType<typeof verifyPacketReply>): PairResult[] {
+  // The item keys shown for a passage: its own and its adjacent exchanges' (packet-v2), for the missed-cause split.
+  const shown = (id: string) => { const x = r.packet.passages.find((q) => q.id === id); return x ? [x.key, ...(x.adjacent ?? []).map((a) => a.itemKey).filter((k): k is string => !!k)] : []; };
   return v.pairs.map((p) => {
     const [a, b] = r.pairKeys.get(p.pairId)!;
+    const pair = r.packet.pairs.find((q) => q.pairId === p.pairId)!;
     return {
       corpus: r.corpus, evidence: r.evidence, packetId: r.packetId, a, b,
       pairStatus: p.status, outcome: p.semantic?.outcome ?? null, sourceStatus: p.source?.status ?? null,
@@ -240,6 +255,8 @@ function resultsOf(r: Request, v: ReturnType<typeof verifyPacketReply>): PairRes
       citationsValid: p.source !== null && p.validationFailures.length === 0 && ["verified", "approximate"].includes(p.source.a.status) && ["verified", "approximate"].includes(p.source.b.status),
       attributionErrors: [p.attribution?.a, p.attribution?.b].filter((s) => s?.attributionError).length,
       consistencyIssues: p.semantic?.consistencyIssues.length ?? 0,
+      semanticValid: p.semantic ? p.semantic.consistencyIssues.length === 0 : undefined,
+      shownA: shown(pair.a), shownB: shown(pair.b),
     };
   });
 }
@@ -261,7 +278,7 @@ function report<E extends Record<string, unknown>>(out: string, mode: string, sa
     const unknownPairIds: { packetId: string; pairIds: string[] }[] = [];
     for (const [r, i] of idx) {
       const reply = replies[i];
-      const v = verifyPacketReply(r.packet, reply.error ? { ok: false, error: reply.error } : parsePacketReply(reply.text));
+      const v = verifyPacketReply(r.packet, reply.error ? { ok: false, error: reply.error } : parseReply(reply.text));
       if (v.unknownPairIds.length) unknownPairIds.push({ packetId: r.packet.id, pairIds: v.unknownPairIds });
       rows.push(...resultsOf(r, v));
     }
@@ -280,7 +297,7 @@ function report<E extends Record<string, unknown>>(out: string, mode: string, sa
     };
   }
   mkdirSync(out, { recursive: true });
-  const body = { mode, promptVersion: PACKET_PROMPT_VERSION, model: PACKET_MODEL, createdOn: new Date().toISOString(), ...extra, scoredPackets: complete.size, incompletePackets, arms: result };
+  const body = { mode, promptVersion: PROMPT, model: PACKET_MODEL, createdOn: new Date().toISOString(), ...extra, scoredPackets: complete.size, incompletePackets, arms: result };
   writeFileSync(path.join(out, "report.json"), JSON.stringify(body, null, 2));
   writeFileSync(path.join(out, "replies.json"), JSON.stringify(requests.map((r, i) => ({ arm: r.arm, corpus: r.corpus, packetId: r.packet.id, repeat: r.repeat === true, textSha256: createHash("sha256").update(r.text).digest("hex"), reply: replies[i] ?? null }))));
   return body;
@@ -290,11 +307,11 @@ function report<E extends Record<string, unknown>>(out: string, mode: string, sa
 function mockAdjudicator(): PacketAdjudicator {
   let n = 0;
   return {
-    model: PACKET_MODEL, promptVersion: PACKET_PROMPT_VERSION, effort: "mock",
+    model: PACKET_MODEL, promptVersion: PROMPT, effort: "mock",
     async adjudicate(packetText) {
       const packet = mockPackets.get(packetText);
       if (!packet) throw new Error("mock: unknown request");
-      const m = mockPacketReply(packet);
+      const m = mockReply(packet);
       n++;
       const usage = { input_tokens: m.usage.inputTokens, output_tokens: m.usage.outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as Anthropic.Usage;
       return { model: PACKET_MODEL, stopReason: "end_turn", usage, text: m.text, latencyMs: 0, requestId: `mock-${n}` };
@@ -327,10 +344,18 @@ function finishCheck(requests: Request[], cap: number, perPair?: Record<Arm, num
 }
 const round = (x: number) => Math.round(x * 10_000) / 10_000;
 
+// What a reviewer needs from any contract's verdict: citations per side, stances, details and reasoning.
+function verdictView(v: AnyPairVerdict) {
+  if ("sideA" in v && typeof v.sideA === "object") return { citationsA: v.sideA.citations, citationsB: v.sideB.citations, stances: [v.sideA.stance, v.sideB.stance], sameEvent: v.sameEvent, scopeAligned: v.scopeAligned, conflictBasis: v.conflictBasis, details: v.details, explanation: v.explanation, alternativeExplanation: v.alternativeExplanation };
+  const o = v as PairVerdict | PairVerdictV2;
+  return { citationsA: [{ exchangeId: o.evidenceAId, quote: o.keyPhraseA }], citationsB: [{ exchangeId: o.evidenceBId, quote: o.keyPhraseB }], stances: [o.stanceA, o.stanceB], sameEvent: o.sameEvent, scopeAligned: o.scopeAligned, conflictBasis: o.conflictBasis, falsePositiveReason: "falsePositiveReason" in o ? o.falsePositiveReason : null, details: "detailsCompared" in o ? o.detailsCompared : null, explanation: o.explanation, alternativeExplanation: o.alternativeExplanation, contextUsed: o.contextUsed };
+}
+
 // Re-verifies a finished run's replies against its database, read-only, and writes every pair's result.
 async function rescore(dir: string, name: keyof typeof PERSISTENT) {
-  const report = readJson<{ sample: string; sampleSha256: string }>(path.join(dir, "report.json"));
+  const report = readJson<{ sample: string; sampleSha256: string; promptVersion: PromptVersionId }>(path.join(dir, "report.json"));
   if (sha(report.sample) !== report.sampleSha256) throw new Error(`${report.sample} changed since the run.`);
+  PROMPT = report.promptVersion; // a run is re-checked under the contract it was made with
   const saved = readJson<{ arm: Arm; corpus: string; packetId: string; repeat?: boolean; reply: Reply | null }[]>(path.join(dir, "replies.json"));
   const { db, pool } = connect(persistentUrl(name));
   try {
@@ -341,19 +366,19 @@ async function rescore(dir: string, name: keyof typeof PERSISTENT) {
     const ordered = saved.map((x) => { const r = queue.get(`${x.corpus}|${x.arm}|${x.packetId}`)?.[0]; if (!r) throw new Error(`The run's request ${x.arm} ${x.packetId} isn't in its sample.`); return x.repeat ? { ...r, repeat: true } : r; });
     requests.splice(0, requests.length, ...ordered);
     const labels = [...labelsOf("c1"), ...labelsOf("c2")];
-    const side = (x: { status: string; reason: string | null } | undefined, t: { level: string; codeLevel: string; claudeLevel: string; disagreement: string | null; location: string | null; codeRule: string } | null | undefined) => ({ source: x?.status ?? null, sourceReason: x?.reason ?? null, attribution: t ? { level: t.level, code: t.codeLevel, model: t.claudeLevel, disagreement: t.disagreement, location: t.location, rule: t.codeRule } : null });
+    const side = (x: { status: string; reason: string | null; cited?: string; diagnosis?: string; foundIn?: unknown } | undefined, t: { level: string; codeLevel: string; claudeLevel: string; disagreement: string | null; location: string | null; codeRule: string } | null | undefined) => ({ source: x?.status ?? null, sourceReason: x?.reason ?? null, cited: x?.cited ?? null, diagnosis: x?.diagnosis ?? null, foundIn: x?.foundIn ?? null, attribution: t ? { level: t.level, code: t.codeLevel, model: t.claudeLevel, disagreement: t.disagreement, location: t.location, rule: t.codeRule } : null });
     const pairs = requests.flatMap((r, i) => {
       const reply = saved[i].reply;
       if (!reply) return [];
-      const v = verifyPacketReply(r.packet, reply.error ? { ok: false, error: reply.error } : parsePacketReply(reply.text));
+      const v = verifyPacketReply(r.packet, reply.error ? { ok: false, error: reply.error } : parseReply(reply.text));
       return v.pairs.map((p) => {
         const [a, b] = r.pairKeys.get(p.pairId)!;
         const label = labelFor(labels, a, b);
         // For labelled pairs, the testimony and the model's reasoning, so a reviewer can judge why it was missed.
-        const passage = (id: string) => { const x = r.packet.passages.find((q) => q.id === id)!; return { id: x.id, witness: x.witnessName, session: x.session, before: x.before.map((l) => `${l.page}:${l.line} ${l.text}`), lines: x.lines.map((l) => `${l.page}:${l.line} [${l.role}] ${l.text}`), after: x.after.map((l) => `${l.page}:${l.line} ${l.text}`) }; };
+        const passage = (id: string) => { const x = r.packet.passages.find((q) => q.id === id)!; return { id: x.id, witness: x.witnessName, session: x.session, before: x.before.map((l) => `${l.page}:${l.line} ${l.text}`), lines: x.lines.map((l) => `${l.page}:${l.line} [${l.role}] ${l.text}`), after: x.after.map((l) => `${l.page}:${l.line} ${l.text}`), adjacent: (x.adjacent ?? []).map((a) => ({ id: a.id, relation: a.relation, itemKey: a.itemKey, lines: a.lines.map((l) => `${l.page}:${l.line} [${l.role}] ${l.text}`) })) }; };
         const pair = r.packet.pairs.find((q) => q.pairId === p.pairId)!;
-        const detail = label && p.verdict ? { passages: [passage(pair.a), passage(pair.b)], verdict: { keyPhraseA: p.verdict.keyPhraseA, keyPhraseB: p.verdict.keyPhraseB, stances: [p.verdict.stanceA, p.verdict.stanceB], sameEvent: p.verdict.sameEvent, scopeAligned: p.verdict.scopeAligned, conflictBasis: p.verdict.conflictBasis, falsePositiveReason: p.verdict.falsePositiveReason, explanation: p.verdict.explanation, alternativeExplanation: p.verdict.alternativeExplanation, contextUsed: p.verdict.contextUsed }, packetSize: r.packet.pairs.length } : null;
-        return { arm: r.arm, repeat: r.repeat === true, corpus: r.corpus, packetId: r.packetId, request: r.packet.id, pairId: p.pairId, a, b, label, detail, status: p.status, outcome: p.semantic?.outcome ?? null, attributions: p.verdict ? [p.verdict.attributionA, p.verdict.attributionB] : null, validationFailures: p.validationFailures, sideA: side(p.source?.a, p.attribution?.a), sideB: side(p.source?.b, p.attribution?.b) };
+        const detail = label && p.verdict ? { passages: [passage(pair.a), passage(pair.b)], verdict: verdictView(p.verdict), semantic: p.semantic, packetSize: r.packet.pairs.length } : null;
+        return { arm: r.arm, repeat: r.repeat === true, corpus: r.corpus, packetId: r.packetId, request: r.packet.id, pairId: p.pairId, a, b, label, detail, status: p.status, outcome: p.semantic?.outcome ?? null, attributions: p.verdict ? ("sideA" in p.verdict && typeof p.verdict.sideA === "object" ? [p.verdict.sideA.attribution, p.verdict.sideB.attribution] : [(p.verdict as PairVerdict).attributionA, (p.verdict as PairVerdict).attributionB]) : null, validationFailures: p.validationFailures, semantic: p.semantic ? { consistencyIssues: p.semantic.consistencyIssues, reviewFlags: p.semantic.reviewFlags, requiresReview: p.semantic.requiresReview } : null, sideA: side(p.source?.a, p.attribution?.a), sideB: side(p.source?.b, p.attribution?.b) };
       });
     });
     writeFileSync(path.join(dir, "pairs.json"), JSON.stringify(pairs, null, 2));
@@ -361,7 +386,7 @@ async function rescore(dir: string, name: keyof typeof PERSISTENT) {
     const arms: Record<string, unknown> = {};
     for (const arm of ["pairwise", "packet"] as Arm[]) {
       const idx = requests.map((r, i) => [r, i] as const).filter(([r, i]) => r.arm === arm && !saved[i].repeat && saved[i].reply);
-      const rows = idx.flatMap(([r, i]) => resultsOf(r, verifyPacketReply(r.packet, saved[i].reply!.error ? { ok: false, error: saved[i].reply!.error! } : parsePacketReply(saved[i].reply!.text))));
+      const rows = idx.flatMap(([r, i]) => resultsOf(r, verifyPacketReply(r.packet, saved[i].reply!.error ? { ok: false, error: saved[i].reply!.error! } : parseReply(saved[i].reply!.text))));
       const scored = scoreArm(arm, rows, labels);
       arms[arm] = { score: scored, cost: costOf(arm, idx.map(([, i]) => saved[i].reply!.usage), PACKET_MODEL, scored.identifiedTargets), reusedRequests: idx.filter(([, i]) => (saved[i].reply as { reusedFrom?: string }).reusedFrom).length };
     }
@@ -372,7 +397,7 @@ async function rescore(dir: string, name: keyof typeof PERSISTENT) {
       if (!saved[i].repeat || !saved[i].reply) return [];
       const j = mainOf.get(`${r.corpus}|${r.arm}|${r.packet.id}`);
       if (j === undefined || !saved[j].reply) return [];
-      const outcomes = (k: number) => verifyPacketReply(r.packet, saved[k].reply!.error ? { ok: false, error: saved[k].reply!.error! } : parsePacketReply(saved[k].reply!.text)).pairs.map((p) => p.semantic?.outcome ?? p.status);
+      const outcomes = (k: number) => verifyPacketReply(r.packet, saved[k].reply!.error ? { ok: false, error: saved[k].reply!.error! } : parseReply(saved[k].reply!.text)).pairs.map((p) => p.semantic?.outcome ?? p.status);
       const [first, second] = [outcomes(j), outcomes(i)];
       return first.map((o, n) => { const [a, b] = r.pairKeys.get(r.packet.pairs[n].pairId)!; return { arm: r.arm, packetId: r.packetId, request: r.packet.id, pairId: r.packet.pairs[n].pairId, label: labelFor(labels, a, b)?.id ?? null, first: o, second: second[n] }; });
     });
@@ -383,8 +408,46 @@ async function rescore(dir: string, name: keyof typeof PERSISTENT) {
   }
 }
 
+// Scores several finished runs on one sample from their saved pair results. Pure reads; no database or model.
+type SavedPair = { arm: Arm; repeat?: boolean; corpus: string; packetId: string; a: string; b: string; status: PairResult["pairStatus"]; outcome: PairResult["outcome"]; validationFailures: string[]; sideA: { source: string | null; attribution: { disagreement: string | null } | null }; sideB: SavedPair["sideA"]; semantic: { consistencyIssues: string[] } | null; shownA?: string[] };
+function compareRuns(dirs: string[], samplePath: string, out?: string) {
+  const sample = readJson<Sample>(samplePath);
+  const inSample = new Set(sample.corpora.flatMap((c) => c.packetIds.map((p) => `${c.corpus}/${p}`)));
+  const labels = [...labelsOf("c1"), ...labelsOf("c2")];
+  const ok = (x: string | null) => x === "verified" || x === "approximate";
+  const result = dirs.map((dir) => {
+    const report = readJson<{ promptVersion: string }>(path.join(dir, "report.json"));
+    const rows = readJson<SavedPair[]>(path.join(dir, "pairs.json")).filter((p) => !p.repeat && inSample.has(`${p.corpus}/${p.packetId}`));
+    const arms = Object.fromEntries((["packet", "pairwise"] as Arm[]).map((arm) => {
+      const res: PairResult[] = rows.filter((p) => p.arm === arm).map((p) => ({
+        corpus: p.corpus, evidence: CORPORA[p.corpus as CorpusId].evidence, packetId: p.packetId, a: p.a, b: p.b, pairStatus: p.status, outcome: p.outcome,
+        sourceStatus: (p.sideA.source ?? null) as PairResult["sourceStatus"], citationsValid: ok(p.sideA.source) && ok(p.sideB.source) && p.validationFailures.length === 0,
+        attributionErrors: [p.sideA, p.sideB].filter((x) => x.attribution?.disagreement).length, consistencyIssues: p.semantic?.consistencyIssues.length ?? 0,
+        semanticValid: p.semantic ? p.semantic.consistencyIssues.length === 0 : undefined,
+      }));
+      const c = scoreArm(arm, res, labels).evidence.combined;
+      return [arm, { pairs: res.length, identified: c.identifiedTargets, identifiedStrict: c.identifiedStrict.length, flaggedControls: c.flaggedControls, exactMatch: c.exactMatch, review: c.review, invalidCitationPairs: res.filter((x) => x.pairStatus === "answered" && !x.citationsValid && x.sourceStatus !== "not_cited").length, unanswered: res.filter((x) => x.pairStatus !== "answered").length }];
+    }));
+    return { run: dir, promptVersion: report.promptVersion, arms };
+  });
+  const body = { sample: samplePath, sampleSha256: sha(samplePath), comparedOn: new Date().toISOString(), runs: result };
+  if (out) {
+    if (!path.resolve(out).startsWith(path.resolve("data/raw") + path.sep)) throw new Error("Write comparisons under data/raw/.");
+    mkdirSync(path.dirname(out), { recursive: true });
+    writeFileSync(out, JSON.stringify(body, null, 2));
+  }
+  for (const r of result) for (const [arm, x] of Object.entries(r.arms) as [string, any][]) {
+    const t = x.review.targets; const k = x.review.controls;
+    console.log(`${r.promptVersion} ${arm}: identified ${x.identified} (strict ${x.identifiedStrict}) | targets: contradiction ${t.correctContradiction.length}, review ${t.surfacedForReview.length}, appropriate uncertainty ${t.appropriateUncertainty.length}, unsupported ${t.unsupportedEvidence.length}, missed ${t.missed.length} | controls: incorrect contradiction ${k.incorrectContradiction.length}, review ${k.surfacedForReview.length}, correct ${k.correct.length} | exact ${JSON.stringify(x.exactMatch)} | invalid-citation pairs ${x.invalidCitationPairs}, unanswered ${x.unanswered}`);
+  }
+}
+
 async function main() {
-  const { positionals, values } = parseArgs({ allowPositionals: true, options: { out: { type: "string" }, sample: { type: "string" }, quota: { type: "string" }, seed: { type: "string" }, "approved-usd": { type: "string" }, execute: { type: "boolean" }, mock: { type: "boolean" }, arms: { type: "string" }, database: { type: "string" }, from: { type: "string" }, packets: { type: "string" }, run: { type: "string" }, reuse: { type: "string" }, repeat: { type: "string" }, plan: { type: "boolean" } } });
+  const { positionals, values } = parseArgs({ allowPositionals: true, options: { out: { type: "string" }, sample: { type: "string" }, quota: { type: "string" }, seed: { type: "string" }, "approved-usd": { type: "string" }, execute: { type: "boolean" }, mock: { type: "boolean" }, arms: { type: "string" }, database: { type: "string" }, from: { type: "string" }, packets: { type: "string" }, run: { type: "string" }, runs: { type: "string" }, reuse: { type: "string" }, repeat: { type: "string" }, plan: { type: "boolean" }, prompt: { type: "string" } } });
+  if (values.prompt !== undefined) {
+    if (values.prompt !== PACKET_PROMPT_VERSION && values.prompt !== PACKET_PROMPT_VERSION_V2 && values.prompt !== PACKET_PROMPT_VERSION_V3) throw new Error(`--prompt must be ${PACKET_PROMPT_VERSION}, ${PACKET_PROMPT_VERSION_V2} or ${PACKET_PROMPT_VERSION_V3}`);
+    PROMPT = values.prompt;
+  }
   const command = positionals[0];
   const samplePath = values.sample ?? "data/eval/packet-pilot-v1.json";
   if (command === "sample") return sampleCommand(values.out ?? samplePath, Number(values.quota ?? 30), Number(values.seed ?? 1));
@@ -395,6 +458,10 @@ async function main() {
   if (command === "prepare-db") {
     if (values.database !== "pilot" && values.database !== "rehearsal") throw new Error("prepare-db needs --database pilot|rehearsal");
     return prepareDatabase(values.database);
+  }
+  if (command === "compare") {
+    if (!values.runs || !values.sample) throw new Error("compare needs --runs <dir>,<dir> and --sample <file>");
+    return compareRuns(values.runs.split(","), values.sample, values.out);
   }
   if (command === "rescore") {
     if (!values.run || (values.database !== "pilot" && values.database !== "rehearsal")) throw new Error("rescore needs --run <report dir> and --database pilot|rehearsal");
@@ -432,7 +499,7 @@ async function main() {
 
     if (command === "dry-run") {
       const replies: Reply[] = requests.map((r) => {
-        const m = mockPacketReply(r.packet);
+        const m = mockReply(r.packet);
         return { text: m.text, usage: m.usage, attempts: 1 };
       });
       const body = report(out, "dry-run (label-blind mock model: measures the pipeline, never model quality)", sample, requests, replies, new Set<Arm>(["pairwise", "packet"]), extra);
@@ -459,7 +526,7 @@ async function main() {
     let perPair: Record<Arm, number> | undefined;
     if (values.reuse) {
       const prev = readJson<{ model: string; promptVersion: string; arms: Record<Arm, { spentUsd: number; score: { evidence: { combined: { total: number } } } }> }>(path.join(values.reuse, "report.json"));
-      if (prev.model !== PACKET_MODEL || prev.promptVersion !== PACKET_PROMPT_VERSION) throw new Error(`${values.reuse} used ${prev.model} ${prev.promptVersion}, not ${PACKET_MODEL} ${PACKET_PROMPT_VERSION}.`);
+      if (prev.model !== PACKET_MODEL || prev.promptVersion !== PROMPT) throw new Error(`${values.reuse} used ${prev.model} ${prev.promptVersion}, not ${PACKET_MODEL} ${PROMPT}.`);
       const saved = readJson<{ arm: Arm; packetId: string; repeat?: boolean; textSha256?: string; reply: Reply | null }[]>(path.join(values.reuse, "replies.json"));
       // Older runs saved no text hash: rebuild that run's requests from its own sample to get them.
       const prevReport = readJson<{ sample: string; sampleSha256: string }>(path.join(values.reuse, "report.json"));
@@ -492,7 +559,7 @@ async function main() {
     const record = { db, pool: null as pg.Pool | null };
     mkdirSync(out, { recursive: true });
     const log = (entry: Record<string, unknown>) => appendFileSync(path.join(out, "calls.jsonl"), JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
-    const adjudicator: PacketAdjudicator = values.mock ? mockAdjudicator() : anthropicPacketAdjudicator(new Anthropic({ maxRetries: 0 }));
+    const adjudicator: PacketAdjudicator = values.mock ? mockAdjudicator() : anthropicPacketAdjudicator(new Anthropic({ maxRetries: 0 }), PROMPT);
     let spent = 0;
     let stopped: string | null = null;
     const replies: Reply[] = [];

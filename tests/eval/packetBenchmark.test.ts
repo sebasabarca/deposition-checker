@@ -101,3 +101,36 @@ describe("cost", () => {
     expect(costOf("packet", [], "claude-sonnet-5-5", 0).costPerIdentifiedTarget).toBeNull();
   });
 });
+
+describe("review-oriented outcomes", () => {
+  const lab: FrozenPair[] = [
+    { id: "D", category: "conflict", source: "x", left: ["d1"], right: ["d2"] },
+    { id: "NC", category: "conflict_needs_context", source: "x", left: ["n1"], right: ["n2"] },
+    { id: "RW", category: "review_worthy", source: "x", left: ["r1"], right: ["r2"] },
+    { id: "BAD", category: "conflict", source: "x", left: ["b1"], right: ["b2"] },
+    { id: "SEC", category: "review_worthy", source: "x", left: ["s1"], right: ["s2"] },
+    { id: "C1", category: "no_conflict", source: "x", left: ["c1"], right: ["c2"] },
+    { id: "C2", category: "no_conflict", source: "x", left: ["k1"], right: ["k2"] },
+  ];
+  const r = (a: string, b: string, outcome: PairResult["outcome"], over: Partial<PairResult> = {}) => row(a, b, { outcome, ...over });
+  it("puts each labelled pair in one category, never counting an abstention as a detection", () => {
+    const s = scoreArm("packet", [
+      r("d1", "d2", "needs_more_context", { citationsValid: false, sourceStatus: "not_cited" }), // a direct conflict abstained on: missed
+      r("n1", "n2", "needs_more_context", { citationsValid: false, sourceStatus: "not_cited" }), // needs context: appropriate
+      r("r1", "r2", "insufficient_evidence", { citationsValid: false, sourceStatus: "not_cited" }), // review-worthy: appropriate
+      r("b1", "b2", "direct", { citationsValid: false, sourceStatus: "wrong_reference" }), // claimed on invalid evidence
+      r("s1", "s2", "secondhand_or_uncertain"),
+      r("c1", "c2", "inferential"), r("k1", "k2", "compatible"),
+    ], lab).evidence.combined;
+    expect(s.review.targets).toEqual({ correctContradiction: [], surfacedForReview: ["SEC"], appropriateUncertainty: ["NC", "RW"], unsupportedEvidence: ["BAD"], missed: ["D"] });
+    expect(s.review.controls).toMatchObject({ incorrectContradiction: ["C1"], correct: ["C2"] });
+    expect(s.identifiedTargets).toBe(0); // the exact-match counts are unchanged by the new categories
+    expect(s.exactMatch).toEqual({ direct: [1, 2], needs_context: [1, 1], unclassified: [0, 2], control: [1, 2] });
+  });
+  it("reads every row of a label, so the category doesn't depend on row order", () => {
+    const rows = [r("n1", "n2", "compatible"), r("n1", "n2", "needs_more_context", { citationsValid: false })];
+    const a = scoreArm("packet", rows, lab).evidence.combined.review.targets.appropriateUncertainty;
+    const b = scoreArm("packet", [...rows].reverse(), lab).evidence.combined.review.targets.appropriateUncertainty;
+    expect([a, b]).toEqual([["NC"], ["NC"]]);
+  });
+});

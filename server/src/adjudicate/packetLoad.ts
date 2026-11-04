@@ -1,10 +1,10 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { FrozenItem } from "../retrieve/frozen";
 import type { EvidencePacket } from "../retrieve/grouping";
-import { witnesses } from "../db/schema";
+import { exchanges, witnesses } from "../db/schema";
 import type { Database } from "../db/client";
 import { loadSide } from "./packet";
-import type { IssuePacket, PacketPassage } from "./packetPrompt";
+import type { AdjacentExchange, IssuePacket, PacketPassage } from "./packetPrompt";
 
 export type UnresolvedItem = { key: string; reason: string };
 export type ResolvedPassages = {
@@ -15,7 +15,32 @@ export type ResolvedPassages = {
 
 const positionOf = (line: { page: number; line: number }) => `${line.page}:${line.line}`;
 
-export async function resolvePassages(db: Database, items: FrozenItem[], docIds: Map<string, number>): Promise<ResolvedPassages> {
+// packet-v2: the logical exchanges just before and after an answer group in the same deposition (same
+// witness by construction), each loaded whole from stored lines with its own ID. One is left out, never
+// merged, when it is longer than maxLines or separated by omitted pages, so a neighbour can't bring a
+// different sitting's or an excerpted exhibit's lines along with it.
+export const ADJACENT_MAX_LINES = 12;
+export type AdjacentOptions = { maxLines?: number; keyOfGroup?: (document: string, groupId: number) => string | null };
+
+async function adjacentOf(db: Database, depositionId: number, item: FrozenItem, core: { lines: { page: number }[] }, o: AdjacentOptions): Promise<AdjacentExchange[]> {
+  const maxLines = o.maxLines ?? ADJACENT_MAX_LINES;
+  const groups = [item.groupId - 1, item.groupId + 1].filter((g) => g >= 0);
+  const present = new Set((await db.selectDistinct({ g: exchanges.groupId }).from(exchanges).where(and(eq(exchanges.depositionId, depositionId), inArray(exchanges.groupId, groups)))).map((r) => r.g));
+  const out: AdjacentExchange[] = [];
+  for (const g of groups) {
+    if (!present.has(g)) continue;
+    const side = await loadSide(db, depositionId, g, "A");
+    if (side.lines.length === 0 || side.lines.length > maxLines) continue;
+    const relation = g < item.groupId ? "previous" : "next";
+    // Continuous with the exchange: the same or the next printed page, never across omitted pages.
+    const edge = relation === "previous" ? core.lines[0].page - side.lines[side.lines.length - 1].page : side.lines[0].page - core.lines[core.lines.length - 1].page;
+    if (edge < 0 || edge > 1) continue;
+    out.push({ id: side.id, relation, groupId: g, itemKey: o.keyOfGroup?.(item.document, g) ?? null, lines: side.lines });
+  }
+  return out;
+}
+
+export async function resolvePassages(db: Database, items: FrozenItem[], docIds: Map<string, number>, adjacent?: AdjacentOptions): Promise<ResolvedPassages> {
   const passages = new Map<string, PacketPassage>();
   const unresolved: UnresolvedItem[] = [];
   const extraStoredLines: Record<string, number> = {};
@@ -49,7 +74,8 @@ export async function resolvePassages(db: Database, items: FrozenItem[], docIds:
         continue;
       }
 
-      passages.set(item.key, { ...side, key: item.key, session: item.session, witnessName: storedWitness.name });
+      const neighbours = adjacent ? await adjacentOf(db, depositionId, item, side, adjacent) : undefined;
+      passages.set(item.key, { ...side, key: item.key, session: item.session, witnessName: storedWitness.name, ...(neighbours ? { adjacent: neighbours } : {}) });
     } catch (error) {
       unresolved.push({ key: item.key, reason: error instanceof Error ? error.message : String(error) });
     }

@@ -11,6 +11,7 @@ import { closeFailed, inputTokenBound, maxRequestCost, recordCall, reserve, sett
 import type { Database } from "../db/client";
 import { candidates, depositions, findings, verdicts } from "../db/schema";
 import { timed, timedSync } from "../timing";
+import { VERIFICATION_VERSION } from "../verify/version";
 import { assess, type Assessed } from "./assess";
 import { classifyFailure, closeRequest, openRequest, type RequestContext } from "./requests";
 import type { Adjudicator } from "./model";
@@ -171,7 +172,7 @@ export async function storeVerdict(
           unscoredReason: assessment.unscoredReason,
           factors: assessment.factors,
           caps: assessment.capsApplied,
-          checks: { ...checks, notCorroborated: assessment.notCorroborated, reasons: assessment.reasons, consistencyIssues: assessed.consistencyIssues },
+          checks: { ...checks, verificationVersion: VERIFICATION_VERSION, notCorroborated: assessment.notCorroborated, reasons: assessment.reasons, consistencyIssues: assessed.consistencyIssues },
           rubricVersion: assessment.rubricVersion,
           priority,
           contextRequested: read.parsed.needsMoreContext,

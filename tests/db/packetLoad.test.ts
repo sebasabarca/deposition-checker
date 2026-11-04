@@ -44,4 +44,29 @@ describe.skipIf(!TEST_DATABASE_URL)("packet loader (Postgres)", () => {
     ]));
     expect(loaded.passages.size + loaded.unresolved.length).toBe(4);
   });
+
+  it("loads the neighbouring exchanges for packet-v2 from stored rows, each with its own ID, never merged", async () => {
+    const groups = (await db.selectDistinct({ g: exchanges.groupId }).from(exchanges).where(eq(exchanges.depositionId, depositionId))).map((r) => r.g).sort((x, y) => x - y);
+    const loaded = await resolvePassages(db, [item], new Map([["doc", depositionId]]), { keyOfGroup: (d, g) => `${d}@${g}` });
+    const passage = loaded.passages.get(item.key)!;
+    const adjacent = passage.adjacent!;
+    // Only groups that exist and sit right before or after this one; each keeps its own ID and lines.
+    for (const x of adjacent) {
+      expect(groups).toContain(x.groupId);
+      expect(Math.abs(x.groupId - item.groupId)).toBe(1);
+      expect(x.relation).toBe(x.groupId < item.groupId ? "previous" : "next");
+      expect(x.itemKey).toBe(`doc@${x.groupId}`);
+      expect(x.id).not.toBe(passage.id);
+      const raw = await db.select({ id: lines.id, text: lines.rawText }).from(lines).where(inArray(lines.id, x.lines.map((l) => l.id)));
+      expect(x.lines.map((l) => l.text)).toEqual(x.lines.map((l) => raw.find((r) => r.id === l.id)!.text));
+      // No line of a neighbour is also a line of the exchange itself.
+      expect(x.lines.some((l) => passage.lines.some((m) => m.id === l.id))).toBe(false);
+    }
+    expect(adjacent.length).toBe([item.groupId - 1, item.groupId + 1].filter((g) => groups.includes(g)).length);
+    // A neighbour longer than the limit is left out rather than shown in part.
+    const tight = await resolvePassages(db, [item], new Map([["doc", depositionId]]), { maxLines: 0 });
+    expect(tight.passages.get(item.key)!.adjacent).toEqual([]);
+    // Without the option (packet-v1) nothing is loaded.
+    expect((await resolvePassages(db, [item], new Map([["doc", depositionId]]))).passages.get(item.key)!.adjacent).toBeUndefined();
+  });
 });

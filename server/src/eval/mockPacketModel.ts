@@ -1,4 +1,4 @@
-import { formatIssuePacket, PACKET_SYSTEM_PROMPT, type IssuePacket, type PacketPassage } from "../adjudicate/packetPrompt";
+import { formatIssuePacket, formatIssuePacketV2, PACKET_SYSTEM_PROMPT, PACKET_SYSTEM_PROMPT_V2, type IssuePacket, type PacketPassage } from "../adjudicate/packetPrompt";
 
 const NEGATION = /\b(?:no|not|never|didn't|don't)\b/i;
 const words = (text: string) => [...new Set((text.toLowerCase().match(/[a-z]{4,}/g) ?? []).filter((w) => !["that", "this", "with", "from", "were", "have", "been", "said"].includes(w)))];
@@ -19,4 +19,33 @@ export function mockPacketReply(packet: IssuePacket, options: { drop?: string[];
   }).flat();
   const system = PACKET_SYSTEM_PROMPT; const user = formatIssuePacket(packet);
   return { text: JSON.stringify({ verdicts }), usage: { inputTokens: Math.ceil((system.length + user.length) / 3.5), outputTokens: 350 * verdicts.length } };
+}
+
+// The same label-blind mock in the packet-v2 contract: false_positive becomes compatible, and each verdict
+// lists the compared answer as its one detail. Measures the v2 pipeline, never model quality.
+export function mockPacketReplyV2(packet: IssuePacket, options: { drop?: string[]; duplicate?: string[]; garble?: boolean } = {}) {
+  const v1 = mockPacketReply(packet, options);
+  if (options.garble) return v1;
+  const verdicts = (JSON.parse(v1.text) as { verdicts: Record<string, unknown>[] }).verdicts.map(({ falsePositiveReason: _fp, ...v }) => ({
+    ...v,
+    outcome: v.outcome === "false_positive" ? "compatible" : v.outcome,
+    detailsCompared: v.keyPhraseA === null ? [] : [{ detail: "the answer", sideA: v.keyPhraseA, sideB: v.keyPhraseB, relation: v.outcome === "direct" ? "different" : "same" }],
+  }));
+  const user = formatIssuePacketV2(packet);
+  return { text: JSON.stringify({ verdicts }), usage: { inputTokens: Math.ceil((PACKET_SYSTEM_PROMPT_V2.length + user.length) / 3.5), outputTokens: 400 * verdicts.length } };
+}
+
+// The same label-blind mock in the packet-v3 contract: each side cites its key statement with the exchange
+// ID it comes from, and details quote those citations. Measures the v3 pipeline, never model quality.
+export function mockPacketReplyV3(packet: IssuePacket, options: { drop?: string[]; duplicate?: string[]; garble?: boolean } = {}) {
+  const v2 = mockPacketReplyV2(packet, options);
+  if (options.garble) return v2;
+  const verdicts = (JSON.parse(v2.text) as { verdicts: Record<string, any>[] }).verdicts.map((v) => ({
+    pairId: v.pairId, outcome: v.outcome,
+    sideA: { citations: v.keyPhraseA === null ? [] : [{ exchangeId: v.evidenceAId, quote: v.keyPhraseA }], attribution: v.attributionA, stance: v.stanceA },
+    sideB: { citations: v.keyPhraseB === null ? [] : [{ exchangeId: v.evidenceBId, quote: v.keyPhraseB }], attribution: v.attributionB, stance: v.stanceB },
+    sameEvent: v.sameEvent, scopeAligned: v.scopeAligned, details: v.detailsCompared, conflictBasis: v.conflictBasis,
+    explanation: v.explanation, alternativeExplanation: v.alternativeExplanation, alternativeSupport: v.alternativeSupport,
+  }));
+  return { text: JSON.stringify({ verdicts }), usage: v2.usage };
 }

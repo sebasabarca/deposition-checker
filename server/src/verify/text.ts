@@ -3,10 +3,21 @@
 
 import { normalize, STOPWORDS } from "./quotes";
 
-// A line's spoken words, without the turn marker the transcript prints at the start of a turn
-// ("A. Yes, they do." -> "Yes, they do."), so a plain answer reads as plain.
-const SPEAKER = /^\s*(?:[QA](?:\.|\s)|THE WITNESS:|(?:MR|MS|MRS|DR)\. [A-Z][A-Za-z'-]+(?: [A-Z][A-Za-z'-]+)*:)\s*/;
-export const spoken = (text: string) => text.replace(SPEAKER, "");
+// OCR reads "I" at a word's start as "|" ("|didn't"), as quotes.normalize() assumes; a pipe standing
+// alone is noise. Stored text is never changed: this only shapes what a check reads.
+export const unpiped = (text: string) => text.replace(/(?<![A-Za-z0-9])[|¦](?=[a-z])/g, "I ").replace(/(^|\s)[|¦]+(?=\s|$)/g, "$1");
+// A line's spoken words, without the speaker label printed at the start of a turn
+// ("A. Yes, they do." -> "Yes, they do."), so a plain answer reads as plain. Labels only at the line's
+// start: Q/A with ".", ":" or a space, an OCR "0:" for "Q:", a name in capitals with ":" ("O.J.
+// SIMPSON:") with words after it, "THE WITNESS:", or a titled name with ":", or with "." and more
+// words after it ("Ms. Hutchinson. I did."). A titled name running into a sentence ("Mr. Smith went")
+// is kept, and so is a capitals label alone on its line ("BY MR. PETROCELLI:"), which other checks
+// read as the line's opening words.
+const NAME = String.raw`[A-Z][A-Za-z'-]+(?: [A-Z][A-Za-z'-]+)*`;
+const SPEAKER = new RegExp(
+  String.raw`^\s*(?:[QA](?:[.:]|\s)|0:|THE WITNESS:|[A-Z][A-Z.'-]+(?: [A-Z][A-Z.'-]+)*:(?=\s*\S)|(?:MR|MS|MRS|DR|Mr|Ms|Mrs|Dr)\. ${NAME}(?::|\.(?=\s+\S)))\s*`,
+);
+export const spoken = (text: string) => unpiped(text).replace(SPEAKER, "");
 export const contentWords = (text: string) => normalize(text).split(" ").filter((w) => w.length > 1 && !STOPWORDS.has(w));
 
 // The lines an exact phrase sits on; all the given lines when it only matched approximately.
@@ -68,12 +79,13 @@ function hedgeIn(text: string): string | null {
 const maskQuotes = (text: string) => text.replace(/"[^"]*"|“[^”]*”/g, (q) => q.replace(/[A-Za-z0-9]/g, "x"));
 
 // The hedge governing a phrase in the witness's words. Only the clause holding the phrase counts
-// (sentences split at . ? ! ; and at ", but"), and in it only the words up to the phrase's end, so a
+// (sentences split at . ? ! ; and at ", but", " but" and ", and": "I left at 9, perhaps 9:15, and I
+// never went back" hedges only the time), and in it only the words up to the phrase's end, so a
 // hedge on a later conjunct ("…and I believe it goes through HQ Apps") doesn't qualify an earlier one;
 // then a bare disclaimer clause right before it. A hedge placed after the phrase ("X, I think") is
 // not caught: the check errs toward leaving the model's reading alone.
 export function findHedge(phrase: string, answerText: string): string | null {
-  const raw = answerText.replace(/[’]/g, "'").split(/[.?!;]+|,\s*but\b/i);
+  const raw = answerText.replace(/[’]/g, "'").split(/[.?!;]+|,\s*(?:but|and)\b|\sbut\b/i);
   const clean = (c: string) => normalize(c).replace(/^(and|but|well|so) /, "");
   const clauses = raw.map(clean).filter(Boolean);
   const masked = raw.filter((c) => clean(c)).map((c) => clean(maskQuotes(c)));
