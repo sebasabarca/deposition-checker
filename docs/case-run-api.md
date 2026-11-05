@@ -139,6 +139,7 @@ type CaseRunFinding = {
   verification: { a: { status: string | null; lineIds: number[] }; b: { … } };   // code: lines each citation was found on
   a: Side; b: Side;
   model: { origin: "model" | "fixture"; model: string; promptVersion: string; outcome: string | null; verdict: unknown };  // label as model output
+  safeguards: { rule: string; side: "a" | "b" | null; detail: string }[];  // code checks (verify/safeguards.ts) that moved a direct/inferential verdict to needs context; model.outcome keeps what the model said
 };
 type Side = { exchange: string; depositionId: number; witnessId: number | null; witness: string | null; takenOn: string | null;
               range: string | null;                                  // "12:04–12:09"

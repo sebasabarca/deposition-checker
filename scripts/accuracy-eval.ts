@@ -36,16 +36,18 @@ import { mockPacketReply } from "../server/src/eval/mockPacketModel";
 import { callCost, inputTokenBound, maxRequestCost, recordCall, tokensFromUsage } from "../server/src/costs";
 import { connect } from "../server/src/db/client";
 import { depositions, witnesses } from "../server/src/db/schema";
-import { buildCasePool, type CaseItem } from "../server/src/retrieve/casePool";
+import { buildCasePool, type CaseItem, type CaseSelection } from "../server/src/retrieve/casePool";
 import { pairKey } from "../server/src/retrieve/frozen";
 import { PACKET_LIMITS, splitPacketSet } from "../server/src/retrieve/packetSplit";
 import { buildStretchSet } from "../server/src/retrieve/stretchSet";
 import { MAX_RECOVERY_ROUNDS, verifyPacketReply } from "../server/src/verify/packet";
 
-const TOTAL_CAP_USD = 6; // the developer's ceiling for this whole evaluation (2026-11-05)
-const OUT = "data/raw/accuracy-eval";
-const FROZEN = path.join(OUT, "frozen");
-const RUNS = path.join(OUT, "runs");
+// --out selects the evaluation directory (default: the preserved Nov 5 evaluation) and --cap its ceiling, never above $6.
+let TOTAL_CAP_USD = 6; // the developer's ceiling for the Nov 5 evaluation
+let OUT = "data/raw/accuracy-eval";
+let FROZEN = path.join(OUT, "frozen");
+let RUNS = path.join(OUT, "runs");
+let SELECTION: CaseSelection | undefined; // retrieval selection for freeze (default: production's)
 const PILOT = path.resolve("../deposition-checker/data/raw/candidate-reduction/stretch-pilot-v2/frozen"); // the main checkout's data, read only
 const CONTRACTS = ["packet-v1", "stretch-v2"] as const;
 type Contract = (typeof CONTRACTS)[number];
@@ -108,7 +110,7 @@ async function freeze(dbName: string) {
       const [kase] = (await db.execute<{ id: number }>(sql`select id from cases where name = ${caseName} order by id desc limit 1`)).rows;
       if (!kase) throw new Error(`case "${caseName}" is not in ${dbName}`);
       const caseId = Number(kase.id);
-      const built = await buildCasePool(db, pool, caseId, { minilm: "off" }); // the case-run default
+      const built = await buildCasePool(db, pool, caseId, { minilm: "off", selection: SELECTION }); // the case-run default unless --selection
       const byKey = new Map(built.items.map((i) => [i.key, i]));
       const names = new Map((await db.select({ id: witnesses.id, name: witnesses.name }).from(witnesses)).map((w) => [w.id, w.name]));
       const sets = { "packet-v1": splitPacketSet(built.packets, built.items, PACKET_LIMITS), "stretch-v2": buildStretchSet(built.triage.kept, built.items) };
@@ -179,7 +181,7 @@ async function freeze(dbName: string) {
   writeFileSync(path.join(FROZEN, "trace.json"), JSON.stringify(trace, null, 1));
   writeFileSync(path.join(FROZEN, "requests.jsonl"), frozen.map((f) => JSON.stringify(f)).join("\n") + "\n");
   const manifest = {
-    version: "accuracy-eval-v1", frozenOn: new Date().toISOString(), db: dbName, capUsd: TOTAL_CAP_USD,
+    version: "accuracy-eval-v1", frozenOn: new Date().toISOString(), db: dbName, capUsd: TOTAL_CAP_USD, selection: SELECTION ?? "production default",
     prompts: Object.fromEntries(CONTRACTS.map((c) => [c, { system: sha(PACKET_PROMPTS[c].system), schema: sha(JSON.stringify(PACKET_PROMPTS[c].jsonSchema)) }])),
     model: PACKET_MODEL, requests: Object.fromEntries(frozen.map((f) => [f.id, f.textSha256])),
     scoring: {
@@ -418,7 +420,13 @@ function score(mock = false) {
 
 async function main() {
   const [cmd] = process.argv.slice(2);
-  const { values } = parseArgs({ args: process.argv.slice(3), options: { db: { type: "string" }, set: { type: "string" }, contract: { type: "string" }, label: { type: "string" }, "approved-usd": { type: "string" }, execute: { type: "boolean" }, concurrency: { type: "string", default: "3" }, mock: { type: "boolean" }, resume: { type: "boolean" } } });
+  const { values } = parseArgs({ args: process.argv.slice(3), options: { db: { type: "string" }, set: { type: "string" }, contract: { type: "string" }, label: { type: "string" }, "approved-usd": { type: "string" }, execute: { type: "boolean" }, concurrency: { type: "string", default: "3" }, mock: { type: "boolean" }, resume: { type: "boolean" }, out: { type: "string" }, cap: { type: "string" }, selection: { type: "string" } } });
+  if (values.out) {
+    if (!path.resolve(values.out).startsWith(path.resolve("data/raw") + path.sep)) throw new Error("--out must be under data/raw/");
+    OUT = values.out; FROZEN = path.join(OUT, "frozen"); RUNS = path.join(OUT, "runs");
+  }
+  if (values.cap) { TOTAL_CAP_USD = Number(values.cap); if (!(TOTAL_CAP_USD > 0 && TOTAL_CAP_USD <= 6)) throw new Error("--cap must be in (0, 6]"); }
+  if (values.selection) SELECTION = values.selection === "session2-floor0.85" ? { perSession: 2, minShare: 0.85 } : (() => { throw new Error("--selection session2-floor0.85"); })();
   if (cmd === "freeze") return freeze(values.db ?? (() => { throw new Error("--db required"); })());
   if (cmd === "plan") return plan();
   if (cmd === "score") return score(!!values.mock);

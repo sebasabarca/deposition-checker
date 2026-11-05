@@ -331,4 +331,5 @@ export type CaseRunFinding = {
   verification: { a: { status: string | null; lineIds: number[] }; b: { status: string | null; lineIds: number[] } };
   a: CaseRunSide; b: CaseRunSide;
   model: { origin: "model" | "fixture"; model: string; promptVersion: string; outcome: string | null; verdict: unknown };
+  safeguards: { rule: string; side: "a" | "b" | null; detail: string }[]; // code checks that moved a conflict verdict to needs context
 };

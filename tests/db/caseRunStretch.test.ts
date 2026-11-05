@@ -125,6 +125,8 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
     // answer quoted as a contradiction), published unscored as needs context with the model's outcome kept.
     expect(verified.every((f) => f.a.lines.length > 0 && f.b.lines.length > 0 && (f.score !== null || (f.type === "insufficient_evidence" && f.priority === "needs_context" && f.model.outcome === "direct")))).toBe(true);
     expect(verified.some((f) => f.score !== null)).toBe(true);
+    expect(shown.every((f) => Array.isArray(f.safeguards) && f.safeguards.every((g) => g.detail.length > 0))).toBe(true); // the API shows why a finding was moved
+    expect(shown.filter((f) => f.score === null && f.type === "insufficient_evidence").every((f) => f.safeguards.length > 0 && f.model.outcome === "direct")).toBe(true);
     const guarded = (await db.execute<{ r: string }>(sql`select distinct jsonb_array_elements(f.checks->'safeguards')->>'rule' as r from findings f join verdicts v on v.id = f.verdict_id join candidates c on c.id = v.candidate_id where c.candidate_set = ${caseRunSetOf(run.id)}`)).rows.map((x) => x.r);
     expect(verified.filter((f) => f.score === null).length === 0 || guarded.length > 0).toBe(true);
     const checks = (await db.execute<{ c: { contract: string; stretch: { stretchStatus: string; unitId: string } } }>(sql`select f.checks as c from findings f join verdicts v on v.id = f.verdict_id join candidates c on c.id = v.candidate_id where c.candidate_set = ${caseRunSetOf(run.id)}`)).rows;

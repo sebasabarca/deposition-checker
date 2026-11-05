@@ -1200,3 +1200,46 @@ and every update is scoped to it.
 2. a rehearsal on a disposable copy (`scripts/evidence-rehearsal.ts`);
 3. per document: the dry run, its review, the execution, the integrity check;
 4. `rollback` or `release` when needed.
+
+## Implementation note: whole-stretch reading (stretch-v2) and code safeguards (November 5, on `feature/whole-stretch-v2`, experimental)
+
+**Status.** Experimental and off by default. packet-v1 stays the default contract. stretch-v2 is offered only where
+the server sets `ALLOW_STRETCH_V2=true`, and only as a box a person ticks before a whole-case run.
+
+**Contract.** A stretch-v2 request shows whole stretches of testimony around the triage-kept pairs, rendered once
+from stored lines, with every exchange of the stretch citable (`retrieve/stretchSet.ts`, `adjudicate/stretchPrompt.ts`).
+The model reports findings only, plus a per-pair ledger that attests coverage. Code verifies every citation with the
+packet verifier and derives one status per pair: flagged, flagged but not verified, unclear, no conflict identified,
+or incomplete (`adjudicate/stretch.ts`). Flagged pairs become ordinary packet-v1 findings, scored by the same rubric.
+"No conflict identified" means the pair was read, not cleared, and is never shown as compatible. Retrieval, the
+ledger, Fast and Economy execution, recovery, budgets, evidence-version fencing and coverage are packet-v1's,
+unchanged.
+
+**Safeguards (both contracts, `verify/safeguards.ts`).** A direct or inferential verdict is published as needs context,
+never deleted, when:
+- its quoted words are the examiner's, not adopted by a plain yes or no;
+- a side is reported speech, a hypothetical or an attorney's statement;
+- a side is a no-recall answer, or contains a no-recall clause;
+- its own explanation concedes both statements can be true;
+- it rates its own compatible alternative as established.
+
+The model's outcome, explanation and the rules that fired stay on the finding and are shown in the run's Needs
+context lane.
+
+**Retrieval option (off).** `buildCasePool` accepts a per-session quota with a relevance floor
+(`selection: { perSession: 2, minShare: 0.85 }`). It is not enabled, because its recall gain is unproven end to end.
+
+**Measured (Nov 5, `docs/v2-accuracy-eval.md`, `docs/detection-quality.md`).**
+- **Cost.** stretch-v2 reads a pair for $0.00148 and packet-v1 for $0.00468, about 3.2× cheaper.
+- **Repeatability.** Similar: κ 0.74 against 0.70.
+- **Detection.** stretch-v2 is not better than packet-v1 on the 16 developer-labelled pairs. Only 3 of them are
+  positives, all used in development.
+- **Safeguards.** In an in-sample replay of the stored replies, labelled controls published as contradictions fell
+  from 5–6 to 2–3 per run, and labelled positives were kept.
+
+**Limitations.**
+- No independent human-labelled positive exists, so detection accuracy is not established for either contract.
+- The safeguards were written after seeing the failures they address.
+- Retrieval loses most labelled pairs at the per-item cut, and C01-type one-line answers are not recovered.
+- Making stretch-v2 the default requires human labels on unseen testimony and a controlled comparison
+  (`docs/detection-quality.md` §6).

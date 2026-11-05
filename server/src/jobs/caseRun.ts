@@ -928,13 +928,15 @@ export async function caseRunFindings(db: Database, id: number) {
       const d = people.get(s.depositionId);
       return { exchange: s.id, depositionId: s.depositionId, witnessId: d ? Number(d.witness_id) : null, witness: d?.witness ?? null, takenOn: d?.taken_on ?? null, range: lines.length ? `${at(lines[0])}–${at(lines[lines.length - 1])}` : null, lines: lines.map((l) => ({ id: Number(l.id), at: at(l), text: l.raw_text })) };
     });
-    const checks = f.checks as { source?: { a?: { evidenceLineIds?: number[]; status?: string }; b?: { evidenceLineIds?: number[]; status?: string } }; outcome?: string };
+    const checks = f.checks as { source?: { a?: { evidenceLineIds?: number[]; status?: string }; b?: { evidenceLineIds?: number[]; status?: string } }; outcome?: string; safeguards?: { rule: string; side: "a" | "b" | null; detail: string }[] };
     return {
       id: f.id, crossWitness: sides[0]?.witnessId !== sides[1]?.witnessId, type: f.type, priority: f.priority, score: f.score, band: f.band, unscoredReason: f.unscoredReason, evidenceStatus: f.evidenceStatus, reviewState: f.reviewState, standing: standing.get(f.id)!,
       // Code's verification: which stored lines each side's citation was found on.
       verification: { a: { status: checks.source?.a?.status ?? null, lineIds: checks.source?.a?.evidenceLineIds ?? [] }, b: { status: checks.source?.b?.status ?? null, lineIds: checks.source?.b?.evidenceLineIds ?? [] } },
       a: sides[0], b: sides[1],
       model: { origin: v.origin, model: v.model, promptVersion: v.promptVersion, outcome: checks.outcome ?? null, verdict: v.parsed },
+      // verify/safeguards.ts: the code checks that moved a conflict verdict to needs context (empty when none did).
+      safeguards: checks.safeguards ?? [],
     };
   });
 }
