@@ -16,7 +16,7 @@ import { adjudicationRequests, candidates, caseRuns, depositions, findings, llmC
 import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
-import { caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
+import { CASE_RUN_RUNNER_STALE_MS, caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, orphanedCaseRuns, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
 import { emptyTables, listen, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 type Reply = Awaited<ReturnType<CasePacketModel["adjudicate"]>>;
@@ -117,6 +117,26 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run", () => {
       expect(f.model.origin).toBe("fixture");
     }
     expect(await duplicates(mockRun)).toBe(0);
+  });
+
+  it("finds runs that say they are working but that no worker holds, and leaves the others", async () => {
+    const make = async (status: string, execution: string, seenAgoMs: number | null, updatedAgoMs: number) => {
+      const id = (await createCaseRun(db, caseId, { mode: "mock", budgetUsd: 0 })).id;
+      const ago = (ms: number) => new Date(Date.now() - ms);
+      await db.update(caseRuns).set({ status: status as never, execution: execution as never, runnerSeenAt: seenAgoMs === null ? null : ago(seenAgoMs), updatedAt: ago(updatedAgoMs) }).where(eq(caseRuns.id, id));
+      return id;
+    };
+    const old = CASE_RUN_RUNNER_STALE_MS * 10;
+    const lost = await make("adjudicating", "standard", old, old); // its runner stopped long ago
+    const neverClaimed = await make("queued", "standard", null, old);
+    const working = await make("adjudicating", "standard", 1000, old); // a runner's heartbeat is fresh
+    const justQueued = await make("queued", "standard", null, 1000);
+    const economy = await make("adjudicating", "batch", old, old); // kept going by its own batch checks
+    const waiting = await make("awaiting_confirmation", "standard", null, old);
+    const found = await orphanedCaseRuns(db);
+    expect(found).toEqual(expect.arrayContaining([lost, neverClaimed]));
+    for (const id of [working, justQueued, economy, waiting]) expect(found).not.toContain(id);
+    await db.delete(caseRuns).where(sql`${caseRuns.id} in (${sql.join([lost, neverClaimed, working, justQueued, economy, waiting].map((x) => sql`${x}`), sql`, `)})`);
   });
 
   it("does nothing more when run again", async () => {

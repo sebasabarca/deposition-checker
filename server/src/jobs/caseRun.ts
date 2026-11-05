@@ -163,6 +163,24 @@ async function settleAbandoned(db: Database, run: CaseRun, ledgerId: number) {
   await releaseInProgress(db, ledgerId);
 }
 
+// Runs that say they are working but that no worker holds: their job was lost (a command-line run that stopped, a
+// worker that died after its job expired). The worker queues them again (worker.ts), and the normal path finishes
+// them: a paid fast run stops as interrupted, a cancel request ends as cancelled, a free one continues. Economy runs
+// in adjudication are left out: their own chain of batch checks keeps them going.
+export async function orphanedCaseRuns(db: Database, now = new Date()): Promise<number[]> {
+  const cutoff = new Date(now.getTime() - CASE_RUN_RUNNER_STALE_MS);
+  const rows = await db
+    .select({ id: caseRuns.id })
+    .from(caseRuns)
+    .where(and(
+      inArray(caseRuns.status, ["queued", "retrieving", "adjudicating"]),
+      lt(caseRuns.updatedAt, cutoff),
+      or(isNull(caseRuns.runnerSeenAt), lt(caseRuns.runnerSeenAt, cutoff)),
+      or(sql`${caseRuns.status} <> 'adjudicating'`, sql`${caseRuns.execution} <> 'batch'`),
+    ));
+  return rows.map((r) => r.id);
+}
+
 // Marks a run whose worker died mid-stage as interrupted, after settling what it left behind.
 export async function interruptCaseRun(db: Database, run: CaseRun, reason: string) {
   const ledger = await ledgerOf(db, run.id);

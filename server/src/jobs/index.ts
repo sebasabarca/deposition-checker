@@ -7,7 +7,7 @@ import { UPLOADS_DIR } from "../ingest";
 import { and, eq, notInArray } from "drizzle-orm";
 import type { Pool } from "pg";
 import { analyses, caseRuns } from "../db/schema";
-import { CASE_RUN_TERMINAL, runCaseRun, type CaseRunDeps } from "./caseRun";
+import { CASE_RUN_TERMINAL, orphanedCaseRuns, runCaseRun, type CaseRunDeps } from "./caseRun";
 import { BATCH_DEFAULTS, batchRunsToResume, MOCK_POLL_SECONDS } from "./caseRunBatch";
 import { runAnalysis, TERMINAL, type AnalysisDeps } from "./analysis";
 import { failureMessage, recordIngestFailure, runIngestJob } from "./ingest";
@@ -87,6 +87,8 @@ export async function startAnalysisWorkers(boss: PgBoss, db: Database, deps: Ana
 // An economy run's tick returns "polling" while its batches are open: the job queues its next check, mock runs
 // sooner (MOCK_POLL_SECONDS). On start, every economy run still adjudicating is queued again, in case a follow-up
 // job was lost (the singleton key keeps a run from being queued twice).
+const ORPHAN_SWEEP_MS = 5 * 60_000;
+
 export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool, deps: CaseRunDeps, { pollingIntervalSeconds = 2, maxCases = 1, batchPollSeconds = BATCH_DEFAULTS.pollSeconds } = {}): Promise<void> {
   await boss.work(CASE_RUN_QUEUE, { pollingIntervalSeconds, localConcurrency: maxCases }, async (jobs: Job<unknown>[]) => {
     for (const job of jobs) {
@@ -99,6 +101,12 @@ export async function startCaseRunWorkers(boss: PgBoss, db: Database, pool: Pool
     }
   });
   for (const r of await batchRunsToResume(db)) await enqueueCaseRun(boss, { caseRunId: r.id });
+  // Runs no worker holds (their job was lost) go back to the queue, now and every few minutes (caseRun.ts).
+  const sweep = async () => { for (const id of await orphanedCaseRuns(db)) { console.log(`case run ${id}: no worker held it; queued again`); await enqueueCaseRun(boss, { caseRunId: id }); } };
+  await sweep();
+  const timer = setInterval(() => void sweep().catch((e) => console.error(`Case-run sweep failed: ${e instanceof Error ? e.message : e}`)), ORPHAN_SWEEP_MS);
+  timer.unref();
+  deps.signal?.addEventListener("abort", () => clearInterval(timer));
   await boss.work(CASE_RUN_FAILED_QUEUE, { pollingIntervalSeconds, includeMetadata: true }, async (jobs: JobWithMetadata<unknown>[]) => {
     for (const job of jobs) {
       const { caseRunId } = parseCaseRunJob(job.data);
