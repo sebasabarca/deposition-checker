@@ -192,8 +192,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
       summary: running && !isTestRun(running) && running.cost.budget ? `Spending limit ${formatUsd(running.cost.budget.limitUsd)}, ${EXECUTION[running.execution].label.toLowerCase()}` : shown && !running && step === 4 && shown.cost.budget ? `Spending limit ${formatUsd(shown.cost.budget.limitUsd)}, ${EXECUTION[shown.execution].label.toLowerCase()}` : null,
       content: estimate && (
         <div className="space-y-3">
-          <RunState run={estimate} busy={busy} act={act} paidBlocked={paidBlocked} />
-          <Button variant="secondary" disabled={busy} onClick={() => setChoice("scope")}>Back to the choice</Button>
+          <RunState run={estimate} busy={busy} act={act} paidBlocked={paidBlocked} onBack={() => setChoice("scope")} />
         </div>
       ),
     },
@@ -357,7 +356,8 @@ function scopeText(run: CaseRun, sessions: WorkflowSession[]): string {
   return `${ids.length} selected depositions: ${ids.map((id) => { const s = sessions.find((x) => x.id === id); return s ? `${s.witness}, ${s.takenOn ? formatDate(s.takenOn) : "date not set"}` : `deposition #${id}`; }).join("; ")}`;
 }
 
-function RunState({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null }) {
+// onBack: at the review step, Cancel goes back one step (the estimate is kept for that choice) instead of stopping a run.
+function RunState({ run, busy, act, paidBlocked, onBack }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; onBack?: () => void }) {
   const s = RUN_STATUS[run.status];
   const test = isTestRun(run);
   const cancel = <Button variant="secondary" disabled={busy || run.cancelRequested} onClick={() => act(api.cancelCaseRun(run.id))}>{run.cancelRequested ? "Cancelling…" : "Cancel"}</Button>;
@@ -378,7 +378,7 @@ function RunState({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean
         </div>
       )}
 
-      {run.status === "awaiting_confirmation" && run.estimate && <Confirm run={run} busy={busy} act={act} paidBlocked={paidBlocked} cancel={cancel} />}
+      {run.status === "awaiting_confirmation" && run.estimate && <Confirm run={run} busy={busy} act={act} paidBlocked={paidBlocked} cancel={onBack ? <Button variant="secondary" disabled={busy} onClick={onBack}>Cancel</Button> : cancel} />}
 
       {run.stretch && run.status !== "queued" && run.status !== "retrieving" && run.status !== "awaiting_confirmation" && (
         <p className="max-w-3xl text-sm text-muted tabular-nums">
