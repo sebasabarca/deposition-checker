@@ -42,7 +42,15 @@ npm run db:up && npm run db:migrate
 ALLOW_STRETCH_V2=true npm run dev        # API 3001, worker, client 5173
 ```
 
-Leave `ALLOW_PAID_CALLS` unset (off) for demonstrations. Without `ALLOW_STRETCH_V2=true` the V2 option is hidden and
+Leave `ALLOW_PAID_CALLS` unset (off) for demonstrations.
+
+To offer both paid modes, set these in `.env`, never in code or on the command line in shared logs:
+- `ANTHROPIC_API_KEY`: the analysis key.
+- `ALLOW_PAID_CALLS=true`: Fast analysis.
+- `ALLOW_ECONOMY_ANALYSIS=true`: Economy analysis, through the Message Batches API. Its batch data is retained by
+  the provider for up to 29 days; the screen asks the person to acknowledge this.
+
+Then restart the server and the worker. Every run still needs a confirmed spending limit. Without `ALLOW_STRETCH_V2=true` the V2 option is hidden and
 refused by the API.
 
 ## Reproducible demonstration (this machine; no model call)

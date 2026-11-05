@@ -8,6 +8,7 @@ import type { Database } from "../db/client";
 import { caseRuns, cases, depositions } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
 import { CASE_RUN_CONTRACTS, caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun, stretchAllowed } from "../jobs/caseRun";
+import { paidCallsAllowed } from "../jobs/analysis";
 import { economyAllowed } from "../jobs/caseRunBatch";
 
 const Id = z.coerce.number().int().positive();
@@ -26,12 +27,22 @@ export const MAX_CASE_RUN_BUDGET_USD = 250;
 const Budget = z.number().positive().max(MAX_CASE_RUN_BUDGET_USD);
 
 // env: where the economy flag is read (process.env; tests pass their own).
+// What this server can actually run, so the screen never offers a mode that would stop at once:
+//   paidAvailable     the analysis key is set and ALLOW_PAID_CALLS=true (both modes need it)
+//   economyAvailable  paidAvailable and ALLOW_ECONOMY_ANALYSIS=true (the worker then uses the Message Batches API)
+//   economyBlocked    why economy can't run here: "paid_off" or "economy_off", or null
+export const capabilities = (env: Record<string, string | undefined>) => {
+  const paid = paidCallsAllowed(env as NodeJS.ProcessEnv);
+  const economy = economyAllowed(env);
+  return { paidAvailable: paid, economyAvailable: paid && economy, economyBlocked: !paid ? ("paid_off" as const) : !economy ? ("economy_off" as const) : null };
+};
+
 export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; boss: PgBoss; env?: Record<string, string | undefined> }): Router {
   const router = Router();
   // Every report says whether paid economy runs can be confirmed here, so the UI offers the choice only then.
   const reportOf = async (id: number) => {
     const r = await caseRunReport(db, id);
-    return r && { ...r, economyAvailable: economyAllowed(env), stretchAvailable: stretchAllowed(env) };
+    return r && { ...r, ...capabilities(env), stretchAvailable: stretchAllowed(env) };
   };
 
   router.post("/cases/:id/case-runs", async (req, res) => {
@@ -63,7 +74,7 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     if (!caseId.success) return res.status(400).json({ error: "The case ID must be a positive number." });
     const ids = await db.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, caseId.data)).orderBy(desc(caseRuns.id));
     // stretchAvailable at the top too: a case with no run yet still needs to know whether to offer the option.
-    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))), stretchAvailable: stretchAllowed(env) });
+    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))), stretchAvailable: stretchAllowed(env), ...capabilities(env) });
   });
 
   router.get("/case-runs/:id", async (req, res) => {
@@ -87,7 +98,7 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const id = Id.safeParse(req.params.id);
     const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
-    if (body.data.execution === "batch" && !economyAllowed(env)) return res.status(409).json({ error: "Economy analysis isn't enabled on this server yet. Use Fast analysis, or the free test model.", code: "economy_disabled" });
+    if (body.data.execution === "batch" && !economyAllowed(env)) return res.status(409).json({ error: "Economy analysis isn't turned on for this server (ALLOW_ECONOMY_ANALYSIS=true). Use Fast analysis.", code: "economy_disabled" });
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
     if (outcome === "no_acknowledgement") return res.status(400).json({ error: "Economy analysis stores the testimony with the AI provider for up to 29 days. Confirm that you understand this to use it.", code: "retention_not_acknowledged" });

@@ -56,7 +56,7 @@ export const api = {
   case: (id: number) => request<CaseDetail>("GET", `/cases/${id}`),
   // Whole-case runs (docs/case-run-api.md). A live run stops after preparation with its estimate; nothing is
   // sent to a model until confirmCaseRun with a budget. A mock run uses the free deterministic test model.
-  caseRuns: (caseId: number) => request<{ caseRuns: CaseRun[]; stretchAvailable?: boolean }>("GET", `/cases/${caseId}/case-runs`),
+  caseRuns: (caseId: number) => request<{ caseRuns: CaseRun[]; stretchAvailable?: boolean; economyAvailable?: boolean; paidAvailable?: boolean }>("GET", `/cases/${caseId}/case-runs`),
   caseRun: (id: number) => request<{ caseRun: CaseRun }>("GET", `/case-runs/${id}`),
   // execution: a test run picks fast (standard) or economy (batch) here; a paid run picks it when confirmed.
   // depositionIds: analyze only these depositions (the same pipeline); absent = the whole case.

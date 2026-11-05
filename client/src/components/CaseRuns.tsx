@@ -18,13 +18,14 @@ import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputCl
 export function useCaseRuns(caseId: number) {
   const [runs, setRuns] = useState<CaseRun[] | null>(null);
   const [stretchAvailable, setStretchAvailable] = useState(false);
+  const [economyAvailable, setEconomyAvailable] = useState(false); // the server's own report (paid calls and economy both configured)
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setError(null); }, (e: Error) => setError(e.message));
+    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setEconomyAvailable(!!r.economyAvailable); setError(null); }, (e: Error) => setError(e.message));
   }, [caseId]);
   useEffect(load, [load]);
   usePoll(!!runs?.[0] && MOVING_RUN.includes(runs[0].status), 3000, load);
-  return { runs, stretchAvailable, error, reload: load };
+  return { runs, stretchAvailable, economyAvailable, error, reload: load };
 }
 
 export const WHOLE_CASE_PANEL = "whole-case-analysis";
@@ -40,7 +41,7 @@ const ESTIMATE_DELAY_MS = 900;
 // The whole analysis of a case, in one place: one step open at a time, finished steps summarized in a line.
 // depositions: step 1's content (the case page's sessions by witness, with dates and moves); onAdd opens the upload.
 export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId: number; sessions: WorkflowSession[]; depositions: ReactNode; onAdd: () => void }) {
-  const { runs, stretchAvailable, error, reload } = useCaseRuns(caseId);
+  const { runs, stretchAvailable, economyAvailable, error, reload } = useCaseRuns(caseId);
   const [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<AnalysisScope>("case");
   const [selected, setSelected] = useState<number[]>([]);
@@ -163,7 +164,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
                   Examines potentially conflicting statements in small, focused groups, with supporting testimony for each comparison.
                 </ScopeOption>
                 <ScopeOption
-                  name={`method-${caseId}`} checked={stretch} onChange={() => setStretch(true)} title="Contextual Analysis" badge={EXPERIMENTAL}
+                  name={`method-${caseId}`} checked={stretch} onChange={() => setStretch(true)} title="Contextual Analysis"
                   note="Approximately 3× cheaper per comparison in our initial tests, but identified fewer known contradictions and produced more false positives. Best used for experimentation, not as a replacement for Focused Analysis."
                 >
                   Examines longer, connected sections of testimony together to evaluate multiple potential conflicts in one AI request.
@@ -175,7 +176,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
             <p className="max-w-3xl text-xs text-muted">{DISCLAIMER}</p>
           )}
           <EstimateStrip
-            invalid={invalid} paidBlocked={paidBlocked} estimate={estimate} stopped={stopped} saved={saved} reviewWanted={reviewWanted}
+            invalid={invalid} paidBlocked={paidBlocked} estimate={estimate} stopped={stopped} saved={saved} reviewWanted={reviewWanted} economyAvailable={economyAvailable}
             current={!!estimate && desired !== null && runScopeKey(estimate) === desired}
             busy={busy}
             onReview={() => (estimate && desired !== null && runScopeKey(estimate) === desired && estimate.status === "awaiting_confirmation" ? setChoice("review") : setReviewWanted(true))}
@@ -252,7 +253,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
 
 // The estimate for the current choice, prepared automatically: why it can't be prepared, that it is being prepared,
 // or what it came to, with the way on to the review.
-function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewWanted, current, busy, onReview, onRetry }: { invalid: string | null; paidBlocked: string | null; estimate: CaseRun | null; stopped: CaseRun | null; saved: SavedEstimate | null; reviewWanted: boolean; current: boolean; busy: boolean; onReview: () => void; onRetry: () => void }) {
+function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewWanted, economyAvailable, current, busy, onReview, onRetry }: { invalid: string | null; paidBlocked: string | null; estimate: CaseRun | null; stopped: CaseRun | null; saved: SavedEstimate | null; reviewWanted: boolean; economyAvailable: boolean; current: boolean; busy: boolean; onReview: () => void; onRetry: () => void }) {
   const box = (children: ReactNode) => <div aria-live="polite" className="rounded-lg bg-well px-4 py-3 text-sm">{children}</div>;
   if (invalid) return box(<p role="alert" className="text-conflict">{invalid}</p>);
   if (paidBlocked) return box(<p className="text-muted">{paidBlocked}</p>);
@@ -279,7 +280,7 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
         <div className="flex flex-wrap items-end justify-between gap-4">
           <dl className="flex flex-wrap gap-x-8 gap-y-2">
             <div><dt className="text-xs text-faint">Estimated cost, fast</dt><dd className="text-lg font-semibold tabular-nums">{cost(fast)}</dd></div>
-            {economy && <div><dt className="text-xs text-faint">Economy</dt><dd className="text-lg font-semibold tabular-nums">{cost(economy)}</dd></div>}
+            {economy && <div><dt className="text-xs text-faint">Economy{economyAvailable ? "" : ", not available on this server"}</dt><dd className={cx("text-lg font-semibold tabular-nums", !economyAvailable && "text-faint")}>{cost(economy)}</dd></div>}
             <div><dt className="text-xs text-faint">Candidate pairs to read</dt><dd className="text-lg font-semibold tabular-nums">{e.listedPairs.toLocaleString()}</dd></div>
           </dl>
           <Button disabled={busy} onClick={onReview}>Review and start<ArrowRight aria-hidden className="size-4" /></Button>
@@ -291,7 +292,6 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
 }
 
 const RECOMMENDED = { label: "Recommended", tone: "good" as const };
-const EXPERIMENTAL = { label: "Experimental", tone: "warn" as const };
 const DISCLAIMER = "Veridict identifies potential inconsistencies for human review. Results are not definitive findings, and an analysis may not detect every contradiction.";
 
 // One choice as a card: the whole card is the radio's label (click anywhere); radios sharing a name move with the
@@ -449,15 +449,16 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {(["standard", "batch"] as const).map((x) => {
             const m = modeEstimate(e, x);
-            const off = x === "batch" && !run.economyAvailable;
+            // Why a mode can't run on this server, from the server's own capability report (never assumed).
+            const off = run.paidAvailable === false ? "Needs paid analysis to be set up on this server." : x === "batch" && run.economyAvailable === false ? (run.economyBlocked === "economy_off" ? "Not turned on for this server. An administrator enables it with ALLOW_ECONOMY_ANALYSIS=true." : "Needs paid analysis to be set up on this server.") : null;
             return (
               <label key={x} className={cx("flex cursor-pointer gap-3 rounded-lg border border-line px-4 py-3 transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover", (!m || off) && "cursor-not-allowed opacity-60 hover:bg-transparent")}>
-                <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || off} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
+                <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || !!off} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold">{EXECUTION[x].label}</span>
                   <span className="mt-0.5 block text-sm text-muted">{EXECUTION[x].description}</span>
                   <span className="mt-1.5 block text-sm tabular-nums">{m ? <>Estimated <strong className="font-semibold">{cost(m)}</strong></> : "Prepare a new estimate to see this mode's cost."}</span>
-                  {off && <span className="mt-1 block text-xs text-muted">Not enabled on this server yet.</span>}
+                  {off && <span className="mt-1 block text-xs text-muted">{off}</span>}
                 </span>
               </label>
             );
@@ -483,24 +484,38 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
       </Alert>
       {paidBlocked ? (
         <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{paidBlocked}</p>{cancel}</div>
+      ) : run.paidAvailable === false ? (
+        <div className="space-y-3">
+          <Alert title="Paid analysis isn't set up on this server">
+            Running either mode needs the Anthropic API key and paid calls turned on (ALLOW_PAID_CALLS=true; economy also needs ALLOW_ECONOMY_ANALYSIS=true). Nothing can be sent or charged until an administrator sets it up. This estimate stays here until then.
+          </Alert>
+          <div className="flex flex-wrap gap-2">{cancel}</div>
+        </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-[14rem_1fr] sm:items-end">
-            <Field label="Spending limit (USD)" htmlFor={`limit-${run.id}`} hint={`Up to $${MAX_CASE_RUN_BUDGET_USD}.`}>
-              <input id={`limit-${run.id}`} inputMode="decimal" className={inputClass} value={limit} onChange={(ev) => { setLimit(ev.target.value); setEdited(true); }} aria-invalid={!!problem} aria-describedby={problem ? `limit-problem-${run.id}` : undefined} />
-            </Field>
-            <div className="space-y-2">
-              <label className="flex items-start gap-2 text-sm">
-                <input type="checkbox" checked={agreed} onChange={(ev) => setAgreed(ev.target.checked)} className="mt-0.5 size-4 rounded accent-navy" />
-                <span>I authorize Veridict to spend up to <strong className="font-semibold tabular-nums">{problem ? "the limit above" : formatUsd(Number(limit))}</strong> on this analysis.</span>
-              </label>
-              {economy && (
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" checked={retention} onChange={(ev) => setRetention(ev.target.checked)} className="mt-0.5 size-4 rounded accent-navy" />
-                  <span>I understand that for economy processing Anthropic stores this testimony and the results for up to 29 days, and that batch processing isn't covered by zero data retention.</span>
-                </label>
-              )}
+          {/* The limit and the authorization side by side, as two equal panels, top-aligned. */}
+          <div className="grid gap-3 sm:grid-cols-2 sm:items-stretch">
+            <div className="rounded-lg border border-line px-4 py-3">
+              <Field label="Spending limit (USD)" htmlFor={`limit-${run.id}`} hint={`Recommended ${formatUsd(chosen.recommendedUsd)} for ${EXECUTION[execution].label.toLowerCase()}. Up to $${MAX_CASE_RUN_BUDGET_USD}.`}>
+                <input id={`limit-${run.id}`} inputMode="decimal" className={inputClass} value={limit} onChange={(ev) => { setLimit(ev.target.value); setEdited(true); }} aria-invalid={!!problem} aria-describedby={problem ? `limit-problem-${run.id}` : undefined} />
+              </Field>
             </div>
+            <fieldset className="rounded-lg border border-line px-4 py-3">
+              <legend className="sr-only">Authorization</legend>
+              <p aria-hidden className="text-sm font-medium">Authorization</p>
+              <div className="mt-2 space-y-3">
+                <label className="flex items-start gap-3 text-sm">
+                  <input type="checkbox" checked={agreed} onChange={(ev) => setAgreed(ev.target.checked)} className="mt-0.5 size-4 flex-none rounded accent-navy" />
+                  <span>I authorize Veridict to spend up to <strong className="font-semibold tabular-nums">{problem ? "the limit set here" : formatUsd(Number(limit))}</strong> on this analysis.</span>
+                </label>
+                {economy && (
+                  <label className="flex items-start gap-3 text-sm">
+                    <input type="checkbox" checked={retention} onChange={(ev) => setRetention(ev.target.checked)} className="mt-0.5 size-4 flex-none rounded accent-navy" />
+                    <span>I understand that for economy processing Anthropic stores this testimony and the results for up to 29 days, and that batch processing isn't covered by zero data retention.</span>
+                  </label>
+                )}
+              </div>
+            </fieldset>
           </div>
           {problem && <p id={`limit-problem-${run.id}`} role="alert" className="text-sm text-conflict">{problem}</p>}
           <div className="flex flex-wrap gap-2">

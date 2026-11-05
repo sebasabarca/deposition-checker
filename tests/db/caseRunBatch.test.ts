@@ -429,8 +429,14 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
       expect(off.status).toBe(409);
       expect((await off.json()).code).toBe("economy_disabled");
       expect((await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun.economyAvailable).toBe(false);
+      const report = async () => (await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun;
+      // The switch alone isn't enough: economy needs paid calls configured too, and the report says which is missing.
       env = { ALLOW_ECONOMY_ANALYSIS: "true" };
-      expect((await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun.economyAvailable).toBe(true);
+      expect(await report()).toMatchObject({ economyAvailable: false, paidAvailable: false, economyBlocked: "paid_off" });
+      env = { ALLOW_PAID_CALLS: "true", ANTHROPIC_API_KEY: "test-not-a-key" };
+      expect(await report()).toMatchObject({ economyAvailable: false, paidAvailable: true, economyBlocked: "economy_off" });
+      env = { ALLOW_ECONOMY_ANALYSIS: "true", ALLOW_PAID_CALLS: "true", ANTHROPIC_API_KEY: "test-not-a-key" };
+      expect(await report()).toMatchObject({ economyAvailable: true, paidAvailable: true, economyBlocked: null });
       const refused = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch" });
       expect(refused.status).toBe(400);
       expect((await refused.json()).code).toBe("retention_not_acknowledged");

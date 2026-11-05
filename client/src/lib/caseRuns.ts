@@ -76,8 +76,8 @@ export const isTestRun = (run: Pick<CaseRun, "mode">) => run.mode === "mock";
 // The two ways a paid run can read the case: the same evidence, prompt, checks and scoring; only the transport,
 // the time it takes and the price differ (docs/case-run-api.md).
 export const EXECUTION: Record<CaseRunExecution, { label: string; short: string; description: string }> = {
-  standard: { label: "Fast analysis", short: "Fast", description: "Processes evidence with parallel AI requests. Best when you need results sooner." },
-  batch: { label: "Economy analysis", short: "Economy", description: "Uses asynchronous batch processing to reduce AI costs. Processing time may vary and can take up to 24 hours." },
+  standard: { label: "Fast analysis", short: "Fast", description: "Processes testimony immediately using parallel AI requests. Best when you need results sooner." },
+  batch: { label: "Economy analysis", short: "Economy", description: "Processes testimony asynchronously at a lower cost using batch requests. Results may take longer, potentially up to 24 hours." },
 };
 
 // What the confirm step shows for a mode: the cost as a single figure (fast) or a range (economy: the provider's

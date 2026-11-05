@@ -1261,12 +1261,18 @@ The case page is one guided panel, with one step open at a time; finished steps 
    authorized against.
    Where `ALLOW_STRETCH_V2=true`, step 2 also asks for the analysis method, named for lawyers:
    - "Focused Analysis" (packet-v1): Recommended and the default.
-   - "Contextual Analysis" (stretch-v2): Experimental.
+   - "Contextual Analysis" (stretch-v2): no badge.
 
    Each method's card states its measured trade-off. A disclaimer under the choice says that results are potential
    inconsistencies for human review, not definitive findings. These are analysis strategies, never presented as
    different AI models.
-3. Review the cost and start: choose fast or economy, and authorize a spending limit.
+3. Review the cost and start: choose fast or economy, and authorize a spending limit. Each mode is offered only
+   when the server can run it:
+   - Both modes need paid calls: the analysis key and `ALLOW_PAID_CALLS=true`.
+   - Economy also needs `ALLOW_ECONOMY_ANALYSIS=true`; the worker then uses the Message Batches API.
+
+   The API reports `paidAvailable`, `economyAvailable` and `economyBlocked` (`paid_off` or `economy_off`). The screen
+   names what is missing, and never offers a mode that would stop at once.
 4. The analysis and its results.
 
 The page header no longer offers Add deposition or Analyze, and the deposition tables have no selection boxes: there
