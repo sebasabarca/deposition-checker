@@ -117,3 +117,41 @@ describe("assessPacketPair", () => {
     }
   });
 });
+
+describe("assessPacketPair safeguards (verify/safeguards.ts)", () => {
+  const safeguardsOf = (f: NonNullable<ReturnType<typeof run>>) => (f.checks.safeguards as { rule: string }[]).map((s) => s.rule);
+
+  it("publishes a plain verified contradiction unchanged, with no safeguard", () => {
+    const f = run(verdict())!;
+    expect(f.type).toBe("direct");
+    expect(safeguardsOf(f)).toEqual([]);
+  });
+
+  it("publishes reported speech as needs context: kept, model outcome and explanation preserved, never deleted", () => {
+    const f = run(verdict({ attributionB: "reported_by_other", alternativeExplanation: "She may be repeating what she was told.", alternativeSupport: "plausible" }))!;
+    expect(f).not.toBeNull();
+    expect(f.outcome).toBe("direct"); // what the model said
+    expect(f.type).toBe("insufficient_evidence"); // what is published
+    expect(f.priority).toBe("needs_context");
+    expect(f.contextRequested).toBe(true);
+    expect(safeguardsOf(f)).toContain("not_own_knowledge");
+  });
+
+  it("publishes a verdict whose own explanation concedes both can be true as needs context", () => {
+    const f = run(verdict({ outcome: "inferential", conflictBasis: "requires_inference", explanation: "Both can be true if these were different nights." }))!;
+    expect(f.type).toBe("insufficient_evidence");
+    expect(safeguardsOf(f)).toEqual(["says_compatible"]);
+  });
+
+  it("publishes a no-recall answer against an assertion as needs context", () => {
+    const f = run(verdict({ keyPhraseB: "I don't recall" }), packetOf(A, passage("E20", 20, 1, "I don't recall.")))!;
+    expect(f.type).toBe("insufficient_evidence");
+    expect(safeguardsOf(f)).toContain("no_recall");
+  });
+
+  it("publishes the examiner's words quoted as the witness's as needs context", () => {
+    const f = run(verdict({ keyPhraseB: "Where were you on the night of March 3" }))!;
+    expect(safeguardsOf(f)).toContain("examiner_words");
+    expect(f.type).toBe("insufficient_evidence");
+  });
+});

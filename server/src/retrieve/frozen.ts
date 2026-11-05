@@ -52,14 +52,23 @@ export function fuseRankings(lists: readonly (readonly Ranked[])[], k = 60): Ran
   return [...score].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
 }
 
+// Diversified selection (optional; absent = the plain fused top `perItem`, unchanged). Each item keeps its fused top
+// `perItem`, plus, from the same fused ranking, its best `perGroup` not yet chosen in every counterpart group
+// (`groupOf`: e.g. another session or witness), plus each path's own best `perPath` not yet chosen. Bounded: at most
+// perItem + groups x perGroup + paths x perPath partners per item, never all-to-all.
+// minShare: a quota partner is admitted only when its fused score is at least minShare x the score of the item's
+// perItem-th fused partner, so a session with nothing relevant adds nothing (bounded by relevance, not by session count).
+export type PoolSelection = { quota?: { groupOf: (key: string) => string; perGroup: number; minShare?: number }; perPath?: number };
+
 // The pool every item's fused top `perItem` makes, each pair once, with every path's ranks attached.
-export function buildPool(name: string, paths: readonly PathNeighbours[], perItem: number): CandidatePool {
+export function buildPool(name: string, paths: readonly PathNeighbours[], perItem: number, selection: PoolSelection = {}): CandidatePool {
   const rankOf = paths.map((p) => new Map(Object.entries(p.neighbours).map(([q, list]) => [q, new Map(list.map(([key], r) => [key, r + 1]))])));
   const keys = new Set(paths.flatMap((p) => Object.keys(p.neighbours)));
   const candidates = new Map<string, Candidate>();
   for (const q of keys) {
     const fused = fuseRankings(paths.map((p) => p.neighbours[q] ?? []));
-    for (const [other, score] of fused.slice(0, perItem)) {
+    const chosen = selectPartners(q, fused, paths, perItem, selection);
+    for (const [other, score] of chosen) {
       const id = pairKey(q, other);
       const [a, b] = q < other ? [q, other] : [other, q];
       const existing = candidates.get(id);
@@ -68,6 +77,37 @@ export function buildPool(name: string, paths: readonly PathNeighbours[], perIte
     }
   }
   return { name, perItem, paths: paths.map((p) => p.path), candidates: [...candidates.values()].sort((x, y) => y.fused - x.fused || (x.a + x.b < y.a + y.b ? -1 : 1)) };
+}
+
+function selectPartners(q: string, fused: readonly Ranked[], paths: readonly PathNeighbours[], perItem: number, { quota, perPath = 0 }: PoolSelection): Ranked[] {
+  const out = fused.slice(0, perItem);
+  if (!quota && !perPath) return out;
+  const taken = new Set(out.map(([k]) => k));
+  const scoreOf = new Map(fused);
+  if (quota && quota.perGroup > 0) {
+    const counts = new Map<string, number>();
+    const floor = (quota.minShare ?? 0) * (out.at(-1)?.[1] ?? 0);
+    for (const [k, sc] of fused) {
+      if (sc < floor) break; // fused is sorted by score
+      if (taken.has(k)) continue;
+      const g = quota.groupOf(k);
+      if ((counts.get(g) ?? 0) >= quota.perGroup) continue;
+      counts.set(g, (counts.get(g) ?? 0) + 1);
+      taken.add(k);
+      out.push([k, sc]);
+    }
+  }
+  for (const p of perPath ? paths : []) {
+    let n = 0;
+    for (const [k] of p.neighbours[q] ?? []) {
+      if (n >= perPath) break;
+      if (taken.has(k)) continue;
+      taken.add(k);
+      n++;
+      out.push([k, scoreOf.get(k) ?? 0]);
+    }
+  }
+  return out;
 }
 
 // The 1-based rank of the first of `targets` in a ranking, or null.

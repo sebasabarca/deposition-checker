@@ -40,7 +40,11 @@ export type CasePoolResult = {
   sourceHash: string;
 };
 
-export async function buildCasePool(db: Database, pool: Pool, caseId: number, options: { perItem?: number; minilm?: "auto" | "off" } = {}): Promise<CasePoolResult> {
+// Diversification (all optional, off by default): perSession / perWitness keep each item's best partners in every
+// other session / witness on top of the fused top perItem; perPath keeps each path's own best partners.
+export type CaseSelection = { perSession?: number; perWitness?: number; perPath?: number; minShare?: number };
+
+export async function buildCasePool(db: Database, pool: Pool, caseId: number, options: { perItem?: number; minilm?: "auto" | "off"; selection?: CaseSelection } = {}): Promise<CasePoolResult> {
   const perItem = options.perItem ?? DEFAULT_PER_ITEM;
   const depth = NEIGHBOURS_PER_ITEM;
   const rows = await db
@@ -101,7 +105,12 @@ export async function buildCasePool(db: Database, pool: Pool, caseId: number, op
     }
   } else paths.push({ name: "all", available: false, reason: "fewer than two sessions with eligible testimony", depth });
 
-  const candidatePool = buildPool(`case-${caseId}-fused-top${perItem}`, neighbours, perItem);
+  const sel = options.selection ?? {};
+  if ((sel.perSession ?? 0) > 0 && (sel.perWitness ?? 0) > 0) throw new Error("selection: perSession and perWitness are alternatives");
+  const byKey = new Map(items.map((i) => [i.key, i]));
+  const quota = (sel.perSession ?? 0) > 0 ? { groupOf: (k: string) => byKey.get(k)!.session, perGroup: sel.perSession!, minShare: sel.minShare } : (sel.perWitness ?? 0) > 0 ? { groupOf: (k: string) => byKey.get(k)!.witness, perGroup: sel.perWitness!, minShare: sel.minShare } : undefined;
+  const selName = [quota ? `${sel.perSession ? "s" : "w"}${quota.perGroup}${sel.minShare ? `f${sel.minShare}` : ""}` : "", sel.perPath ? `p${sel.perPath}` : ""].filter(Boolean).join("-");
+  const candidatePool = buildPool(`case-${caseId}-fused-top${perItem}${selName ? `-${selName}` : ""}`, neighbours, perItem, { quota, perPath: sel.perPath });
   const t = triage(candidatePool, items);
   if (t.kept.length + t.deferred.length !== candidatePool.candidates.length) throw new Error("triage lost candidates");
   const packets = groupPool({ ...candidatePool, name: `${candidatePool.name}-triaged`, candidates: t.kept }, items, `case-${caseId}-packets`, candidatePool.name);
@@ -112,7 +121,7 @@ export async function buildCasePool(db: Database, pool: Pool, caseId: number, op
     triage: { kept: t.kept, deferred: t.deferred.map((d) => ({ a: d.candidate.a, b: d.candidate.b, stage: d.stage, reason: d.reason })), stages: t.stages },
     packets,
     settings: {
-      version: CASE_POOL_VERSION, perItem, neighboursPerItem: depth, fusion: "reciprocal rank, k = 60, per query", contextWords: 60, lsa: { dims: 150, seed: 7 },
+      version: CASE_POOL_VERSION, perItem, ...(options.selection ? { selection: options.selection } : {}), neighboursPerItem: depth, fusion: "reciprocal rank, k = 60, per query", contextWords: 60, lsa: { dims: 150, seed: 7 },
       minilm: paths.some((p) => p.name === MINILM_PATH && p.available) ? { model: MODEL_ID, revision: MODEL_REVISION, representation: "qac", strip: true, windowing: WINDOWING } : "unavailable",
       triage: DEFAULT_TRIAGE, grouping: DEFAULT_GROUPING,
       parserVersions: Object.fromEntries(included.map((d) => [`d${d.id}`, d.parserVersion])),

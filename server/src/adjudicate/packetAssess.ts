@@ -4,6 +4,7 @@
 // categorical observations) and code's verification (verify/packet.ts, per side) are kept apart, and no
 // number from the model is ever read: there is none in the contract.
 
+import { SAFEGUARDS_VERSION, safeguardsFor } from "../verify/safeguards";
 import { contextCheck, corroborate, prioritize, RUBRIC_V1, score, timeCheckOf, type Assessment, type Priority } from "../score";
 import { attributeSide, type AttributionCheck, type SideAttribution } from "../verify/attribution";
 import type { PacketPairVerification, PacketSourceSide, PacketSourceStatus } from "../verify/packet";
@@ -105,6 +106,14 @@ export function assessPacketPair(packet: IssuePacket, pair: PacketPairVerificati
     a: sideOf(source.a, pair.attribution.a, v.keyPhraseA, v.attributionA, v.stanceA),
     b: sideOf(source.b, pair.attribution.b, v.keyPhraseB, v.attributionB, v.stanceB),
   };
+  // Deterministic safeguards (verify/safeguards.ts): a conflict verdict that trips one is published as needs context,
+  // never as an unqualified contradiction; the model's outcome stays in `outcome` and the rules in checks.safeguards.
+  const safeguards = safeguardsFor(v, attribution, { a: source.a.answerText, b: source.b.answerText });
+  if (safeguards.length) {
+    verdict.classification = "insufficient_evidence";
+    verdict.needsMoreContext = true;
+  }
+  const finalClass = verdict.classification;
   const [propA, propB] = [source.a.proposition, source.b.proposition];
   const timeCheck = timeCheckOf(verdict.aboutTimingOfSameEvent, propA, propB);
   const checks = {
@@ -122,10 +131,10 @@ export function assessPacketPair(packet: IssuePacket, pair: PacketPairVerificati
     consistencyIssues.length > 0
       ? { eligible: false, score: null, band: null, unscoredReason: "inconsistent_verdict", factors: [], capsApplied: [], notCorroborated: [], reasons: [], rubricVersion: RUBRIC_V1.version }
       : score({ verdict, ...checks });
-  const priority = prioritize(classification, source.status, assessment, "unreviewed", verdict.needsMoreContext);
+  const priority = prioritize(finalClass, source.status, assessment, "unreviewed", verdict.needsMoreContext);
 
   return {
-    type: classification,
+    type: finalClass,
     outcome: v.outcome,
     evidenceStatus: source.status,
     attributionA: pair.attribution.a?.level ?? null,
@@ -147,6 +156,8 @@ export function assessPacketPair(packet: IssuePacket, pair: PacketPairVerificati
       consistencyIssues,
       reviewFlags,
       requiresReview,
+      safeguards,
+      safeguardsVersion: SAFEGUARDS_VERSION,
       validationFailures: pair.validationFailures,
     },
     rubricVersion: assessment.rubricVersion,
