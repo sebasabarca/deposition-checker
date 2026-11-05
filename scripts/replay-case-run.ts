@@ -77,7 +77,7 @@ async function main() {
       usd += cost;
     }
     const total = entries.length;
-    await finish(db, run.id, ledger.id, "incomplete", `Replay for demonstration: ${replayed} of ${total} requests were answered by recorded real model calls (claude-sonnet-5-5, November 5, 2026; $${usd.toFixed(4)}), re-read through production verification. The other ${total - replayed} were never sent; their pairs are unread, not compatible.`);
+    await finish(db, run.id, ledger.id, "incomplete", `Replay for demonstration: ${replayed} of ${total} requests were answered by recorded real calls to Veridict's model (November 5, 2026; $${usd.toFixed(4)}), re-read through production verification. The other ${total - replayed} were never sent; their pairs are unread, not compatible.`);
     console.log(JSON.stringify({ caseRun: run.id, requests: total, replayed, recordedCostUsd: +usd.toFixed(4) }));
   } finally {
     await pool.end();

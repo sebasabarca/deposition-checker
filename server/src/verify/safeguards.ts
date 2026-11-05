@@ -48,9 +48,9 @@ export function safeguardsFor(v: VerdictFields, attribution: { a: SideAttributio
     const claude = side === "a" ? v.attributionA : v.attributionB;
     if (att?.location === "attorney_or_colloquy") out.push({ rule: "examiner_words", side, detail: "the quoted words are only in the examiner's words or colloquy" });
     else if (att?.location === "question_other") out.push({ rule: "examiner_words", side, detail: "the quoted words are the examiner's question, and the answer is not a plain yes or no" });
-    if (NOT_OWN.has(claude)) out.push({ rule: "not_own_knowledge", side, detail: `the model reads this side as ${claude.replace(/_/g, " ")}` });
+    if (NOT_OWN.has(claude)) out.push({ rule: "not_own_knowledge", side, detail: `Veridict's model reads this side as ${claude.replace(/_/g, " ")}` });
     const clause = answers?.[side].match(NO_RECALL_CLAUSE)?.[0];
-    if (att?.noRecall || claude === "does_not_recall" || clause) out.push({ rule: "no_recall", side, detail: att?.noRecall ? "the stored answer is a no-recall answer" : clause ? `the cited answer says "${clause}"` : "the model reads this side as not recalling" });
+    if (att?.noRecall || claude === "does_not_recall" || clause) out.push({ rule: "no_recall", side, detail: att?.noRecall ? "the stored answer is a no-recall answer" : clause ? `the cited answer says "${clause}"` : "Veridict's model reads this side as not recalling" });
   }
   const m = v.explanation.match(CONCEDES);
   if (m) out.push({ rule: "says_compatible", side: null, detail: `the explanation says "${m[0]}"` });

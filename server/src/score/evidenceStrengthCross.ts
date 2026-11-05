@@ -44,8 +44,8 @@ export function evidenceStrengthCross(input: CrossStrengthInput): EvidenceStreng
     check("Quotations match the transcript", exact ? 20 : 10, 20, "code", exact ? ([a, b].some((s) => s.quote === "fragments") ? "Both match word for word; at least one as ordered fragments, not one continuous passage." : "Both match exactly.") : "At least one only approximately matches."),
     check("Each statement is that witness's own", 20, 20, "code", "Both are the witnesses' own words, or plainly adopted."),
     check("Clear assertions", clear * 10, 20, "code", clear === 2 ? "Neither is hedged, unrecalled or reported speech." : `${2 - clear} of 2 is hedged, unrecalled or reported speech.`),
-    check("First-hand accounts, according to the model and code", firsthand * 10, 20, "claude", firsthand === 2 ? "Both witnesses speak from what they saw or did." : `${2 - firsthand} of 2 rests on what someone was told, a belief, or is unclear.`),
-    check("Conflict holds without missing context, according to the model", conflict, 20, "claude", conflict === 20 ? "A direct conflict." : conflict === 10 ? "A conflict that depends on context." : "No conflict established."),
+    check("First-hand accounts, according to Veridict's model and code", firsthand * 10, 20, "claude", firsthand === 2 ? "Both witnesses speak from what they saw or did." : `${2 - firsthand} of 2 rests on what someone was told, a belief, or is unclear.`),
+    check("Conflict holds without missing context, according to Veridict's model", conflict, 20, "claude", conflict === 20 ? "A direct conflict." : conflict === 10 ? "A conflict that depends on context." : "No conflict established."),
   ];
   const score = checks.reduce((n, c) => n + c.points, 0);
   return { score, band: score >= HIGH_FROM ? "high" : score >= MEDIUM_FROM ? "medium" : "low", ...decided, checks, notScored: null };

@@ -121,9 +121,9 @@ function FindingRow({ f, test }: { f: CaseRunFinding; test: boolean }) {
       </div>
       {typeof explanation === "string" && (
         <div className="rounded-lg bg-well px-4 py-3 text-sm">
-          <p className="mb-1.5">{test ? <Badge tone="accent">Test model output, not an analysis</Badge> : <ModelMark>{`${f.model.model}'s reading`}</ModelMark>}</p>
+          <p className="mb-1.5">{test ? <Badge tone="accent">Test model output, not an analysis</Badge> : <ModelMark>Veridict's model's reading</ModelMark>}</p>
           <p className="max-w-[75ch]">{explanation}</p>
-          {f.safeguards.length > 0 && f.model.outcome && <p className="mt-2 max-w-[75ch] text-muted">The model called this {/^[aeiou]/.test(f.model.outcome) ? "an" : "a"} {f.model.outcome.replace(/_/g, " ")} contradiction. A code check moved it to Needs context: {f.safeguards.map((g) => `${g.side ? `side ${g.side.toUpperCase()}: ` : ""}${g.detail}`).join("; ")}.</p>}
+          {f.safeguards.length > 0 && f.model.outcome && <p className="mt-2 max-w-[75ch] text-muted">Veridict's model called this {/^[aeiou]/.test(f.model.outcome) ? "an" : "a"} {f.model.outcome.replace(/_/g, " ")} contradiction. A code check moved it to Needs context: {f.safeguards.map((g) => `${g.side ? `side ${g.side.toUpperCase()}: ` : ""}${g.detail}`).join("; ")}.</p>}
         </div>
       )}
     </article>

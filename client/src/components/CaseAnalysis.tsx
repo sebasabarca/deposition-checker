@@ -67,7 +67,7 @@ export function CaseAnalysisSummary({ caseId, analysis }: { caseId: number; anal
     <Card className="overflow-hidden">
       <CardHeader
         title="Case analysis"
-        description={`Hand-authored example · ${c.pairs_complete} of ${c.unique_pairs_total} session pairs compared, within and across witnesses · no model run`}
+        description={`Hand-authored example · ${c.pairs_complete} of ${c.unique_pairs_total} session pairs compared, within and across witnesses · Veridict's model not used`}
         action={<a href={href.caseAnalysis(caseId)} className={buttonClass("primary")}>Open case analysis</a>}
       />
       <dl className="grid grid-cols-3 divide-x divide-rule text-sm">

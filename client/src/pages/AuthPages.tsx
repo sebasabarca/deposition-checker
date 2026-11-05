@@ -104,7 +104,7 @@ export function RegisterPage() {
         <Labeled label="Password">{(id) => <><PasswordInput id={id} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" aria-describedby={`${id}-rules`} /><PasswordRules id={`${id}-rules`} password={password} /></>}</Labeled>
         {error && <Alert>{error}</Alert>}
         <Button type="submit" className="h-10 w-full" disabled={busy || !name.trim() || !email.trim() || !passwordOk(password)}>{busy ? "Creating account…" : "Create account"}</Button>
-        <p className="text-xs leading-5 text-faint">We'll email a link to confirm your address. Checks that use the AI model are enabled separately during early access.</p>
+        <p className="text-xs leading-5 text-faint">We'll email a link to confirm your address. Checks that use Veridict's model are enabled separately during early access.</p>
       </form>
     </AuthCard>
   );

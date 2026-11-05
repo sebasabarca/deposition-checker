@@ -49,7 +49,7 @@ export function HelpPage() {
           </Section>
 
           <Section id="reading" title="Reading a finding">
-            <p>Testimony is always shown as the transcript itself: the page and line in the margin, the words exactly as stored, and the lines the finding cites in yellow. Nothing in the transcript column is written by the model.</p>
+            <p>Testimony is always shown as the transcript itself: the page and line in the margin, the words exactly as stored, and the lines the finding cites in yellow. Nothing in the transcript column is written by Veridict's model.</p>
             <figure className="overflow-hidden rounded-lg border border-line bg-sheet">
               <div className="transcript py-3"><TranscriptRows lines={EXAMPLE} /></div>
               <figcaption className="border-t border-rule px-4 py-2 text-xs text-faint">An example made up for this guide. It is not from any deposition.</figcaption>
@@ -72,7 +72,7 @@ export function HelpPage() {
               <Def term={<OcrMark />}>The PDF was a scanned image with no selectable text, so Veridict read the words from a picture of each page. A word can be misread now and then; lines that were hard to read are flagged. Compare with the page image before quoting.</Def>
               <Def term={<ModelMark />}>Written by Veridict's analysis, an AI system. It is not testimony and not a legal conclusion.</Def>
               <Def term={<VerifiedMark />}>Code found the cited words in the stored transcript. The citation is real; that says nothing about whether the contradiction is.</Def>
-              <Def term={<HumanMark>Kept</HumanMark>}>Your decision, never the model's.</Def>
+              <Def term={<HumanMark>Kept</HumanMark>}>Your decision, never Veridict's model's.</Def>
             </dl>
           </Section>
 
@@ -92,7 +92,7 @@ export function HelpPage() {
           </Section>
 
           <Section id="data" title="Your data and cost">
-            <p>Files and results are stored by the server running Veridict. A check sends the text of both sessions to the AI model that powers Veridict's analysis; nothing is sent until you start one. Example analyses make no model calls. Every check shows what it cost.</p>
+            <p>Files and results are stored by the server running Veridict. A check sends the text of both sessions to Veridict's model; nothing is sent until you start one. Example analyses don't use Veridict's model. Every check shows what it cost.</p>
             <p>Veridict makes no certification or compliance claim. A qualified person must confirm any use of a finding.</p>
           </Section>
         </div>

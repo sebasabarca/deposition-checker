@@ -96,7 +96,7 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const id = Id.safeParse(req.params.id);
     const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
-    if (!analysisKeySet(env)) return res.status(409).json({ error: "Paid analysis isn't set up on this server: add ANTHROPIC_API_KEY to the server's .env and restart. Nothing was sent.", code: "paid_unavailable" });
+    if (!analysisKeySet(env)) return res.status(409).json({ error: "Paid analysis isn't set up on this server: add the API key to the server's .env (see .env.example) and restart. Nothing was sent.", code: "paid_unavailable" });
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
     if (outcome === "no_acknowledgement") return res.status(400).json({ error: "Economy analysis stores the testimony with the AI provider for up to 29 days. Confirm that you understand this to use it.", code: "retention_not_acknowledged" });

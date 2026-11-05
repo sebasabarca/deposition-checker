@@ -27,7 +27,7 @@ export function FindingPanel({ id, analysisId, next, onDecided, onStale }: { id:
   if (!f) return <PanelSkeleton />;
   const contradiction = f.group === "contradictions";
   const verified = f.group !== "unverified" && (f.evidenceStatus === "verified" || f.evidenceStatus === "approximate");
-  const closerLook = f.reasons.filter((r) => !r.startsWith("The model said")); // the notice above already says so
+  const closerLook = f.reasons.filter((r) => !r.startsWith("Veridict's model said")); // the notice above already says so
   const citation = pinpointCitation(f.a, f.b);
   const setAside = isQuarantined(f); // needs revalidation: no current lane, strength or citation check is claimed
 

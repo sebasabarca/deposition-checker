@@ -26,7 +26,7 @@ export const ANALYSIS_STATUS: Record<AnalysisStatus, { label: string; tone: "neu
   completed: { label: "Complete", tone: "good" },
   failed: { label: "Failed", tone: "bad" },
   blocked_budget: { label: "Stopped: budget reached", tone: "warn" },
-  blocked_credentials: { label: "Stopped: model not available", tone: "warn" },
+  blocked_credentials: { label: "Stopped: paid analysis not set up", tone: "warn" },
   cancelled: { label: "Cancelled", tone: "warn" },
   interrupted: { label: "Stopped: interrupted", tone: "warn" },
 };
@@ -75,7 +75,7 @@ export const DISAGREEMENT: Record<string, string> = {
   claude_overstates: "The analysis read this as more certain than the transcript supports; the transcript's reading is used.",
   claude_understates: "The analysis read this as less certain than the witness's plain answer; the transcript's reading is used.",
   claude_differs: "The analysis and the transcript check describe this differently; the transcript's reading is used.",
-  stance_conflict: "The model misread the witness's yes or no; the side is treated as not the witness's statement.",
+  stance_conflict: "Veridict's model misread the witness's yes or no; the side is treated as not the witness's statement.",
 };
 
 export const ORIGIN: Record<string, string> = { code: "Transcript check", claude: "Analysis", "code+claude": "Both" };
@@ -167,7 +167,7 @@ export const DISCOVERY_ATTEMPT: Record<string, string> = {
   submitting: "Sending",
   submitted: "Reading both sessions",
   succeeded: "Finished",
-  refused: "Refused by the model",
+  refused: "Declined by Veridict's model",
   invalid_output: "Answer wasn't valid",
   incomplete: "Stopped before finishing",
   provider_failed: "Provider failure",

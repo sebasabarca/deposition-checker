@@ -148,8 +148,8 @@ export function laneOf(finding: Pick<DiscoveryFinding, "classification" | "compa
   if (unverified.length > 0) return { lane: "unverified", reasons: unverified };
 
   const doubts: string[] = [];
-  if (finding.classification === "uncertain_needs_context" || finding.classification === "insufficient_evidence") doubts.push("The model said this depends on context it didn't have.");
-  if (finding.comparable !== "yes") doubts.push("The model wasn't sure the two passages concern the same thing.");
+  if (finding.classification === "uncertain_needs_context" || finding.classification === "insufficient_evidence") doubts.push("Veridict's model said this depends on context it didn't have.");
+  if (finding.comparable !== "yes") doubts.push("Veridict's model wasn't sure the two passages concern the same thing.");
   if (evidenceStatus === "approximate") doubts.push("A quotation only approximately matches the transcript.");
   if (sides.some((s) => s.level === "uncertain")) doubts.push("Code couldn't establish who said a cited statement.");
   if (sides.some((s) => s.noRecall)) doubts.push("A cited statement is a lack of recollection, not a denial.");

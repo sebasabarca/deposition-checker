@@ -77,7 +77,7 @@ export function CaseAnalysisPage({ id }: { id: number }) {
         description={`${c.pairs_complete} of ${c.unique_pairs_total} session pairs compared · ${c.findings_total} findings · ${decided} decided · ${formatUsd(analysis.execution.cost_usd)}`}
         actions={<button type="button" disabled={downloading} onClick={() => void download()} className={buttonClass("secondary")} title="The findings you kept in this analysis, with citations, the stored testimony and your notes, as a PDF"><Download aria-hidden className="size-4" />{downloading ? "Preparing…" : "Download report"}</button>}
       />
-      <Alert tone="info">This is an example analysis, compared by hand. No model was called for it.</Alert>
+      <Alert tone="info">This is an example analysis, compared by hand. Veridict's model wasn't used for it.</Alert>
       {reportError && <Alert title="The report couldn't be downloaded">{reportError}</Alert>}
       {analysis.unverified > 0 && (
         <Alert tone="warn" title={`${analysis.unverified} ${analysis.unverified === 1 ? "citation" : "citations"} not found in the stored transcript`}>Marked below. Read those passages yourself before relying on them.</Alert>
@@ -111,7 +111,7 @@ export function CaseAnalysisPage({ id }: { id: number }) {
             </div>
             <h2 id="finding-title" className="font-serif text-xl font-semibold">{f.topic[0].toUpperCase() + f.topic.slice(1)}</h2>
           </section>
-          <Alert tone="info">Demo: a prepared example assessment for synthetic testimony. Not produced by a model.</Alert>
+          <Alert tone="info">Demo: a prepared example assessment for synthetic testimony. Not produced by Veridict's model.</Alert>
           <div className="grid gap-3 lg:grid-cols-2">
             {/* The earlier session on the left; ties (same day) keep the given order. */}
             {[...f.citations].sort((x, y) => x.date.localeCompare(y.date)).map((cit, n) => <CitedPassage key={cit.sessionId} c={cit} label={n === 0 ? "Earlier session" : "Later session"} />)}
@@ -120,7 +120,7 @@ export function CaseAnalysisPage({ id }: { id: number }) {
             <section className="flex flex-col gap-3 rounded-lg border border-line bg-sheet p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-md font-semibold">{KIND[f.classification].why}</h3>
-                <HumanMark>Prepared example, not model output</HumanMark>
+                <HumanMark>Prepared example, not Veridict's model's output</HumanMark>
               </div>
               <p className="font-serif text-[17px] leading-7">{f.summary}</p>
             </section>

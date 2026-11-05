@@ -165,7 +165,7 @@ function Form({ presetCase, onClose }: { presetCase?: number; onClose: () => voi
       ? `${addedCount} of ${sendableItems.length} added. ${failedCount} ${failedCount === 1 ? "file" : "files"} failed: try again, or remove ${failedCount === 1 ? "it" : "them"}.`
       : !pasting && missing > 0
         ? `${missing} ${missing === 1 ? "file needs" : "files need"} a witness before you can add ${missing === 1 ? "it" : "them"}.`
-        : "The original is stored exactly as uploaded. Nothing is sent to a model until you start a check.";
+        : "The original is stored exactly as uploaded. Nothing is sent to Veridict's model until you start a check.";
 
   return (
     <form onSubmit={submit} className="flex max-h-[calc(100dvh-8rem)] flex-col">

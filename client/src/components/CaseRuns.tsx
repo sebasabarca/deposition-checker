@@ -146,7 +146,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
                 Every session of every witness, compared within each witness and across witnesses. Start here.
               </ScopeOption>
               <ScopeOption name={`scope-${caseId}`} checked={scope === "selected"} onChange={() => setScope("selected")} title="Selected depositions">
-                Only the depositions you choose, read with the same model, checks and scoring.
+                Only the depositions you choose, read with Veridict's model, checks and scoring.
               </ScopeOption>
             </div>
           </fieldset>
@@ -216,7 +216,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
     <Card className="overflow-hidden">
       <CardHeader
         title="Analyze this case"
-        description="Follow the steps in order. The cost is estimated as soon as you choose what to analyze; nothing is sent to a model and nothing is charged until you review the estimate and authorize a spending limit."
+        description="Follow the steps in order. The cost is estimated as soon as you choose what to analyze; nothing is sent to Veridict's model and nothing is charged until you review the estimate and authorize a spending limit."
       />
       {(error || problem) && (
         <div className="space-y-2 px-5 pt-4">
@@ -259,7 +259,7 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
   if (paidBlocked) return box(<p className="text-muted">{paidBlocked}</p>);
   const live = current && estimate?.status === "awaiting_confirmation" && estimate.estimate ? estimate.estimate : null;
   if (live) return figures(live, null);
-  if (reviewWanted) return box(<p className="flex items-center gap-2 text-muted"><LoaderCircle aria-hidden className="size-4 animate-spin" />Preparing the review: a current estimate for this choice, prepared on the server. Nothing is sent to a model.</p>);
+  if (reviewWanted) return box(<p className="flex items-center gap-2 text-muted"><LoaderCircle aria-hidden className="size-4 animate-spin" />Preparing the review: a current estimate for this choice, prepared on the server. Nothing is sent to Veridict's model.</p>);
   if (saved) return figures(saved.estimate, saved.savedAt);
   if (stopped) return box(
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -268,7 +268,7 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
     </div>,
   );
   return box(
-    <p className="flex items-center gap-2 text-muted"><LoaderCircle aria-hidden className="size-4 animate-spin" />{current ? "Estimating the cost: finding the candidate pairs in these depositions. Nothing is sent to a model." : "Updating the estimate for your choice…"}</p>,
+    <p className="flex items-center gap-2 text-muted"><LoaderCircle aria-hidden className="size-4 animate-spin" />{current ? "Estimating the cost: finding the candidate pairs in these depositions. Nothing is sent to Veridict's model." : "Updating the estimate for your choice…"}</p>,
   );
 
   // savedAt: a saved estimate from this browser (a preview; reviewing prepares a current one), or null for the server's.
@@ -292,7 +292,7 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
   }
 }
 
-const NO_KEY = "Paid analysis is off on this server: it needs an Anthropic API key (ANTHROPIC_API_KEY in the server's .env). You can still review the cost and the saved results.";
+const NO_KEY = "Paid analysis is off on this server: it has no API key (see .env.example). You can still review the cost and the saved results.";
 const RECOMMENDED = { label: "Recommended", tone: "good" as const };
 const DISCLAIMER = "Veridict identifies potential inconsistencies for human review. Results are not definitive findings, and an analysis may not detect every contradiction.";
 
@@ -365,7 +365,7 @@ function RunState({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={s.tone} dot>{s.label}</Badge>
-        {test ? <Badge tone="accent">Test model: not a real analysis</Badge> : <Badge tone="neutral">Paid model: {run.model}</Badge>}
+        {test ? <Badge tone="accent">Test model: not a real analysis</Badge> : <Badge tone="neutral">Paid analysis: Veridict's model</Badge>}
         {(run.confirmedAt !== null || test) && <Badge tone="neutral">{EXECUTION[run.execution].label}</Badge>}
         {run.contract === "stretch-v2" && <Badge tone="warn">Contextual Analysis (experimental)</Badge>}
         <span className="text-sm text-muted">Started {formatDate(run.createdAt)}</span>
@@ -373,7 +373,7 @@ function RunState({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean
 
       {(run.status === "queued" || run.status === "retrieving") && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted">Preparing: finding candidate pairs in every session. {test ? "The test model costs nothing." : "Nothing is sent to a model and nothing is charged at this stage."}</p>
+          <p className="text-sm text-muted">Preparing: finding candidate pairs in every session. {test ? "The test model costs nothing." : "Nothing is sent to Veridict's model and nothing is charged at this stage."}</p>
           {cancel}
         </div>
       )}
@@ -447,12 +447,12 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
     <form onSubmit={submit} className="space-y-4">
       <fieldset>
         <legend className="text-sm font-semibold">Choose analysis mode</legend>
-        <p className="mt-0.5 text-xs text-muted">Both modes read the same prepared evidence with the same model, checks and scoring. They differ in speed and price.</p>
+        <p className="mt-0.5 text-xs text-muted">Both modes read the same prepared evidence with Veridict's model, checks and scoring. They differ in speed and price.</p>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {(["standard", "batch"] as const).map((x) => {
             const m = modeEstimate(e, x);
             // Why a mode can't run on this server, from the server's own capability report (never assumed).
-            const off = run.paidAvailable === false ? "Needs an Anthropic API key on the server." : null;
+            const off = run.paidAvailable === false ? "Needs the server's API key." : null;
             return (
               <label key={x} className={cx("flex cursor-pointer gap-3 rounded-lg border border-line px-4 py-3 transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover", (!m || off) && "cursor-not-allowed opacity-60 hover:bg-transparent")}>
                 <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || !!off} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
@@ -475,7 +475,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
       </dl>
       <Alert tone="warn" title={economy ? "This analysis is paid, and can take up to 24 hours" : "This analysis is paid"}>
         <p>
-          Reading every packet calls {run.model} and is charged to the Anthropic API account configured on this server. The estimate is a projection from the size of this case's evidence, not a quote: larger cases cost more. The run stops before any request the limit can't cover; whatever is left stays unread, never counted as reviewed, until you resume with a higher limit.
+          Reading every packet uses Veridict's model and is charged to the API account configured on this server. The estimate is a projection from the size of this case's evidence, not a quote: larger cases cost more. The run stops before any request the limit can't cover; whatever is left stays unread, never counted as reviewed, until you resume with a higher limit.
         </p>
         {economy && (
           <p className="mt-1">
@@ -489,7 +489,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
       ) : run.paidAvailable === false ? (
         <div className="space-y-3">
           <Alert title="Paid analysis isn't set up on this server">
-            Add ANTHROPIC_API_KEY to the server's .env file and restart Veridict to run either mode. Nothing can be sent or charged until then.
+            Add the API key to the server's .env file (see .env.example) and restart Veridict to run either mode. Nothing can be sent or charged until then.
           </Alert>
           <div className="flex flex-wrap gap-2">{cancel}</div>
         </div>
@@ -513,7 +513,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
                 {economy && (
                   <label className="flex items-start gap-3 text-sm">
                     <input type="checkbox" checked={retention} onChange={(ev) => setRetention(ev.target.checked)} className="mt-0.5 size-4 flex-none rounded accent-navy" />
-                    <span>I understand that for economy processing Anthropic stores this testimony and the results for up to 29 days, and that batch processing isn't covered by zero data retention.</span>
+                    <span>I understand that for economy processing the AI provider stores this testimony and the results for up to 29 days, and that batch processing isn't covered by zero data retention.</span>
                   </label>
                 )}
               </div>
@@ -545,7 +545,7 @@ function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean;
         <Badge tone={c.tone} dot>{c.label}</Badge>
         <span className="text-sm text-muted">{c.help}</span>
       </div>
-      {run.status === "blocked_credentials" && <p className="text-sm text-muted">This server has no Anthropic API key (ANTHROPIC_API_KEY in its .env). Nothing was sent and nothing was charged.</p>}
+      {run.status === "blocked_credentials" && <p className="text-sm text-muted">This server has no API key in its .env (see .env.example). Nothing was sent and nothing was charged.</p>}
       {run.error && run.status !== "blocked_credentials" && <p className="text-sm text-muted">{run.error}</p>}
       <Progress run={run} />
       {run.incompleteReasons.length > 0 && (

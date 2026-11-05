@@ -28,8 +28,8 @@ function checklist({ classification, comparable, a, b }: StrengthInput): Strengt
     check("Quotations match the transcript", exact ? 20 : 10, 20, "code", exact ? "Both match exactly." : "At least one only approximately matches."),
     check("The statements are the witness's", 20, 20, "code", "Both are the witness's own words, or plainly adopted."),
     check("Clear assertions", clear * 10, 20, "code", clear === 2 ? "Neither is hedged, unrecalled or secondhand." : `${2 - clear} of 2 is hedged, unrecalled or secondhand.`),
-    check("Same subject, according to the model", comparable === "yes" ? 20 : 0, 20, "claude", comparable === "yes" ? "The model says both concern the same thing." : "The model wasn't sure they concern the same thing."),
-    check("Conflict holds without missing context, according to the model", conflict, 20, "claude", conflict === 20 ? "A direct conflict." : conflict === 10 ? "A conflict only through an inference." : "No conflict established without more context."),
+    check("Same subject, according to Veridict's model", comparable === "yes" ? 20 : 0, 20, "claude", comparable === "yes" ? "Veridict's model says both concern the same thing." : "Veridict's model wasn't sure they concern the same thing."),
+    check("Conflict holds without missing context, according to Veridict's model", conflict, 20, "claude", conflict === 20 ? "A direct conflict." : conflict === 10 ? "A conflict only through an inference." : "No conflict established without more context."),
   ];
 }
 
@@ -41,7 +41,7 @@ export function priorityOf({ classification, comparable, lane, a, b }: StrengthI
   if (lane === "needs_context") return { priority: "needs_context", priorityReason: "Missing context or unresolved attribution." };
   if (lane === "compatible") return { priority: "low", priorityReason: "Not established as conflicting." };
   if (classification !== "direct_contradiction") return { priority: "medium", priorityReason: "The conflict depends on an inference." };
-  if (comparable !== "yes") return { priority: "medium", priorityReason: "The model wasn't sure the passages concern the same thing." };
+  if (comparable !== "yes") return { priority: "medium", priorityReason: "Veridict's model wasn't sure the passages concern the same thing." };
   if (![a, b].some(clearAssertion)) return { priority: "medium", priorityReason: "A direct conflict, but neither side is a plain assertion." };
   return { priority: "high", priorityReason: "A direct conflict on one subject, with at least one plain assertion." };
 }

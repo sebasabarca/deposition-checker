@@ -118,7 +118,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
           </>
         ) : undefined}
       />
-      {analysis.mode === "demo" && <Alert tone="info">This is an example analysis. No model was called for it.</Alert>}
+      {analysis.mode === "demo" && <Alert tone="info">This is an example analysis. Veridict's model wasn't used for it.</Alert>}
       {active && <CheckProgress analysis={analysis} pages={pagesOf(caseDetail, analysis)} lines={null} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
       {!done && !active && <Progress analysis={analysis} onResume={(budget) => api.resume(analysis.id, budget).then(load).catch((e: Error) => setError(e.message))} onCancel={() => api.cancel(analysis.id).then(load).catch((e: Error) => setError(e.message))} />}
       {done && analysis.evidence && <CoverageAlert evidence={analysis.evidence} depositions={analysis.depositions} />}
@@ -181,7 +181,7 @@ function CoverageAlert({ evidence, depositions }: { evidence: EvidenceCoverage; 
     <Alert tone="warn" title="This check didn't cover all of the testimony">
       <ul className="list-disc space-y-0.5 pl-5">
         {missing.flatMap(({ s, notes }) => notes.map((n) => <li key={`${s.depositionId}-${n}`}>{sessionName(depositions, s.depositionId)}: {n}</li>))}
-        {partial && <li>The model reported that its review was partial. Its reasons are under “What this check received”.</li>}
+        {partial && <li>Veridict's model reported that its review was partial. Its reasons are under “What this check received”.</li>}
       </ul>
       <p className="mt-1">No finding speaks for testimony the check didn't receive.</p>
     </Alert>
@@ -210,14 +210,14 @@ function WhatItReceived({ evidence, depositions }: { evidence: EvidenceCoverage;
           </ul>
         </section>
         <section>
-          <h3 className="font-semibold">Reported by the model</h3>
+          <h3 className="font-semibold">Reported by Veridict's model</h3>
           {evidence.model === null ? (
-            <p className="mt-1 text-muted">The model gave no answer, so it reported nothing.</p>
+            <p className="mt-1 text-muted">Veridict's model gave no answer, so it reported nothing.</p>
           ) : (
             <>
               <p className="mt-1">{evidence.model.completionStatus === "complete" ? "It said it considered all the testimony it was given." : "It said its review was partial."}{limitations.length === 0 && " It reported no limitations."}</p>
               {limitations.length > 0 && <ul className="mt-1 list-disc space-y-1 pl-5">{limitations.map((l) => <li key={l}>{l}</li>)}</ul>}
-              <p className="mt-1.5 text-xs text-faint">The model's own account, not checked by Veridict.</p>
+              <p className="mt-1.5 text-xs text-faint">Veridict's model's own account, not checked by the transcript checks.</p>
             </>
           )}
         </section>

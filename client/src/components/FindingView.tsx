@@ -142,7 +142,7 @@ export function ModelAssessment({ f }: { f: FindingDetail }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-md font-semibold">{contradiction && f.cross ? "Why the accounts may conflict" : contradiction ? "Why the statements may conflict" : f.classification === "false_positive" ? "Why they may be compatible" : "Assessment"}</h2>
         {/* A prepared demo assessment was written by a person: never badge it as the model's reading. */}
-        {f.source.kind === "fixture" ? <HumanMark>Prepared example, not model output</HumanMark> : <ModelMark />}
+        {f.source.kind === "fixture" ? <HumanMark>Prepared example, not Veridict's model's output</HumanMark> : <ModelMark />}
       </div>
       <p className="font-serif text-[17px] leading-7">{a.explanation}</p>
       {f.direct ? (
@@ -199,7 +199,7 @@ export function ChecksCard({ f }: { f: FindingDetail }) {
         <ShieldCheck aria-hidden className="size-4 text-ok" />
         <h3 className="font-semibold">Transcript checks</h3>
       </div>
-      <p className="text-sm text-muted">Done by code against the stored transcript, not by the model.</p>
+      <p className="text-sm text-muted">Done by code against the stored transcript, not by Veridict's model.</p>
       <ul className="mt-3 space-y-3 text-sm">
         {(["a", "b"] as const).map((k) => {
           const s = f[k];

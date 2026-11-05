@@ -90,11 +90,11 @@ export function crossLaneOf(classification: CrossFinding["classification"], evid
   if (unverified.length > 0) return { lane: "unverified", reasons: unverified };
 
   if (sides.some((s) => s.noRecall)) return { lane: "compatible", reasons: ["One witness doesn't recall. A lack of recollection is not a conflict with another witness's memory."] };
-  if (classification === "recollection_or_knowledge_difference") return { lane: "compatible", reasons: ["The model judged this a difference in recollection or knowledge, not a conflict."] };
-  if (classification === "compatible") return { lane: "compatible", reasons: ["The model judged both accounts compatible."] };
+  if (classification === "recollection_or_knowledge_difference") return { lane: "compatible", reasons: ["Veridict's model judged this a difference in recollection or knowledge, not a conflict."] };
+  if (classification === "compatible") return { lane: "compatible", reasons: ["Veridict's model judged both accounts compatible."] };
 
   const doubts: string[] = [];
-  if (classification === "possible_conflict_needs_context") doubts.push("The model said this depends on context the testimony doesn't settle.");
+  if (classification === "possible_conflict_needs_context") doubts.push("Veridict's model said this depends on context the testimony doesn't settle.");
   if (evidenceStatus === "approximate") doubts.push("A quotation only approximately matches the transcript.");
   if (sides.some((s) => s.level === "uncertain")) doubts.push("Code couldn't establish who said a cited statement.");
   if (sides.some((s) => s.ocr.lowLines.length > 0)) doubts.push("A cited line was hard to read on the scanned page. Compare it with the page image.");

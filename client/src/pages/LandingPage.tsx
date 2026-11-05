@@ -328,7 +328,7 @@ function HowItWorks() {
 
 const TRUST = [
   { icon: Lock, title: "Your cases stay yours.", text: "Each account sees only its own cases, depositions and findings. Sessions live in HttpOnly cookies, and passwords and links are stored only as hashes." },
-  { icon: ShieldCheck, title: "Nothing leaves until you start.", text: "Uploading and reading a transcript happen on Veridict's server. Only when you start a check are the two sessions sent to the AI model for analysis." },
+  { icon: ShieldCheck, title: "Nothing leaves until you start.", text: "Uploading and reading a transcript happen on Veridict's server. Only when you start a check are the two sessions sent to Veridict's model for analysis." },
   { icon: ReceiptText, title: "Every check shows its cost.", text: "An estimate before you start, the measured cost after, and a budget no check can exceed." },
   { icon: FileText, title: "Nothing third-party in the app.", text: "No trackers, ad scripts or outside fonts. The app loads only from its own server." },
 ];
@@ -362,7 +362,7 @@ function Close() {
         <div className="grid items-center gap-12 min-[900px]:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
           <div>
             <h2 className="max-w-[18ch] font-serif text-[clamp(36px,5vw,68px)] leading-[1.02] font-semibold tracking-[-0.02em]">Find it before opposing counsel does.</h2>
-            <p className="mt-6 max-w-[34rem] text-[18px] leading-relaxed text-muted">Veridict is in early access. Create an account, add two sessions, and read your first findings side by side. Checks that use the AI model are turned on per account.</p>
+            <p className="mt-6 max-w-[34rem] text-[18px] leading-relaxed text-muted">Veridict is in early access. Create an account, add two sessions, and read your first findings side by side. Checks that use Veridict's model are turned on per account.</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a href={href.register()} className="flex h-12 items-center gap-2 rounded-md bg-navy px-5 text-[15px] font-semibold text-white hover:bg-navy-3">Get started<ArrowRight aria-hidden className="size-4" /></a>
               <a href={href.signin()} className="flex h-12 items-center rounded-md px-5 text-[15px] font-semibold text-ink ring-1 ring-control ring-inset hover:bg-hover">Sign in</a>

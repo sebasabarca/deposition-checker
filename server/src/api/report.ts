@@ -52,7 +52,7 @@ export async function reportData(db: Database, caseId: number, analysisIds: numb
   const views = await Promise.all(done.map((a) => analysisView(db, a.id)));
   const gaps = views.flatMap((v) => (v?.evidence?.sessions ?? []).flatMap((s) => s.notes.map((n) => `${witness.get(v!.witnessId) ?? "Witness"}, session of ${day(taken.get(s.depositionId) ?? null)}: ${n}`)));
   const partial = views.filter((v) => v?.evidence?.model?.completionStatus === "partial").length;
-  if (partial > 0) gaps.push(`${partial === 1 ? "One analysis's" : `${partial} analyses'`} model reported a partial review.`);
+  if (partial > 0) gaps.push(`${partial === 1 ? "One analysis's" : `${partial} analyses'`} Veridict's model reported a partial review.`);
   return { name: detail.case.name, witnesses: detail.witnesses.map((w) => w.name), covered, gaps, kept, context, withContext, entries };
 }
 
@@ -104,7 +104,7 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
   const handWritten = (f: Report["entries"][number]) => r.authorship === "hand" || f.source?.kind === "fixture";
   const hand = r.entries.filter(handWritten).length;
   const authorship = r.authorship === "hand" || (r.entries.length > 0 && hand === r.entries.length)
-    ? "The explanations are prepared examples written by hand for this demonstration; no model was run."
+    ? "The explanations are prepared examples written by hand for this demonstration; Veridict's model was not used."
     : hand > 0 ? "The explanations were written by Veridict's analysis, an AI system, except those marked as prepared examples, which were written by hand; each is labelled."
     : "The explanations were written by Veridict's analysis, an AI system, and are labelled as such.";
   doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(`Each finding below is a lead for review, not a conclusion that any witness testified falsely. Testimony is quoted verbatim from the stored transcript at the cited page and line. ${authorship} Decisions and notes are the reviewer's.`, { width, lineGap: 2 });
@@ -154,7 +154,7 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
       doc.moveDown(0.2);
       doc.font("Helvetica").fontSize(10).fillColor(INK).text(body, left, doc.y, { width, lineGap: 2 });
     };
-    const source = handWritten(f) ? "prepared example, not model output" : "Veridict's analysis";
+    const source = handWritten(f) ? "prepared example, not Veridict's model's output" : "Veridict's analysis";
     section(`Why the statements may conflict (${source})`, f.assessment.explanation);
     if (f.assessment.alternativeExplanation) section(`The innocent explanation (${source})`, f.assessment.alternativeExplanation);
     if (f.reviewNote) {

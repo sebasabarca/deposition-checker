@@ -252,7 +252,7 @@ async function runFenced(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDe
   if (run.execution === "batch") {
     const batch = deps.batch?.(run) ?? null;
     if (!batch) {
-      await update(db, run.id, { status: "blocked_credentials", error: "Paid analysis isn't set up on this server: it needs ANTHROPIC_API_KEY in the server's .env. Nothing was sent.", finishedAt: new Date() });
+      await update(db, run.id, { status: "blocked_credentials", error: "Paid analysis isn't set up on this server: add the API key to the server's .env (see .env.example) and restart. Nothing was sent.", finishedAt: new Date() });
       return "blocked_credentials";
     }
     if (run.status !== "adjudicating") {
@@ -263,7 +263,7 @@ async function runFenced(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDe
   }
   const model = run.mode === "mock" ? mockCaseModel(MOCK_MODEL, contractOf(run)) : deps.adjudicator(run);
   if (!model) {
-    await update(db, run.id, { status: "blocked_credentials", error: "Paid analysis isn't set up on this server: it needs ANTHROPIC_API_KEY in the server's .env. Nothing was sent.", finishedAt: new Date() });
+    await update(db, run.id, { status: "blocked_credentials", error: "Paid analysis isn't set up on this server: add the API key to the server's .env (see .env.example) and restart. Nothing was sent.", finishedAt: new Date() });
     return "blocked_credentials";
   }
   await update(db, run.id, { status: "adjudicating", startedAt: run.startedAt ?? new Date(), finishedAt: null, error: null });
