@@ -42,15 +42,13 @@ npm run db:up && npm run db:migrate
 ALLOW_STRETCH_V2=true npm run dev        # API 3001, worker, client 5173
 ```
 
-Leave `ALLOW_PAID_CALLS` unset (off) for demonstrations.
+Leave `ANTHROPIC_API_KEY` empty for a demonstration that can't spend anything. For a local demo without
+credentials, set `LOCAL_MODE=true` and `LOCAL_DEMO_EMAIL` to the demo account; the sign-in page then offers
+**Open the demo workspace** (from this computer only).
 
-To offer both paid modes, set these in `.env`, never in code or on the command line in shared logs:
-- `ANTHROPIC_API_KEY`: the analysis key.
-- `ALLOW_PAID_CALLS=true`: Fast analysis.
-- `ALLOW_ECONOMY_ANALYSIS=true`: Economy analysis, through the Message Batches API. Its batch data is retained by
-  the provider for up to 29 days; the screen asks the person to acknowledge this.
-
-Then restart the server and the worker. Every run still needs a confirmed spending limit. Without `ALLOW_STRETCH_V2=true` the V2 option is hidden and
+To offer both paid modes (Fast, and Economy through the Message Batches API, whose data the provider keeps up to
+29 days; the screen asks the person to acknowledge this), put `ANTHROPIC_API_KEY` in `.env`, never in code or on
+the command line in shared logs, and restart the server and the worker. Every run still needs a confirmed spending limit. Without `ALLOW_STRETCH_V2=true` the V2 option is hidden and
 refused by the API.
 
 ## Reproducible demonstration (this machine; no model call)

@@ -10,8 +10,8 @@ import { caseRunSettings, ProviderLimiter } from "./jobs/limiter";
 import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
 import { anthropicPacketBatches } from "./adjudicate/packetBatch";
 import { FakeBatchProvider } from "./eval/mockPacketBatch";
-import { batchSettings, economyAllowed } from "./jobs/caseRunBatch";
-import { contractOf, createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
+import { batchSettings } from "./jobs/caseRunBatch";
+import { analysisKeySet, contractOf, createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
 
 const SHUTDOWN_GRACE_MS = 60_000;
 
@@ -33,11 +33,11 @@ async function main() {
   // Whole-case runs: packet-v1 only, so the worker never sends an experimental contract. Concurrency and the
   // provider's limits come from the environment (jobs/limiter.ts, caseRunSettings); one limiter serves every run.
   const caseRuns = caseRunSettings(process.env);
-  // Economy runs: the Message Batches API when paid calls are allowed. Test-model runs use the in-process fake
+  // Economy runs: the Message Batches API when the server has its analysis key. Test-model runs use the in-process fake
   // provider (no network); its batches live in this process, so a worker restart loses them and the run sees
   // them as missing, which exercises the same recovery as a real lost result.
   const batches = batchSettings(process.env);
-  const live = paidCallsAllowed(process.env) && economyAllowed(process.env) ? anthropicPacketBatches() : null;
+  const live = analysisKeySet(process.env) ? anthropicPacketBatches() : null;
   const fake = new FakeBatchProvider({ processingMs: 4_000 });
   await startCaseRunWorkers(
     boss, db, pool,
@@ -47,12 +47,12 @@ async function main() {
       concurrency: caseRuns.packetsPerCase,
       limiter: new ProviderLimiter(caseRuns.limits),
       // A live run sends its own contract (packet-v1, or the experimental stretch-v2 when the run was created with it).
-      adjudicator: (run) => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator(undefined, contractOf(run))) : null),
+      adjudicator: (run) => (analysisKeySet(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator(undefined, contractOf(run))) : null),
       batch: (run) => (run.mode === "mock" ? { provider: fake, settings: batches } : live ? { provider: live, settings: batches } : null),
     },
     { maxCases: caseRuns.maxCases, batchPollSeconds: batches.pollSeconds },
   );
-  console.log(`Worker running (ingest, analysis and case runs; paid model calls ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"}; case runs: ${caseRuns.maxCases} at once, ${caseRuns.packetsPerCase} packets each, ${caseRuns.limits.maxInFlight} packets in all)`);
+  console.log(`Worker running (ingest, analysis and case runs; paid case runs ${analysisKeySet(process.env) ? "available (each needs confirmation)" : "off (no ANTHROPIC_API_KEY)"}; older checks ${paidCallsAllowed(process.env) ? "ALLOWED" : "off"}; case runs: ${caseRuns.maxCases} at once, ${caseRuns.packetsPerCase} packets each, ${caseRuns.limits.maxInFlight} packets in all)`);
 
   // An unfinished job is redelivered by pg-boss, and stops at once if it was a paid one.
   // A running analysis stops dispatching and aborts what is in flight, then records itself interrupted.

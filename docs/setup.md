@@ -24,8 +24,9 @@ cp .env.example .env        # then set ANTHROPIC_API_KEY only if you will run ap
 |---|---|---|
 | `DATABASE_URL` | the app, worker and scripts | local Docker database `deposition_checker` |
 | `TEST_DATABASE_URL` | database tests and `eval-real`; **wiped on every run**, and its name must end in `_test` | `deposition_checker_test` |
-| `ANTHROPIC_API_KEY` | paid model calls only | placeholder |
-| `ALLOW_PAID_CALLS` | live analyses; leave `false` | `false` |
+| `ANTHROPIC_API_KEY` | paid model calls only; with it the app offers Fast and Economy, each run authorized with a spending limit | empty |
+| `LOCAL_MODE`, `LOCAL_DEMO_EMAIL` | a local installation: API on 127.0.0.1, paid runs authorized per run, and passwordless demo access from this computer | `true`, commented out |
+| `ALLOW_PAID_CALLS` | developer scripts and older checks, per command | commented out |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` | email (printed to the console in development when unset) | commented out |
 
 ## 3. Database

@@ -1268,10 +1268,15 @@ The case page is one guided panel, with one step open at a time; finished steps 
    different AI models.
 3. Review the cost and start: choose fast or economy, and authorize a spending limit. Each mode is offered only
    when the server can run it:
-   - Both modes need paid calls: the analysis key and `ALLOW_PAID_CALLS=true`.
-   - Economy also needs `ALLOW_ECONOMY_ANALYSIS=true`; the worker then uses the Message Batches API.
+   - Both modes need only the server's `ANTHROPIC_API_KEY` (November 5: the `ALLOW_PAID_CALLS` and
+     `ALLOW_ECONOMY_ANALYSIS` switches were dropped for the app, on the developer's instruction, because each run
+     already needs the person's explicit authorization of an enforced spending limit). Economy uses the Message
+     Batches API. Developer scripts keep their per-command switches.
+   - `LOCAL_MODE=true` (one person on their own computer): the API listens on 127.0.0.1, any account may authorize
+     paid runs, and `LOCAL_DEMO_EMAIL` (an `@example.test` account only) can be opened without a password from a
+     loopback request with a localhost Host. Registration, sessions and organisation scoping are unchanged.
 
-   The API reports `paidAvailable`, `economyAvailable` and `economyBlocked` (`paid_off` or `economy_off`). The screen
+   The API reports `paidAvailable`, `economyAvailable` and `economyBlocked` (`paid_off` without a key). The screen
    names what is missing, and never offers a mode that would stop at once.
 4. The analysis and its results.
 

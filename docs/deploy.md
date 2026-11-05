@@ -8,7 +8,8 @@ and the worker (parsing, OCR and analyses). They share Postgres and the uploads 
 ```sh
 cp .env.example .env
 # Set POSTGRES_PASSWORD (long and random) and ANTHROPIC_API_KEY.
-# Set ALLOW_PAID_CALLS=true only when live checks should call Claude.
+# With ANTHROPIC_API_KEY set, whole-case analyses can be authorized by accounts granted paid access (npm run admin).
+# Never set LOCAL_MODE here (compose.prod.yml doesn't pass it): it is for one person's own computer.
 docker compose -f compose.prod.yml up -d --build
 ```
 

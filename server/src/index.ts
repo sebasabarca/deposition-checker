@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import { analysisRoutes, caseRunRoutes, caseRoutes, depositionRoutes, reportRoutes } from "./api";
 import { accountGates, authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
 import { connect } from "./db/client";
+import { localMode } from "./local";
 import { isEvidenceOnHold } from "./evidence";
 import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, startBoss } from "./jobs";
 
@@ -73,7 +74,10 @@ function mountClient() {
 }
 
 const PORT = Number(process.env.PORT ?? 3001);
+// Local mode (local.ts) answers only this computer: loopback, and never behind a proxy that would hide the caller.
+if (localMode() && process.env.TRUST_PROXY) throw new Error("LOCAL_MODE=true can't be used with TRUST_PROXY: local mode is for one computer, not behind a proxy.");
 mountDepositionRoutes().then(() => {
   mountClient();
-  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+  if (localMode()) app.listen(PORT, "127.0.0.1", () => console.log(`Server running on http://127.0.0.1:${PORT} (local mode: this computer only)`));
+  else app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 });

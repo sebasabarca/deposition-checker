@@ -8,8 +8,7 @@ import type { Database } from "../db/client";
 import { caseRuns, cases, depositions } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
 import { CASE_RUN_CONTRACTS, caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun, stretchAllowed } from "../jobs/caseRun";
-import { paidCallsAllowed } from "../jobs/analysis";
-import { economyAllowed } from "../jobs/caseRunBatch";
+import { analysisKeySet } from "../jobs/analysis";
 
 const Id = z.coerce.number().int().positive();
 const ACTIVE = ["queued", "retrieving", "awaiting_confirmation", "adjudicating"];
@@ -26,15 +25,14 @@ const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execu
 export const MAX_CASE_RUN_BUDGET_USD = 250;
 const Budget = z.number().positive().max(MAX_CASE_RUN_BUDGET_USD);
 
-// env: where the economy flag is read (process.env; tests pass their own).
-// What this server can actually run, so the screen never offers a mode that would stop at once:
-//   paidAvailable     the analysis key is set and ALLOW_PAID_CALLS=true (both modes need it)
-//   economyAvailable  paidAvailable and ALLOW_ECONOMY_ANALYSIS=true (the worker then uses the Message Batches API)
-//   economyBlocked    why economy can't run here: "paid_off" or "economy_off", or null
+// env: where the analysis key is looked for (process.env; tests pass their own).
+// What this server can actually run, so the screen never offers a mode that would stop at once. Fast and Economy
+// (the Message Batches API) both need only the server's ANTHROPIC_API_KEY; each run still needs confirmation.
+//   paidAvailable / economyAvailable  the key is set
+//   economyBlocked                    "paid_off" without a key, else null
 export const capabilities = (env: Record<string, string | undefined>) => {
-  const paid = paidCallsAllowed(env as NodeJS.ProcessEnv);
-  const economy = economyAllowed(env);
-  return { paidAvailable: paid, economyAvailable: paid && economy, economyBlocked: !paid ? ("paid_off" as const) : !economy ? ("economy_off" as const) : null };
+  const paid = analysisKeySet(env);
+  return { paidAvailable: paid, economyAvailable: paid, economyBlocked: paid ? null : ("paid_off" as const) };
 };
 
 export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; boss: PgBoss; env?: Record<string, string | undefined> }): Router {
@@ -98,7 +96,7 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const id = Id.safeParse(req.params.id);
     const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
-    if (body.data.execution === "batch" && !economyAllowed(env)) return res.status(409).json({ error: "Economy analysis isn't turned on for this server (ALLOW_ECONOMY_ANALYSIS=true). Use Fast analysis.", code: "economy_disabled" });
+    if (!analysisKeySet(env)) return res.status(409).json({ error: "Paid analysis isn't set up on this server: add ANTHROPIC_API_KEY to the server's .env and restart. Nothing was sent.", code: "paid_unavailable" });
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
     if (outcome === "no_acknowledgement") return res.status(400).json({ error: "Economy analysis stores the testimony with the AI provider for up to 29 days. Confirm that you understand this to use it.", code: "retention_not_acknowledged" });

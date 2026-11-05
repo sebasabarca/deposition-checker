@@ -65,8 +65,19 @@ export function SignInPage({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { submit, error, busy } = useSubmit(() => api.signIn(email.trim(), password), (r) => onSignedIn(r.user));
+  // Local mode on this computer only (server/src/local.ts): the saved demo workspace, without a password.
+  const [demo, setDemo] = useState(false);
+  useEffect(() => { api.localDemo().then((r) => setDemo(r.available), () => setDemo(false)); }, []);
+  const openDemo = useSubmit(() => api.openLocalDemo(), (r) => onSignedIn(r.user));
   return (
     <AuthCard title="Sign in" description="Review potential contradictions in your witnesses' testimony." footer={<>New to Veridict? <a href={href.register()} className={linkClass}>Create an account</a></>}>
+      {demo && (
+        <form onSubmit={openDemo.submit} className="mb-6 space-y-2 border-b border-rule pb-6">
+          <Button type="submit" variant="secondary" className="h-10 w-full" disabled={openDemo.busy}>{openDemo.busy ? "Opening…" : "Open the demo workspace"}</Button>
+          <p className="text-xs leading-5 text-faint">A saved example case on this computer. No account needed.</p>
+          {openDemo.error && <Alert>{openDemo.error}</Alert>}
+        </form>
+      )}
       <form onSubmit={submit} className="space-y-4">
         <Labeled label="Email">{(id) => <input id={id} type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" autoFocus />}</Labeled>
         <Labeled label="Password">{(id) => <PasswordInput id={id} value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />}</Labeled>

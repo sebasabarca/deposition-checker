@@ -10,7 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { analysisRoutes, caseRoutes, depositionRoutes } from "../../server/src/api";
 import { accountGates, authRoutes, hashPassword, resetRateLimits, requireUser, sameOrigin, scopeToOrg, verifyPassword } from "../../server/src/auth";
 import type { Database } from "../../server/src/db/client";
-import { authTokens, cases, sessions, users } from "../../server/src/db/schema";
+import { authTokens, cases, orgs, sessions, users } from "../../server/src/db/schema";
 import type { Email } from "../../server/src/email";
 import { createAnalysisQueues, createIngestQueues, startBoss } from "../../server/src/jobs";
 import { emptyTables, listen, openTestDatabase, TEST_DATABASE_URL } from "./database";
@@ -98,6 +98,31 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
     expect(ok.setCookie).toMatch(/HttpOnly/i);
     expect((await b("GET", "/auth/me")).body.user.emailVerified).toBe(true);
     expect((await browser()("POST", "/auth/verify", { token })).status).toBe(400); // single use
+  });
+
+  it("opens the demo workspace without a password only in local mode, and grants paid access only there", async () => {
+    const [org] = await db.insert(orgs).values({ name: "Demo" }).returning({ id: orgs.id });
+    await db.insert(users).values({ orgId: org.id, email: "demo@example.test", name: "Demo", passwordHash: await hashPassword("a long passphrase"), emailVerifiedAt: new Date() });
+    const saved = { mode: process.env.LOCAL_MODE, email: process.env.LOCAL_DEMO_EMAIL };
+    try {
+      delete process.env.LOCAL_MODE;
+      process.env.LOCAL_DEMO_EMAIL = "demo@example.test";
+      expect((await browser()("GET", "/auth/local-demo")).body).toEqual({ available: false });
+      expect((await browser()("POST", "/auth/local-demo")).status).toBe(404);
+      process.env.LOCAL_MODE = "true";
+      const b = browser();
+      expect((await b("GET", "/auth/local-demo")).body).toEqual({ available: true }); // the test server is on 127.0.0.1
+      expect((await b("POST", "/auth/local-demo", undefined, { origin: "http://evil.example" })).status).toBe(403);
+      const opened = await b("POST", "/auth/local-demo");
+      expect(opened).toMatchObject({ status: 200, body: { user: { email: "demo@example.test", analysisAccess: true } } });
+      expect((await b("GET", "/auth/me")).body.user.analysisAccess).toBe(true);
+      process.env.LOCAL_DEMO_EMAIL = "ana@harlow.law"; // never a real account
+      expect((await browser()("POST", "/auth/local-demo")).status).toBe(404);
+      delete process.env.LOCAL_MODE;
+      expect((await b("GET", "/auth/me")).body.user.analysisAccess).toBe(false); // outside local mode, as granted
+    } finally {
+      for (const [k, v] of [["LOCAL_MODE", saved.mode], ["LOCAL_DEMO_EMAIL", saved.email]] as const) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
   });
 
   it("refuses an expired link", async () => {

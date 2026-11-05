@@ -49,9 +49,9 @@ export const BATCH_DEFAULTS: BatchSettings = { batchSize: 100, maxBytes: 32 * 10
 export const MOCK_POLL_SECONDS = 2;
 const LIST_SKEW_MS = 2 * 60_000; // provider and server clocks may differ
 
-// Paid economy runs stay off until a person turns them on (ALLOW_ECONOMY_ANALYSIS=true), on top of
-// ALLOW_PAID_CALLS: the Batch API keeps testimony 29 days and hasn't been validated with a real pilot yet. Fast
-// runs and test-model runs (fast or economy) don't depend on it.
+// The developer script's extra switch for a paid economy run (scripts/case-run.ts --live --economy), on top of
+// ALLOW_PAID_CALLS. The app doesn't read it: there, economy needs only the key and the person's confirmation,
+// which includes acknowledging that the Batch API keeps testimony 29 days.
 export const economyAllowed = (env: Record<string, string | undefined>) => env.ALLOW_ECONOMY_ANALYSIS === "true";
 
 export function batchSettings(env: Record<string, string | undefined>): BatchSettings {

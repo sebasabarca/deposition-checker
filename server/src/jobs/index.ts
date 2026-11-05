@@ -14,7 +14,7 @@ import { failureMessage, recordIngestFailure, runIngestJob } from "./ingest";
 import { CASE_RUN_FAILED_QUEUE, CASE_RUN_QUEUE, enqueueCaseRun, parseCaseRunJob, ANALYSIS_FAILED_QUEUE, ANALYSIS_QUEUE, enqueueAnalysis, INGEST_FAILED_QUEUE, INGEST_QUEUE, parseAnalysisJob, parseIngestJob, DISCOVERY_POLL_SECONDS, PARSING_RECHECK_SECONDS } from "./queue";
 
 export { failureMessage, recordIngestFailure, runIngestJob, type IngestJobResult } from "./ingest";
-export { analysisCost, candidateSetOf, DIRECT_FABLE, interruptAnalysis, MAX_CONSECUTIVE_FAILURES, paidCallsAllowed, RUNNER_STALE_MS, runAnalysis, TERMINAL, type Analysis, type AnalysisDeps, type AnalysisProgress, type RunOutcome } from "./analysis";
+export { analysisCost, candidateSetOf, DIRECT_FABLE, interruptAnalysis, MAX_CONSECUTIVE_FAILURES, analysisKeySet, paidCallsAllowed, RUNNER_STALE_MS, runAnalysis, TERMINAL, type Analysis, type AnalysisDeps, type AnalysisProgress, type RunOutcome } from "./analysis";
 export { CASE_RUN_TERMINAL, caseRunFindings, caseRunReport, caseRunSetOf, contractOf, createCaseRun, fromPacketAdjudicator, stretchAllowed, mockCaseModel, resumeCaseRun, runCaseRun, type CaseRunDeps } from "./caseRun";
 export { CASE_RUN_QUEUE, createCaseRunQueues, enqueueCaseRun } from "./queue";
 export { batchSettings, BATCH_DEFAULTS, runBatchTick, type BatchDeps, type BatchSettings } from "./caseRunBatch";

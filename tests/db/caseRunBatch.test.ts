@@ -423,20 +423,20 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
 
       const live = (await (await post(`/cases/${caseId}/case-runs`, { mode: "live" })).json()).caseRun;
       expect(await runCaseRun(db, pool, live.id, batchDeps(fake()))).toBe("awaiting_confirmation");
-      // Paid economy stays off unless the server enables it; the report says so, and fast still works.
-      env = {};
-      const off = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch", retentionAcknowledged: true });
-      expect(off.status).toBe(409);
-      expect((await off.json()).code).toBe("economy_disabled");
-      expect((await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun.economyAvailable).toBe(false);
+      // Without the server's API key neither mode can be confirmed, and the report says so; the flags aren't read.
+      env = { ALLOW_PAID_CALLS: "true", ALLOW_ECONOMY_ANALYSIS: "true" };
+      for (const execution of ["standard", "batch"]) {
+        const off = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution, retentionAcknowledged: true });
+        expect(off.status).toBe(409);
+        expect((await off.json()).code).toBe("paid_unavailable");
+      }
       const report = async () => (await (await fetch(`${server.url}/api/case-runs/${live.id}`)).json()).caseRun;
-      // The switch alone isn't enough: economy needs paid calls configured too, and the report says which is missing.
-      env = { ALLOW_ECONOMY_ANALYSIS: "true" };
-      expect(await report()).toMatchObject({ economyAvailable: false, paidAvailable: false, economyBlocked: "paid_off" });
-      env = { ALLOW_PAID_CALLS: "true", ANTHROPIC_API_KEY: "test-not-a-key" };
-      expect(await report()).toMatchObject({ economyAvailable: false, paidAvailable: true, economyBlocked: "economy_off" });
-      env = { ALLOW_ECONOMY_ANALYSIS: "true", ALLOW_PAID_CALLS: "true", ANTHROPIC_API_KEY: "test-not-a-key" };
-      expect(await report()).toMatchObject({ economyAvailable: true, paidAvailable: true, economyBlocked: null });
+      expect(await report()).toMatchObject({ status: "awaiting_confirmation", economyAvailable: false, paidAvailable: false, economyBlocked: "paid_off" });
+      // The key alone offers both modes; the run still waits for an explicit confirmation with a budget.
+      env = { ANTHROPIC_API_KEY: "test-not-a-key" };
+      expect(await report()).toMatchObject({ status: "awaiting_confirmation", economyAvailable: true, paidAvailable: true, economyBlocked: null });
+      expect((await post(`/case-runs/${live.id}/confirm`, { execution: "standard" })).status).toBe(400); // no spending limit
+      expect(sent).toHaveLength(2); // the mock run and the live estimate: nothing confirmed, so no paid work queued
       const refused = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch" });
       expect(refused.status).toBe(400);
       expect((await refused.json()).code).toBe("retention_not_acknowledged");

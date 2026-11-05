@@ -12,6 +12,7 @@ import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "./db/client";
 import { analyses, authTokens, caseRuns, cases, depositions, findings, orgs, sessions, users } from "./db/schema";
+import { fromLoopback, localDemoEmail, localMode } from "./local";
 import { alreadyRegistered, emailChanged, passwordChanged, resendMailer, resetPassword, verifyEmail, type Email as EmailMessage, type Mailer } from "./email";
 
 const scrypt = (password: string, salt: Buffer, keylen: number, options: ScryptOptions) =>
@@ -73,7 +74,7 @@ export async function sessionUser(db: Database, req: Request): Promise<SessionUs
     .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, new Date())));
   if (!row) return null;
   const { verifiedAt, ...user } = row;
-  return { ...user, emailVerified: verifiedAt !== null };
+  return { ...user, analysisAccess: user.analysisAccess || localMode(), emailVerified: verifiedAt !== null };
 }
 
 // Every API request after this one has res.locals.user, or got a 401.
@@ -304,6 +305,18 @@ export function authRoutes(db: Database, { mailer = resendMailer }: { mailer?: M
     return res.json({ user: await sessionUserById(db, userId) });
   });
 
+  // Local mode only: the saved demo workspace without a password, from this computer (local.ts).
+  const demoOpen = (req: Request) => localDemoEmail() !== null && fromLoopback(req);
+  router.get("/auth/local-demo", (req, res) => res.json({ available: demoOpen(req) }));
+  router.post("/auth/local-demo", async (req, res) => {
+    const email = localDemoEmail();
+    if (!email || !fromLoopback(req)) return res.status(404).json({ error: "No such endpoint." });
+    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+    if (!user) return res.status(404).json({ error: "The demo workspace isn't in this database." });
+    await startSession(db, res, req, user.id);
+    return res.json({ user: await sessionUserById(db, user.id) });
+  });
+
   router.post("/auth/signout", async (req, res) => {
     const token = readCookie(req, SESSION_COOKIE);
     if (token) await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash(token)));
@@ -390,5 +403,6 @@ export function authRoutes(db: Database, { mailer = resendMailer }: { mailer?: M
 async function sessionUserById(db: Database, id: number) {
   const [row] = await db.select({ id: users.id, email: users.email, name: users.name, verifiedAt: users.emailVerifiedAt, analysisAccess: users.analysisAccess, onboardedAt: users.onboardedAt }).from(users).where(eq(users.id, id));
   const { verifiedAt, onboardedAt, ...user } = row;
-  return { ...user, emailVerified: verifiedAt !== null, onboarded: onboardedAt !== null };
+  // Local mode: whoever runs the server pays for its key, so no account needs paid access granted (local.ts).
+  return { ...user, analysisAccess: user.analysisAccess || localMode(), emailVerified: verifiedAt !== null, onboarded: onboardedAt !== null };
 }

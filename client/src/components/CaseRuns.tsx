@@ -18,14 +18,14 @@ import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputCl
 export function useCaseRuns(caseId: number) {
   const [runs, setRuns] = useState<CaseRun[] | null>(null);
   const [stretchAvailable, setStretchAvailable] = useState(false);
-  const [economyAvailable, setEconomyAvailable] = useState(false); // the server's own report (paid calls and economy both configured)
+  const [paidAvailable, setPaidAvailable] = useState(true); // the server's own report: it has an Anthropic API key (Fast and Economy)
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setEconomyAvailable(!!r.economyAvailable); setError(null); }, (e: Error) => setError(e.message));
+    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setPaidAvailable(r.paidAvailable !== false); setError(null); }, (e: Error) => setError(e.message));
   }, [caseId]);
   useEffect(load, [load]);
   usePoll(!!runs?.[0] && MOVING_RUN.includes(runs[0].status), 3000, load);
-  return { runs, stretchAvailable, economyAvailable, error, reload: load };
+  return { runs, stretchAvailable, paidAvailable, error, reload: load };
 }
 
 export const WHOLE_CASE_PANEL = "whole-case-analysis";
@@ -41,7 +41,7 @@ const ESTIMATE_DELAY_MS = 900;
 // The whole analysis of a case, in one place: one step open at a time, finished steps summarized in a line.
 // depositions: step 1's content (the case page's sessions by witness, with dates and moves); onAdd opens the upload.
 export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId: number; sessions: WorkflowSession[]; depositions: ReactNode; onAdd: () => void }) {
-  const { runs, stretchAvailable, economyAvailable, error, reload } = useCaseRuns(caseId);
+  const { runs, stretchAvailable, paidAvailable, error, reload } = useCaseRuns(caseId);
   const [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<AnalysisScope>("case");
   const [selected, setSelected] = useState<number[]>([]);
@@ -176,7 +176,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
             <p className="max-w-3xl text-xs text-muted">{DISCLAIMER}</p>
           )}
           <EstimateStrip
-            invalid={invalid} paidBlocked={paidBlocked} estimate={estimate} stopped={stopped} saved={saved} reviewWanted={reviewWanted} economyAvailable={economyAvailable}
+            invalid={invalid} paidBlocked={paidBlocked} estimate={estimate} stopped={stopped} saved={saved} reviewWanted={reviewWanted} paidAvailable={paidAvailable}
             current={!!estimate && desired !== null && runScopeKey(estimate) === desired}
             busy={busy}
             onReview={() => (estimate && desired !== null && runScopeKey(estimate) === desired && estimate.status === "awaiting_confirmation" ? setChoice("review") : setReviewWanted(true))}
@@ -253,7 +253,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
 
 // The estimate for the current choice, prepared automatically: why it can't be prepared, that it is being prepared,
 // or what it came to, with the way on to the review.
-function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewWanted, economyAvailable, current, busy, onReview, onRetry }: { invalid: string | null; paidBlocked: string | null; estimate: CaseRun | null; stopped: CaseRun | null; saved: SavedEstimate | null; reviewWanted: boolean; economyAvailable: boolean; current: boolean; busy: boolean; onReview: () => void; onRetry: () => void }) {
+function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewWanted, paidAvailable, current, busy, onReview, onRetry }: { invalid: string | null; paidBlocked: string | null; estimate: CaseRun | null; stopped: CaseRun | null; saved: SavedEstimate | null; reviewWanted: boolean; paidAvailable: boolean; current: boolean; busy: boolean; onReview: () => void; onRetry: () => void }) {
   const box = (children: ReactNode) => <div aria-live="polite" className="rounded-lg bg-well px-4 py-3 text-sm">{children}</div>;
   if (invalid) return box(<p role="alert" className="text-conflict">{invalid}</p>);
   if (paidBlocked) return box(<p className="text-muted">{paidBlocked}</p>);
@@ -280,17 +280,19 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
         <div className="flex flex-wrap items-end justify-between gap-4">
           <dl className="flex flex-wrap gap-x-8 gap-y-2">
             <div><dt className="text-xs text-faint">Estimated cost, fast</dt><dd className="text-lg font-semibold tabular-nums">{cost(fast)}</dd></div>
-            {economy && <div><dt className="text-xs text-faint">Economy{economyAvailable ? "" : ", not available on this server"}</dt><dd className={cx("text-lg font-semibold tabular-nums", !economyAvailable && "text-faint")}>{cost(economy)}</dd></div>}
+            {economy && <div><dt className="text-xs text-faint">Estimated cost, economy</dt><dd className="text-lg font-semibold tabular-nums">{cost(economy)}</dd></div>}
             <div><dt className="text-xs text-faint">Candidate pairs to read</dt><dd className="text-lg font-semibold tabular-nums">{e.listedPairs.toLocaleString()}</dd></div>
           </dl>
           <Button disabled={busy} onClick={onReview}>Review and start<ArrowRight aria-hidden className="size-4" /></Button>
         </div>
+        {!paidAvailable && <p className="text-xs text-muted">{NO_KEY}</p>}
         {savedAt !== null && <p className="text-xs text-muted">Estimate saved at {new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} for this choice. Reviewing prepares a current one first.</p>}
       </div>,
     );
   }
 }
 
+const NO_KEY = "Paid analysis is off on this server: it needs an Anthropic API key (ANTHROPIC_API_KEY in the server's .env). You can still review the cost and the saved results.";
 const RECOMMENDED = { label: "Recommended", tone: "good" as const };
 const DISCLAIMER = "Veridict identifies potential inconsistencies for human review. Results are not definitive findings, and an analysis may not detect every contradiction.";
 
@@ -450,7 +452,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
           {(["standard", "batch"] as const).map((x) => {
             const m = modeEstimate(e, x);
             // Why a mode can't run on this server, from the server's own capability report (never assumed).
-            const off = run.paidAvailable === false ? "Needs paid analysis to be set up on this server." : x === "batch" && run.economyAvailable === false ? (run.economyBlocked === "economy_off" ? "Not turned on for this server. An administrator enables it with ALLOW_ECONOMY_ANALYSIS=true." : "Needs paid analysis to be set up on this server.") : null;
+            const off = run.paidAvailable === false ? "Needs an Anthropic API key on the server." : null;
             return (
               <label key={x} className={cx("flex cursor-pointer gap-3 rounded-lg border border-line px-4 py-3 transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover", (!m || off) && "cursor-not-allowed opacity-60 hover:bg-transparent")}>
                 <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || !!off} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
@@ -487,7 +489,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
       ) : run.paidAvailable === false ? (
         <div className="space-y-3">
           <Alert title="Paid analysis isn't set up on this server">
-            Running either mode needs the Anthropic API key and paid calls turned on (ALLOW_PAID_CALLS=true; economy also needs ALLOW_ECONOMY_ANALYSIS=true). Nothing can be sent or charged until an administrator sets it up. This estimate stays here until then.
+            Add ANTHROPIC_API_KEY to the server's .env file and restart Veridict to run either mode. Nothing can be sent or charged until then.
           </Alert>
           <div className="flex flex-wrap gap-2">{cancel}</div>
         </div>
@@ -543,7 +545,7 @@ function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean;
         <Badge tone={c.tone} dot>{c.label}</Badge>
         <span className="text-sm text-muted">{c.help}</span>
       </div>
-      {run.status === "blocked_credentials" && <p className="text-sm text-muted">This server isn't set up to call the model (it needs an API key and ALLOW_PAID_CALLS=true). Nothing was sent and nothing was charged.</p>}
+      {run.status === "blocked_credentials" && <p className="text-sm text-muted">This server has no Anthropic API key (ANTHROPIC_API_KEY in its .env). Nothing was sent and nothing was charged.</p>}
       {run.error && run.status !== "blocked_credentials" && <p className="text-sm text-muted">{run.error}</p>}
       <Progress run={run} />
       {run.incompleteReasons.length > 0 && (
