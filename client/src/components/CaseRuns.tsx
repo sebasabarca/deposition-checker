@@ -442,25 +442,35 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
     ev.preventDefault();
     if (!problem && agreed && (!economy || retention)) act(api.confirmCaseRun(run.id, Number(limit), execution, retention));
   };
-  const cost = (x: { lowUsd: number; highUsd: number }) => (x.lowUsd === x.highUsd ? formatUsd(x.lowUsd) : `${formatUsd(x.lowUsd)}–${formatUsd(x.highUsd)}`);
+  // Two decimals in this step (the shared formatter shows four below $1); amounts under a cent read "under $0.01".
+  const usd = (n: number) => (n > 0 && n < 0.005 ? "under $0.01" : `$${n.toFixed(2)}`);
+  const cost = (x: { lowUsd: number; highUsd: number }) => (usd(x.lowUsd) === usd(x.highUsd) ? usd(x.lowUsd) : `${usd(x.lowUsd)}–${usd(x.highUsd)}`);
   return (
     <form onSubmit={submit} className="space-y-4">
       <fieldset>
-        <legend className="text-sm font-semibold">Choose analysis mode</legend>
-        <p className="mt-0.5 text-xs text-muted">Both modes read the same prepared evidence with Veridict's model, checks and scoring. They differ in speed and price.</p>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <legend className="text-sm font-semibold">Choose your analysis speed</legend>
+        <p className="mt-0.5 text-sm text-muted">Both options examine the same prepared evidence using the same analysis method. The difference is how quickly results are delivered and how much they cost.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {(["standard", "batch"] as const).map((x) => {
             const m = modeEstimate(e, x);
             // Why a mode can't run on this server, from the server's own capability report (never assumed).
             const off = run.paidAvailable === false ? "Needs the server's API key." : null;
+            const id = `execution-${run.id}-${x}`;
+            // One card per speed, the whole card the radio's label: title, description, then the cost on the bottom edge,
+            // so both cards (equal height in the grid) line their costs up. Named by the title, described by the rest.
             return (
-              <label key={x} className={cx("flex cursor-pointer gap-3 rounded-lg border border-line px-4 py-3 transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover", (!m || off) && "cursor-not-allowed opacity-60 hover:bg-transparent")}>
-                <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || !!off} onChange={() => choose(x)} className="mt-1 size-4 accent-navy" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold">{EXECUTION[x].label}</span>
-                  <span className="mt-0.5 block text-sm text-muted">{EXECUTION[x].description}</span>
-                  <span className="mt-1.5 block text-sm tabular-nums">{m ? <>Estimated <strong className="font-semibold">{cost(m)}</strong></> : "Prepare a new estimate to see this mode's cost."}</span>
-                  {off && <span className="mt-1 block text-xs text-muted">{off}</span>}
+              <label key={x} className={cx("flex h-full cursor-pointer flex-col rounded-lg border border-line bg-sheet transition-colors hover:bg-hover has-checked:border-navy has-checked:bg-hover has-checked:ring-1 has-checked:ring-navy has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-slate/50", (!m || off) && "cursor-not-allowed opacity-60 hover:bg-sheet")}>
+                <span className="flex gap-3 px-4 pt-4 pb-3">
+                  <input type="radio" name={`execution-${run.id}`} value={x} checked={execution === x} disabled={!m || !!off} onChange={() => choose(x)} aria-labelledby={`${id}-title`} aria-describedby={`${id}-text ${id}-cost${off ? ` ${id}-off` : ""}`} className="mt-0.5 size-4 flex-none accent-navy focus-visible:outline-none" />
+                  <span className="min-w-0">
+                    <span id={`${id}-title`} className="block text-[15px] font-semibold">{EXECUTION[x].label}</span>
+                    <span id={`${id}-text`} className="mt-1 block text-sm leading-6 text-muted">{EXECUTION[x].description}</span>
+                    {off && <span id={`${id}-off`} className="mt-1 block text-xs text-muted">{off}</span>}
+                  </span>
+                </span>
+                <span id={`${id}-cost`} className="mt-auto flex items-baseline justify-between gap-3 border-t border-rule px-4 py-3 pl-11">
+                  <span className="text-xs text-faint">Estimated cost</span>
+                  <span className="text-base font-semibold tabular-nums">{m ? cost(m) : "Prepare a new estimate"}</span>
                 </span>
               </label>
             );
