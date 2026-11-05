@@ -1243,3 +1243,38 @@ context lane.
 - Retrieval loses most labelled pairs at the per-item cut, and C01-type one-line answers are not recovered.
 - Making stretch-v2 the default requires human labels on unseen testimony and a controlled comparison
   (`docs/detection-quality.md` §6).
+
+## Implementation note: guided analysis and selected depositions (November 5, on `feature/guided-analysis`, for review)
+
+The case page is one guided panel, with one step open at a time; finished steps collapse to a one-line summary with
+"Change":
+1. Add depositions. The sessions by witness, with dates and moves, plus Add deposition. Continue needs two ready
+   sessions.
+2. Choose what to analyze: the whole case (recommended, the default) or selected depositions, chosen here only.
+   The estimate is prepared automatically once the choice is valid and has been unchanged for 0.9 s. Preparing
+   sends nothing to a model. A change of choice cancels the estimate prepared for the old one. An estimate the person
+   cancels, or one that fails, is not restarted on its own. Estimates replaced or cancelled before anything was read
+   aren't listed as analyses. Estimates already prepared are saved in the browser per account
+   (`client/src/lib/estimateCache.ts`), keyed by case, choice, reading and a fingerprint of the ready depositions
+   (ids and file SHA-256), for 24 hours. Coming back to a choice shows its saved estimate without preparing it again.
+   "Review and start" always prepares a current estimate on the server first, since that is what a limit is
+   authorized against.
+   Where `ALLOW_STRETCH_V2=true`, step 2 also asks for the analysis method, named for lawyers:
+   - "Focused Analysis" (packet-v1): Recommended and the default.
+   - "Contextual Analysis" (stretch-v2): Experimental.
+
+   Each method's card states its measured trade-off. A disclaimer under the choice says that results are potential
+   inconsistencies for human review, not definitive findings. These are analysis strategies, never presented as
+   different AI models.
+3. Review the cost and start: choose fast or economy, and authorize a spending limit.
+4. The analysis and its results.
+
+The page header no longer offers Add deposition or Analyze, and the deposition tables have no selection boxes: there
+is one place to act. Test-model runs are not offered to people. The API refuses `mode: "mock"` (403 `test_runs_disabled`)
+unless the server sets `ALLOW_TEST_RUNS=true`; the CLI and tests create them directly. The earlier direct start of a two-session check from the case page is replaced by this. Existing
+two-session checks stay listed and open as before.
+
+An analysis of selected depositions is a case run whose `config.scope.depositionIds` limits retrieval
+(`buildCasePool` `depositionIds`) to those depositions. Every other part is the whole-case pipeline: the same model,
+prompt, checks, scoring, estimate, budget, fast or economy execution, and recovery. The API refuses a selection
+outside the case, one with an unready or excluded deposition, or one with fewer than two sessions.

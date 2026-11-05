@@ -5,7 +5,7 @@ import { Router } from "express";
 import type { PgBoss } from "pg-boss";
 import { z } from "zod";
 import type { Database } from "../db/client";
-import { caseRuns, cases } from "../db/schema";
+import { caseRuns, cases, depositions } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
 import { CASE_RUN_CONTRACTS, caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun, stretchAllowed } from "../jobs/caseRun";
 import { economyAllowed } from "../jobs/caseRunBatch";
@@ -18,7 +18,8 @@ const Execution = z.enum(["standard", "batch"]);
 // it is confirmed, after its estimate.
 // contract: packet-v1 by default; the experimental whole-stretch contract only where the server allows it
 // (ALLOW_STRETCH_V2=true). A live stretch run is then estimated and confirmed like any other.
-const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execution.optional(), contract: z.enum(CASE_RUN_CONTRACTS).optional() }).strict();
+// depositionIds: analyze only these depositions (at least two sessions, all ready, all in this case); absent = the whole case.
+const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execution.optional(), contract: z.enum(CASE_RUN_CONTRACTS).optional(), depositionIds: z.array(Id).min(2).max(1000).optional() }).strict();
 // A whole case is far larger than one pair of sessions (the six-document real fixtures project about $60), so
 // case runs have their own ceiling. The budget itself is always the person's explicit confirmation.
 export const MAX_CASE_RUN_BUDGET_USD = 250;
@@ -38,11 +39,21 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const body = StartCaseRun.safeParse(req.body ?? {});
     if (!caseId.success || !body.success) return res.status(400).json({ error: "Give the mode: live or mock. A live run stops after retrieval with its estimate; confirm it with a budget to start." });
     if (body.data.contract === "stretch-v2" && !stretchAllowed(env)) return res.status(409).json({ error: "Whole-stretch reading is experimental and isn't enabled on this server.", code: "stretch_disabled" });
+    // Test-model runs are a developer tool (the CLI and tests create them directly); people never start one here
+    // unless the server allows it (ALLOW_TEST_RUNS=true).
+    if (body.data.mode === "mock" && env.ALLOW_TEST_RUNS !== "true") return res.status(403).json({ error: "Test-model runs aren't available here.", code: "test_runs_disabled" });
     const [kase] = await db.select({ id: cases.id }).from(cases).where(eq(cases.id, caseId.data));
     if (!kase) return res.status(404).json({ error: "Case not found." });
+    const chosen = body.data.depositionIds;
+    if (chosen) {
+      const rows = await db.select({ id: depositions.id, status: depositions.status, sessionId: depositions.sessionId, excludedReason: depositions.excludedReason }).from(depositions).where(and(eq(depositions.caseId, caseId.data), inArray(depositions.id, chosen)));
+      if (rows.length !== new Set(chosen).size) return res.status(400).json({ error: "Every selected deposition must belong to this case.", code: "scope_invalid" });
+      if (rows.some((r) => r.status !== "ready" || r.excludedReason !== null)) return res.status(400).json({ error: "Every selected deposition must have finished reading and be included in analyses.", code: "scope_not_ready" });
+      if (new Set(rows.map((r) => r.sessionId)).size < 2) return res.status(400).json({ error: "Select depositions from at least two different sessions: testimony is compared across sessions.", code: "scope_one_session" });
+    }
     const [active] = await db.select({ id: caseRuns.id }).from(caseRuns).where(and(eq(caseRuns.caseId, caseId.data), inArray(caseRuns.status, ACTIVE)));
     if (active) return res.status(409).json({ error: `Case run ${active.id} is still running for this case.`, caseRunId: active.id });
-    const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard", contract: body.data.contract });
+    const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard", contract: body.data.contract, depositionIds: chosen });
     await enqueueCaseRun(boss, { caseRunId: run.id });
     return res.status(202).json({ caseRun: await reportOf(run.id) });
   });

@@ -315,7 +315,7 @@ export type CaseRunExecution = "standard" | "batch";
 export type CaseRunBatches = { total: number; submitting: number; processing: number; awaitingImport: number; imported: number; notSubmitted: number; unknown: number; oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number> };
 export type CaseRun = {
   // economyAvailable: paid economy runs can be confirmed on this server (ALLOW_ECONOMY_ANALYSIS).
-  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; contract?: CaseRunContract; stretch?: CaseRunStretch | null; stretchAvailable?: boolean; economyAvailable?: boolean; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
+  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; contract?: CaseRunContract; scope?: { kind: "case" } | { kind: "depositions"; depositionIds: number[] }; stretch?: CaseRunStretch | null; stretchAvailable?: boolean; economyAvailable?: boolean; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
   createdAt: string; startedAt: string | null; finishedAt: string | null; confirmedAt: string | null; cancelRequested: boolean;
   estimate: CaseRunEstimate | null;
   coverageState: CoverageState; complete: boolean; incompleteReasons: string[];

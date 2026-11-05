@@ -200,7 +200,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
     const boss = { send: async () => null } as unknown as PgBoss;
     const app = express();
     app.use(express.json());
-    let env: Record<string, string> = {};
+    let env: Record<string, string> = { ALLOW_TEST_RUNS: "true" };
     app.use("/api", (req, res, next) => caseRunRoutes({ db, boss, env })(req, res, next));
     const server = await listen(app);
     const post = (body: unknown) => fetch(`${server.url}/api/cases/${caseId}/case-runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -210,7 +210,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
       expect((await off.json()).code).toBe("stretch_disabled");
       expect((await (await fetch(`${server.url}/api/cases/${caseId}/case-runs`)).json()).stretchAvailable).toBe(false);
       expect((await post({ mode: "mock", contract: "stretch-v9" })).status).toBe(400);
-      env = { ALLOW_STRETCH_V2: "true" };
+      env = { ALLOW_TEST_RUNS: "true", ALLOW_STRETCH_V2: "true" };
       expect((await (await fetch(`${server.url}/api/cases/${caseId}/case-runs`)).json()).stretchAvailable).toBe(true);
       const on = await post({ mode: "mock", contract: "stretch-v2" });
       expect(on.status).toBe(202);

@@ -66,7 +66,7 @@ An economy run is a series of short checks: each one imports ended batches, send
 
 | Method and path | Body | Success | Errors |
 |---|---|---|---|
-| `POST /cases/:id/case-runs` | `{ mode: "live" \| "mock", execution?: "standard" \| "batch" }` (execution: mock only) | 202 `{ caseRun }` | 400 bad body (a budget here is refused; it comes with confirmation), 403 access, 404 case, 409 `{ caseRunId }` when a run of this case is still active |
+| `POST /cases/:id/case-runs` | `{ mode: "live" \| "mock", execution?: "standard" \| "batch", contract?: "packet-v1" \| "stretch-v2", depositionIds?: number[] }` (execution: mock only; depositionIds: analyze only these depositions, absent = the whole case) | 202 `{ caseRun }` (its `scope`: `{ kind: "case" }` or `{ kind: "depositions", depositionIds }`) | 400 bad body (a budget here is refused; it comes with confirmation), 400 `code: "scope_invalid"` (a deposition not in this case), `"scope_not_ready"` (not read yet, or excluded), `"scope_one_session"` (fewer than two sessions), 403 access, 403 `code: "test_runs_disabled"` for `mode: "mock"` unless the server sets `ALLOW_TEST_RUNS=true`, 404 case, 409 `{ caseRunId }` when a run of this case is still active |
 | `GET /cases/:id/case-runs` | | 200 `{ caseRuns: CaseRunReport[] }`, newest first | 400 |
 | `GET /case-runs/:id` | | 200 `{ caseRun }` | 404 |
 | `POST /case-runs/:id/confirm` | `{ budgetUsd, execution?: "standard" \| "batch", retentionAcknowledged?: boolean }` (budget more than 0, at most `MAX_CASE_RUN_BUDGET_USD`) | 202 `{ caseRun }` | 400 (with `code: "retention_not_acknowledged"` for economy without the acknowledgement), 403, 404, 409 when not `awaiting_confirmation` |

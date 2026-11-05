@@ -44,14 +44,15 @@ export type CasePoolResult = {
 // other session / witness on top of the fused top perItem; perPath keeps each path's own best partners.
 export type CaseSelection = { perSession?: number; perWitness?: number; perPath?: number; minShare?: number };
 
-export async function buildCasePool(db: Database, pool: Pool, caseId: number, options: { perItem?: number; minilm?: "auto" | "off"; selection?: CaseSelection } = {}): Promise<CasePoolResult> {
+export async function buildCasePool(db: Database, pool: Pool, caseId: number, options: { perItem?: number; minilm?: "auto" | "off"; selection?: CaseSelection; depositionIds?: readonly number[] } = {}): Promise<CasePoolResult> {
   const perItem = options.perItem ?? DEFAULT_PER_ITEM;
   const depth = NEIGHBOURS_PER_ITEM;
   const rows = await db
     .select({ id: depositions.id, witnessId: depositions.witnessId, sessionId: depositions.sessionId, excludedReason: depositions.excludedReason, status: depositions.status, parserVersion: depositions.parserVersion })
     .from(depositions).where(eq(depositions.caseId, caseId)).orderBy(asc(depositions.id));
   const documents = rows.map((d) => {
-    const reason = d.excludedReason !== null ? `excluded: ${d.excludedReason}` : d.status !== "ready" ? `not ready: ${d.status}` : null;
+    // depositionIds: an analysis of selected depositions only; every other deposition of the case is left out of it.
+    const reason = d.excludedReason !== null ? `excluded: ${d.excludedReason}` : d.status !== "ready" ? `not ready: ${d.status}` : options.depositionIds && !options.depositionIds.includes(d.id) ? "not selected for this analysis" : null;
     return { depositionId: d.id, witnessId: d.witnessId, sessionId: d.sessionId, excludedReason: d.excludedReason, status: d.status, included: reason === null, reason };
   });
   const included = rows.filter((_, n) => documents[n].included);

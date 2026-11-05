@@ -409,7 +409,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
     const boss = { send: async (_q: string, data: unknown) => { sent.push(data); return null; } } as unknown as PgBoss;
     const app = express();
     app.use(express.json());
-    let env: Record<string, string> = { ALLOW_ECONOMY_ANALYSIS: "true" };
+    let env: Record<string, string> = { ALLOW_ECONOMY_ANALYSIS: "true", ALLOW_TEST_RUNS: "true" };
     app.use("/api", (req, res, next) => caseRunRoutes({ db, boss, env })(req, res, next));
     const server = await listen(app);
     const post = (path: string, body: unknown) => fetch(`${server.url}/api${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

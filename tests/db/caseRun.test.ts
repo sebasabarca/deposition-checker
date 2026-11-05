@@ -302,7 +302,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run", () => {
     const app = express();
     app.use(express.json());
     app.use((_req, res, next) => { res.locals.user = { analysisAccess: false }; next(); }); // an account without paid access
-    app.use("/api", caseRunRoutes({ db, boss }));
+    app.use("/api", caseRunRoutes({ db, boss, env: { ...process.env, ALLOW_TEST_RUNS: "true" } }));
     const server = await listen(app);
     try {
       const report = await (await fetch(`${server.url}/api/case-runs/${mockRun}`)).json();

@@ -1,20 +1,18 @@
-// One case: its depositions by witness, a check of two sessions (of one witness, or one session each of
-// two witnesses), and its analyses.
+// One case, analyzed in one place: the guided steps (add depositions, choose what to analyze, review the cost, results).
+// The sessions by witness are the first step's content; earlier two-session checks are listed below it.
 
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
-import { ArrowRight, ArrowRightLeft, FileText, FileUp, GripVertical, Pencil, X } from "lucide-react";
+import { ArrowRightLeft, FileText, GripVertical, Pencil } from "lucide-react";
 import { CaseAnalysisAction, CaseAnalysisSummary, useCaseAnalysis } from "../components/CaseAnalysis";
 import { CaseFindings } from "../components/CaseFindings";
 import { CaseRunPanel } from "../components/CaseRuns";
-import { CheckAgain, estimateText, NO_ACCESS, useEstimate, useStartCheck } from "../components/CheckAgain";
-import { useUser } from "../lib/session";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
-import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Empty, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
+import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
 import { analysesOf, dateAction, moveTargets } from "../components/sessionActions";
 import { api, DEPOSITION_ADDED } from "../lib/api";
-import { checkState, isActive, pairsChecked } from "../lib/insights";
+import { isActive } from "../lib/insights";
 import { analysisTitle, ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import type { AnalysisView, CaseAnalysisView, CaseDetail, DepositionRow } from "../types";
@@ -25,7 +23,6 @@ export function CasePage({ id }: { id: number }) {
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [analyses, setAnalyses] = useState<AnalysisView[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<number[]>([]);
   // Dragging a session onto another witness's card: the row being dragged, the card under it, and the
   // move waiting for confirmation (also opened from the row's Move button).
   const [dragging, setDragging] = useState<DepositionRow | null>(null);
@@ -54,33 +51,18 @@ export function CasePage({ id }: { id: number }) {
 
   if (error) return <Alert title="This case couldn't be loaded">{error}</Alert>;
   if (!detail) return <Loading />;
-  const toggle = (d: number) => setSelected((s) => (s.includes(d) ? s.filter((x) => x !== d) : [...s, d]));
-  const toDecide = Math.max(analyses.reduce((n, r) => n + r.findings.groups.contradictions + r.findings.groups.needs_context - r.findings.decided, 0), 0);
-  const summary = [`${detail.witnesses.length} ${detail.witnesses.length === 1 ? "witness" : "witnesses"}`, `${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"}`, `${analyses.length} ${analyses.length === 1 ? "analysis" : "analyses"}`, ...(toDecide > 0 ? [`${toDecide} ${toDecide === 1 ? "finding" : "findings"} to decide`] : [])].join(" · ");
-
-  return (
-    <>
-      <PageHeader
-        above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
-        title={detail.case.name}
-        description={summary}
-        actions={<><CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} /><a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a><Button onClick={() => add.open(id)}><FileUp aria-hidden className="size-4" />Add deposition</Button></>}
-      />
-
+  const witnessName = (w: number) => detail.witnesses.find((x) => x.id === w)?.name ?? "Unknown witness";
+  const workflowSessions = [...detail.depositions]
+    .sort((a, b) => witnessName(a.witnessId).localeCompare(witnessName(b.witnessId)) || (a.takenOn ?? "").localeCompare(b.takenOn ?? ""))
+    .map((d) => ({ id: d.id, witness: witnessName(d.witnessId), takenOn: d.takenOn, label: d.originalFilename ?? `Deposition #${d.id}`, status: d.status, fileSha256: d.fileSha256 }));
+  const depositionsStep = (
+    <div className="space-y-3">
       <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} />
-
-      <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
-
-      <CaseFindings analyses={analyses} />
-
-      <CaseRunPanel caseId={id} readySessions={detail.depositions.filter((d) => d.status === "ready").length} witnesses={detail.witnesses.filter((w) => w.depositions.length > 0).length} />
-
       {detail.depositions.length === 0 ? (
-        <Empty title="No depositions in this case yet" action={<Button onClick={() => add.open(id)}>Add deposition</Button>}>Add two sessions of the same witness, as PDF or text, to check them against each other.</Empty>
+        <p className="rounded-lg bg-well px-4 py-6 text-center text-sm text-muted">No depositions in this case yet.</p>
       ) : (
         detail.witnesses.filter((w) => w.depositions.length > 0).map((w) => {
           const sessions = detail.depositions.filter((d) => d.witnessId === w.id).sort((a, b) => (a.takenOn ?? "").localeCompare(b.takenOn ?? ""));
-          const pairs = pairsChecked(sessions.filter((d) => d.status === "ready").map((d) => d.id), detail.analyses);
           const target = !!dragging && dragging.witnessId !== w.id;
           return (
             <div
@@ -89,19 +71,17 @@ export function CasePage({ id }: { id: number }) {
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver((o) => (o === w.id ? null : o)); }}
               onDrop={(e) => { if (!target) return; e.preventDefault(); setMove({ d: dragging, to: w.id }); setDragging(null); setOver(null); }}
             >
-            <Card className={cx("overflow-hidden transition-[outline-color] duration-150", target && "outline-2 outline-offset-2 outline-dashed outline-control", over === w.id && "bg-info-bg/40 outline-solid! outline-slate!")}>
-              <CardHeader
-                title={w.name}
-                count={sessions.length}
-                description={sessions.length < 2 ? "Select one session here and one of another witness to compare their accounts, or add another session of this witness." : "Select two sessions to check them against each other, or one here and one of another witness."}
-                action={over === w.id ? <Badge tone="active">Drop to file it under {w.name}</Badge> : pairs.total > 0 ? <span className="text-sm text-muted tabular-nums">{pairs.checked} of {pairs.total} {pairs.total === 1 ? "pair" : "pairs"} checked</span> : undefined}
-              />
+            <section aria-label={w.name} className={cx("overflow-hidden rounded-lg border border-line bg-canvas transition-[outline-color] duration-150", target && "outline-2 outline-offset-2 outline-dashed outline-control", over === w.id && "bg-info-bg/40 outline-solid! outline-slate!")}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-3 pb-1">
+                <h4 className="text-sm font-semibold">{w.name} <span className="font-normal text-muted tabular-nums">· {sessions.length} {sessions.length === 1 ? "session" : "sessions"}</span></h4>
+                {over === w.id && <Badge tone="active">Drop to file it under {w.name}</Badge>}
+              </div>
               {/* relative: keeps the screen-reader "Move" header inside the scroller instead of widening the page */}
               <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[44rem] text-sm">
                   <thead>
                     <tr>
-                      <th className={cx(thClass, "w-12")}><span className="sr-only">Select</span></th>
+                      <th className={cx(thClass, "w-8")}><span className="sr-only">Move by dragging</span></th>
                       <th className={thClass}>Date taken</th>
                       <th className={thClass}>File</th>
                       <th className={thClass}>Source</th>
@@ -116,8 +96,6 @@ export function CasePage({ id }: { id: number }) {
                         key={d.id}
                         d={d}
                         witness={w.name}
-                        selected={selected.includes(d.id)}
-                        onToggle={() => toggle(d.id)}
                         onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}
                         onUseDate={(date) => api.setDepositionDate(d.id, date).then(load)}
                         movable={moveTargets(detail.witnesses, w.id).length > 0}
@@ -129,20 +107,38 @@ export function CasePage({ id }: { id: number }) {
                   </tbody>
                 </table>
               </div>
-            </Card>
+            </section>
             </div>
           );
         })
       )}
+    </div>
+  );
 
-      <Card className="overflow-hidden">
-        <CardHeader title="Analyses" count={analyses.length + (caseAnalysis ? 1 : 0)} />
-        {analyses.length === 0 && !caseAnalysis ? (
-          <p className="px-5 py-5 text-sm text-muted">No analyses yet. Select two sessions above to start one: two of one witness, or one each of two witnesses.</p>
-        ) : (
+  const toDecide = Math.max(analyses.reduce((n, r) => n + r.findings.groups.contradictions + r.findings.groups.needs_context - r.findings.decided, 0), 0);
+  const summary = [`${detail.witnesses.length} ${detail.witnesses.length === 1 ? "witness" : "witnesses"}`, `${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"}`, ...(analyses.length > 0 ? [`${analyses.length} earlier ${analyses.length === 1 ? "check" : "checks"}`] : []), ...(toDecide > 0 ? [`${toDecide} ${toDecide === 1 ? "finding" : "findings"} to decide`] : [])].join(" · ");
+
+  return (
+    <>
+      <PageHeader
+        above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
+        title={detail.case.name}
+        description={summary}
+        actions={<>{caseAnalysis && <CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} />}<a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a></>}
+      />
+
+      <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} />
+
+      <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
+
+      <CaseFindings analyses={analyses} />
+
+      {(analyses.length > 0 || caseAnalysis) && (
+        <Card className="overflow-hidden">
+          <CardHeader title="Earlier two-session checks" count={analyses.length + (caseAnalysis ? 1 : 0)} description="Checks of two sessions made before the guided analysis. They stay available here." />
           <AnalysesTable analyses={analyses} caseRows={caseAnalysis ? [{ caseId: id, analysis: caseAnalysis }] : []} />
-        )}
-      </Card>
+        </Card>
+      )}
 
       <DangerZone
         what="case"
@@ -163,27 +159,26 @@ export function CasePage({ id }: { id: number }) {
           targets={moveTargets(detail.witnesses, move.d.witnessId)}
           analyses={analysesOf(detail.analyses, move.d.id)}
           onClose={() => setMove(null)}
-          onMoved={() => { setSelected((s) => s.filter((x) => x !== move.d.id)); setMove(null); load(); }}
+          onMoved={() => { setMove(null); load(); }}
         />
       )}
 
-      {selected.length > 0 && <CompareBar detail={detail} selected={selected} onClear={() => setSelected([])} />}
     </>
   );
 }
 
-function SessionRow({ d, witness, selected, onToggle, onRetry, onUseDate, movable, onDragStart, onDragEnd, onMove }: { d: DepositionRow; witness: string; selected: boolean; onToggle: () => void; onRetry: () => void; onUseDate: (date: string) => Promise<void>; movable: boolean; onDragStart: () => void; onDragEnd: () => void; onMove: () => void }) {
+function SessionRow({ d, onRetry, onUseDate, movable, onDragStart, onDragEnd, onMove }: { d: DepositionRow; witness: string; onRetry: () => void; onUseDate: (date: string) => Promise<void>; movable: boolean; onDragStart: () => void; onDragEnd: () => void; onMove: () => void }) {
   const s = DEPOSITION_STATUS[d.status];
   const name = d.originalFilename ?? `Deposition #${d.id}`;
   const note = d.status === "failed" || d.status === "unsupported" ? `Couldn't be read: ${d.error ?? "this file's layout isn't recognized."}` : d.status === "needs_review" ? (d.error ?? "Some pages couldn't be read.") : d.scanned ? "Scanned copy. Compare quotations with the page image." : null;
   const action = dateAction(d);
   return (
     <tr
-      className={cx(rowClass, selected ? "bg-info-bg hover:bg-info-bg" : action && "bg-context-bg/50 hover:bg-context-bg")}
+      className={cx(rowClass, action && "bg-context-bg/50 hover:bg-context-bg")}
     >
       <td className={cx(tdClass, "align-top")}>
         <span className="flex items-center gap-1">
-          {/* Only the grip drags (showing the whole row), so the row's checkbox, links and date boxes behave as usual. */}
+          {/* Only the grip drags (showing the whole row), so the row's links and date boxes behave as usual. */}
           {movable && (
             <span
               aria-hidden
@@ -196,7 +191,6 @@ function SessionRow({ d, witness, selected, onToggle, onRetry, onUseDate, movabl
               <GripVertical className="size-4" strokeWidth={1.75} />
             </span>
           )}
-          <input type="checkbox" aria-label={`Select ${witness}, ${formatDate(d.takenOn)}`} checked={selected} disabled={d.status !== "ready"} onChange={onToggle} className="size-4 rounded accent-navy" />
         </span>
       </td>
       <td className={cx(tdClass, "align-top whitespace-nowrap")}><SessionDate d={d} onUse={onUseDate} /></td>
@@ -338,53 +332,6 @@ function MoveDialog({ d, initial, caseId, targets, analyses, onClose, onMoved }:
 }
 
 // The selection's next step, docked at the bottom of the window so it stays in reach.
-function CompareBar({ detail, selected, onClear }: { detail: CaseDetail; selected: number[]; onClear: () => void }) {
-  const { start, error, busy } = useStartCheck(detail.case.id);
-  const state = checkState(selected, detail.depositions, detail.analyses);
-  const estimate = useEstimate(detail.case.id, state.kind === "new" ? state.a : null, state.kind === "new" ? state.b : null);
-  const user = useUser();
-  const blocked = !user?.emailVerified ? "Verify your email before running checks." : !user.analysisAccess ? `${NO_ACCESS} To try the pipeline at no cost, use "Run with the test model" under Whole-case analysis.` : null;
-  const message = { pick: "Select one more session: of the same witness, or of another witness to compare their accounts.", too_many: "Select exactly two sessions. An analysis compares two.", not_ready: "Both sessions must finish reading first.", no_date: "Add the date of both sessions first. The dates decide which testimony came first." };
-  const cross = "cross" in state && state.cross;
-  const pair = () => {
-    const [a, b] = selected.map((s) => detail.depositions.find((d) => d.id === s)!).sort((x, y) => (x.takenOn ?? "").localeCompare(y.takenOn ?? ""));
-    const name = (d: DepositionRow) => detail.witnesses.find((w) => w.id === d.witnessId)?.name;
-    return cross ? `${name(a)}, ${formatDate(a.takenOn)}, and ${name(b)}, ${formatDate(b.takenOn)}` : `${name(a)}: ${formatDate(a.takenOn)} and ${formatDate(b.takenOn)}`;
-  };
-  return (
-    <div className="sticky bottom-4 z-20">
-      <div aria-live="polite" className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-navy px-5 py-3 text-white shadow-[0_12px_32px_-8px_rgb(19_33_58/0.5)]">
-        <div className="min-w-0">
-          {state.kind in message ? (
-            <p className="text-sm">{message[state.kind as keyof typeof message]}</p>
-          ) : (
-            <>
-              <p className="font-semibold">{pair()}</p>
-              <p className="text-sm text-navy-ink">
-                {state.kind === "new" && (blocked ?? `${estimateText(estimate)}. Nothing is charged until you start.`)}
-                {state.kind === "running" && (cross ? "These witnesses' accounts are being compared now." : "These sessions are being checked now.")}
-                {state.kind === "done" && `Already checked on ${formatDate(state.report.createdAt)}.`}
-              </p>
-            </>
-          )}
-          {error && <p className="mt-1 text-sm text-[#ffc9c9]">{error}</p>}
-        </div>
-        <div className="flex flex-none flex-wrap items-center gap-2">
-          <button type="button" onClick={onClear} className="flex h-8 items-center gap-1 rounded-md px-2.5 text-sm text-navy-ink hover:bg-navy-2 hover:text-white"><X aria-hidden className="size-4" />Clear</button>
-          {state.kind === "new" && !blocked && <button type="button" disabled={busy || estimate?.fits === false} onClick={() => void start(state.a, state.b)} className={buttonClass("secondary", "ring-0!")}>{busy ? "Starting…" : cross ? "Compare these witnesses" : "Check these sessions"}</button>}
-          {state.kind === "running" && <a href={href.analysis(state.report.id)} className={buttonClass("secondary", "ring-0!")}>View progress</a>}
-          {state.kind === "done" && (
-            <>
-              <CheckAgain caseId={detail.case.id} a={state.a} b={state.b} cross={cross} />
-              <a href={href.analysis(state.report.id)} className={buttonClass("secondary", "ring-0!")}>Open analysis<ArrowRight aria-hidden className="size-4" /></a>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // A case's stored whole-case analysis, listed with the pair analyses (hand-authored example; no model run).
 export type CaseAnalysisRow = { caseId: number; analysis: CaseAnalysisView };
 

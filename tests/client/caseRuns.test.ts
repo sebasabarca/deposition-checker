@@ -2,7 +2,7 @@
 // reviewed, the spending limit a person must type, and when a new run may start.
 
 import { describe, expect, it } from "vitest";
-import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS } from "../../client/src/lib/caseRuns";
+import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep } from "../../client/src/lib/caseRuns";
 import { MAX_CASE_RUN_BUDGET_USD as SERVER_MAX } from "../../server/src/api/caseRuns";
 import { findingGroup } from "../../server/src/api/present";
 import type { CaseRun, CaseRunEstimate } from "../../client/src/types";
@@ -79,5 +79,46 @@ describe("choosing fast or economy", () => {
   it("never suggests a limit past the ceiling", () => {
     expect(defaultLimit(54.5)).toBe("54.50");
     expect(defaultLimit(MAX_CASE_RUN_BUDGET_USD + 40)).toBe(MAX_CASE_RUN_BUDGET_USD.toFixed(2));
+  });
+});
+
+describe("the guided analysis workflow", () => {
+  it("opens one step at a time: depositions, choice with its estimate, cost, results", () => {
+    const none = { running: false, estimate: false, analysis: false };
+    expect(workflowStep(none, null, 0)).toBe(1); // a new case starts by adding depositions
+    expect(workflowStep(none, null, 3)).toBe(1); // and confirms them before choosing
+    expect(workflowStep(none, "scope", 1)).toBe(1); // fewer than two ready sessions: back to adding
+    expect(workflowStep(none, "scope", 3)).toBe(2);
+    expect(workflowStep({ ...none, estimate: true }, null, 3)).toBe(2); // a pending estimate shows with its choice
+    expect(workflowStep({ ...none, estimate: true }, "review", 3)).toBe(3);
+    expect(workflowStep(none, "review", 3)).toBe(2); // no estimate to review: back to the choice
+    expect(workflowStep({ ...none, running: true }, "depositions", 3)).toBe(4); // a running analysis decides
+    expect(workflowStep({ ...none, analysis: true }, null, 3)).toBe(4); // a finished analysis stays on its results
+    expect(workflowStep({ ...none, analysis: true }, "scope", 3)).toBe(2); // until a new analysis is started
+  });
+  it("tells estimates from analyses, and an estimate's choice from another", () => {
+    const run = (status: string, confirmedAt: string | null, mode = "live") => ({ status, confirmedAt, mode }) as never;
+    expect(isEstimate(run("retrieving", null))).toBe(true);
+    expect(isEstimate(run("awaiting_confirmation", null))).toBe(true);
+    expect(isEstimate(run("adjudicating", "2026-11-05"))).toBe(false);
+    expect(isUnusedEstimate(run("cancelled", null))).toBe(true);
+    expect(isUnusedEstimate(run("cancelled", "2026-11-05"))).toBe(false); // a confirmed run cancelled mid-way is an analysis
+    expect(isAnalysis(run("completed", null, "mock"))).toBe(true);
+    const read = { status: "incomplete", confirmedAt: null, mode: "live", packets: { adjudicated: 7 } } as never; // e.g. a replay of recorded calls
+    expect(isAnalysis(read)).toBe(true);
+    expect(isUnusedEstimate(read)).toBe(false);
+    expect(isUnusedEstimate({ status: "cancelled", confirmedAt: null, mode: "live", packets: { adjudicated: 2 } } as never)).toBe(false);
+    expect(isUnusedEstimate(run("failed", null))).toBe(true);
+    expect(scopeKey([3, 1], undefined)).toBe(scopeKey([1, 3], "packet-v1"));
+    expect(scopeKey(null, undefined)).not.toBe(scopeKey([1, 3], undefined));
+    expect(scopeKey(null, "stretch-v2")).not.toBe(scopeKey(null, undefined));
+    expect(runScopeKey({ scope: { kind: "depositions", depositionIds: [3, 1] }, contract: "packet-v1" } as never)).toBe(scopeKey([1, 3], undefined));
+  });
+  it("accepts the whole case, or at least two ready selected depositions", () => {
+    const deps = [{ id: 1, status: "ready" }, { id: 2, status: "ready" }, { id: 3, status: "processing" }];
+    expect(scopeProblem("case", [], deps)).toBeNull();
+    expect(scopeProblem("selected", [1, 2], deps)).toBeNull();
+    expect(scopeProblem("selected", [1], deps)).toMatch(/at least two/);
+    expect(scopeProblem("selected", [1, 3], deps)).toMatch(/finished reading/);
   });
 });

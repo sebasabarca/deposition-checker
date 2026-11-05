@@ -105,6 +105,8 @@ export type CaseRunContract = (typeof CASE_RUN_CONTRACTS)[number];
 export const contractOf = (run: Pick<CaseRun, "promptVersion">): CaseRunContract => (run.promptVersion === STRETCH_V2_PROMPT_VERSION ? STRETCH_V2_PROMPT_VERSION : PACKET_PROMPT_VERSION);
 // Whether this server lets a person choose the experimental whole-stretch contract (test-model runs included).
 export const stretchAllowed = (env: Record<string, string | undefined>) => env.ALLOW_STRETCH_V2 === "true";
+// The depositions a run analyzes, or null for the whole case (stored in its config when it is created).
+export const scopeOf = (run: Pick<CaseRun, "config">): number[] | null => (run.config as { scope?: { depositionIds?: number[] } } | null)?.scope?.depositionIds ?? null;
 
 export const fromPacketAdjudicator = (a: PacketAdjudicator): CasePacketModel => ({
   model: a.model, effort: a.effort, promptVersion: a.promptVersion,
@@ -364,7 +366,7 @@ export async function finish(db: Database, runId: number, ledgerId: number, stat
 // Retrieval for the whole case, stored once: candidates for every pool pair, then the ledger. Returns
 // an error message when the stored evidence changed since an earlier attempt of this run.
 async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps) {
-  const built = await buildCasePool(db, pool, run.caseId, { minilm: deps.minilm ?? "off" });
+  const built = await buildCasePool(db, pool, run.caseId, { minilm: deps.minilm ?? "off", depositionIds: scopeOf(run) ?? undefined });
   if (run.sourceHash && run.sourceHash !== built.sourceHash) return "The case's stored testimony changed since this run started retrieval. Start a new run.";
   await update(db, run.id, { sourceHash: built.sourceHash, config: { ...(run.config as object), retrieval: built.settings, paths: built.paths, documents: built.documents } });
   const set = caseRunSetOf(run.id);
@@ -737,9 +739,10 @@ async function persistStretch(db: Database, run: CaseRun, entry: Entry, packet: 
 
 // Creates a run, and a live run's budget. A live run created with `confirmed` (the CLI, after its own plan)
 // may spend at once; otherwise it stops after retrieval for confirmCaseRun. The caller queues the job.
-export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract }) {
+// depositionIds: analyze only these depositions of the case (the same pipeline, model and checks); absent = the whole case.
+export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION, depositionIds }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract; depositionIds?: number[] }) {
   return db.transaction(async (tx) => {
-    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
+    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
     const live = mode === "live";
     const [row] = await tx
       .insert(caseRuns)
@@ -886,7 +889,7 @@ export async function caseRunReport(db: Database, id: number) {
     note: "Experimental whole-stretch reading. Pairs with no conflict identified were read, not cleared; unclear pairs need a person.",
   } as { flagged: number; flagged_unverified: number; unclear: number; no_conflict_identified: number; related: number; note: string } : null;
   return {
-    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, contract: contractOf(run), stretch, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
+    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, contract: contractOf(run), scope: scopeOf(run) ? { kind: "depositions" as const, depositionIds: scopeOf(run)! } : { kind: "case" as const }, stretch, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
     config: run.config, sourceHash: run.sourceHash, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, updatedAt: run.updatedAt,
     confirmedAt: run.confirmedAt, cancelRequested: run.cancelRequestedAt !== null,
     estimate: (run.progress as { estimate?: unknown }).estimate ?? null,
