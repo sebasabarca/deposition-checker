@@ -25,12 +25,23 @@
 //     Re-reads one stored document with the current parser. A dry run unless --execute; refuses to remove
 //     findings unless --accept-impact. Reports changed source IDs, attribution before and after, and the
 //     exchange IDs removed and added.
-//   npx tsx scripts/evidence.ts correct --document-id <id> [--execute] [--out data/raw/<file>.json]
-//     Corrects a stored document in place under the current parser when only speaker attribution changes:
-//     every line and every exchange whose lines stay the same keep their IDs, so nothing that refers to
-//     them is removed. A dry run unless --execute; executing first writes a backup under data/raw/backups/.
-//     Refuses, changing nothing, when text would change or a referenced exchange would change its lines,
-//     and then maps each such exchange to the corrected ones and lists the findings that need review.
+//   npx tsx scripts/evidence.ts correct --document-id <id> [--expect-lines 1:262,1:347] [--out data/raw/<file>.json]
+//     Dry run of the safe correction (server/src/evidence/correction.ts): the whole correction under the current
+//     parser, rolled back. Prints the plan (changed lines, replaced and added exchanges, fact units, the findings,
+//     verdicts and candidates it would quarantine), the integrity checks and the plan hash. Changes nothing.
+//   npx tsx scripts/evidence.ts correct --document-id <id> --execute --plan-hash <hash> --expect-lines <page:line,…> [--backup-dir data/raw/backups]
+//     Executes a reviewed dry run: refuses while any analysis or case run of the case is unfinished, holds the
+//     document (the database rejects other writes to its evidence; jobs wait), then corrects, quarantines and
+//     verifies in one transaction, writing the backup first. Refuses, changing nothing, if the plan differs.
+//   npx tsx scripts/evidence.ts rollback --migration <correction id>
+//     Restores the state before an applied correction from its backup; refuses if the document changed since.
+//   npx tsx scripts/evidence.ts release --migration <hold id>
+//     Recovery after a crash: releases a hold whose correction never committed, after checking nothing changed.
+//   npx tsx scripts/evidence.ts quarantine --document-id <id> --reason "<why>" [--findings 12,13]
+//     Quarantines the document's findings (or only those listed) and their verdicts, changing no evidence row:
+//     for a superseded parse, or findings a refused correction lists. Reviews are kept as they were.
+//   npx tsx scripts/evidence.ts integrity --document-id <id>
+//     Read-only: references into the document's exchanges that are broken (fact units, facts, screening, candidates).
 //   npx tsx scripts/evidence.ts exclude --document-id <id> --reason legacy_parse|duplicate|misfiled [--duplicate-of <id>]
 //     Leaves a stored copy out of new analyses and the evidence index (search, lookup, coverage totals),
 //     keeping it and every analysis, finding and review on it. A duplicate names the active copy of the
@@ -46,11 +57,11 @@ import { asc, eq } from "drizzle-orm";
 import { connect } from "../server/src/db/client";
 import { loadEvidenceFixtures, missingFixtureFiles, openEvaluationDatabase, readEvidenceFixture, runEvidenceChecks } from "../server/src/eval/evidenceFixtures";
 import { depositions, exchangeLines, exchanges, lines, witnesses } from "../server/src/db/schema";
-import { correctInPlace, evidenceCoverage, excludeDocument, getEvidence, indexEvidence, parserAudit, reprocessDocument, searchEvidence, sourceContext, storedAttribution, type EvidenceExchange, type SourceRef } from "../server/src/evidence";
+import { applyCorrection, evidenceCoverage, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, excludeDocument, getEvidence, indexEvidence, parserAudit, reprocessDocument, searchEvidence, sourceContext, storedAttribution, type EvidenceExchange, type SourceRef } from "../server/src/evidence";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { execute: { type: "boolean" }, "accept-impact": { type: "boolean" }, "case-id": { type: "string" }, "witness-id": { type: "string" }, "session-id": { type: "string" }, "document-id": { type: "string" }, limit: { type: "string" }, lines: { type: "string" }, refresh: { type: "boolean" }, json: { type: "boolean" }, deposition: { type: "string" }, out: { type: "string" }, reason: { type: "string" }, "duplicate-of": { type: "string" } },
+  options: { execute: { type: "boolean" }, "accept-impact": { type: "boolean" }, "case-id": { type: "string" }, "witness-id": { type: "string" }, "session-id": { type: "string" }, "document-id": { type: "string" }, limit: { type: "string" }, lines: { type: "string" }, refresh: { type: "boolean" }, json: { type: "boolean" }, deposition: { type: "string" }, out: { type: "string" }, reason: { type: "string" }, "duplicate-of": { type: "string" }, "plan-hash": { type: "string" }, "expect-lines": { type: "string" }, "backup-dir": { type: "string" }, migration: { type: "string" }, findings: { type: "string" } },
 });
 const num = (v: string | undefined) => (v === undefined ? undefined : Number(v));
 const [command, ...rest] = positionals;
@@ -162,17 +173,40 @@ async function main() {
       await excludeDocument(db, id, reason === "duplicate" ? { reason, duplicateOf: of! } : { reason });
       console.log(`Document ${id} excluded (${reason}${of ? ` of ${of}` : ""}); its rows, analyses and findings are kept.`);
     } else if (command === "correct") {
+      // The safe correction (server/src/evidence/correction.ts). Without --execute, the whole correction runs
+      // in a transaction that is rolled back, and prints the plan and its hash. --execute needs both the plan hash
+      // and the expected changed lines, and holds the document while it runs.
       const id = num(values["document-id"]);
       if (!id) throw new Error("correct needs --document-id");
-      const r = await correctInPlace(db, id, { execute: values.execute });
+      const backupDir = path.resolve(values["backup-dir"] ?? "data/raw/backups");
+      if (!backupDir.startsWith(path.resolve("data/raw") + path.sep)) throw new Error("Backups hold testimony: keep them under data/raw/, which git ignores.");
+      const expect = values["expect-lines"] !== undefined ? { lines: values["expect-lines"].split(",").map((x) => x.trim()).filter(Boolean) } : undefined;
+      const opts = { backupDir, expect, planHash: values["plan-hash"] };
+      const r = values.execute ? await applyCorrection(db, id, opts) : await planCorrection(db, id, opts);
       if (values.out) {
         if (!path.resolve(values.out).startsWith(path.resolve("data/raw") + path.sep)) throw new Error("Write the report under data/raw/, which git ignores.");
         mkdirSync(path.dirname(values.out), { recursive: true });
         writeFileSync(values.out, JSON.stringify(r, null, 2));
       }
-      const brief = "mapping" in r ? { ...r, statusChanged: r.statusChanged.length, mapping: `${r.mapping.length} exchanges (see --out)`, findings: { ...r.findings, requiresReview: r.findings.requiresReview.length } } : r;
-      console.log(JSON.stringify(brief, null, 2));
-      if (r.outcome !== "dry_run" && r.outcome !== "corrected") process.exitCode = 2;
+      console.log(JSON.stringify({ ...r, correction: r.correction && { ...r.correction, mapping: undefined } }, null, 2));
+      if (r.outcome !== "dry_run" && r.outcome !== "applied") process.exitCode = 2;
+    } else if (command === "rollback") {
+      if (!values.migration) throw new Error("rollback needs --migration <correction id>");
+      console.log(JSON.stringify(await rollbackCorrection(db, values.migration), null, 2));
+    } else if (command === "release") {
+      if (!values.migration) throw new Error("release needs --migration <id of the hold>");
+      console.log(JSON.stringify(await releaseHold(db, values.migration), null, 2));
+    } else if (command === "quarantine") {
+      const id = num(values["document-id"]);
+      if (!id || !values.reason) throw new Error("quarantine needs --document-id and --reason");
+      const only = values.findings ? values.findings.split(",").map(Number) : undefined;
+      console.log(JSON.stringify(await quarantineFindings(db, id, values.reason, only), null, 2));
+    } else if (command === "integrity") {
+      const id = num(values["document-id"]);
+      if (!id) throw new Error("integrity needs --document-id");
+      const r = await integrity(db, id);
+      console.log(JSON.stringify(r, null, 2));
+      if (Object.values(r).some((n) => n > 0)) process.exitCode = 2;
     } else if (command === "export-lines") {
       const id = num(values.deposition);
       if (!id || !values.out) throw new Error("export-lines needs --deposition and --out");

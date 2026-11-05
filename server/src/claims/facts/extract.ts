@@ -7,11 +7,12 @@
 // interrupted one continues; fact keys make a retry unable to store a fact twice. A batch cut off at the
 // token limit is split in two; a single unit cut off is marked incomplete, its testimony kept for retry.
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { runPool } from "../../adjudicate/pool";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, recordCall, reserve, settle } from "../../costs";
 import type { Database } from "../../db/client";
 import { factUnits, facts } from "../../db/schema";
+import { heldDocuments } from "../../evidence/correction";
 import type { ClaimModel } from "../model";
 import { FACT_EXTRACTOR_VERSION, factsJsonSchema, MAX_UNITS_PER_BATCH } from "./contracts";
 import type { Unit } from "./context";
@@ -28,6 +29,7 @@ export type FactExtractOptions = { budgetId?: number; jobId?: number | null; con
 export type FactExtractResult = {
   units: number;
   staleUnits: number; // units whose source changed since their facts were extracted
+  sourceChangedUnits: number; // units whose source changed while the model read them: not saved, still due
   batches: { planned: number; sent: number; split: number; failed: number };
   facts: { indexed: number; rejected: number; duplicates: number };
   rejectionReasons: Record<string, number>;
@@ -42,11 +44,13 @@ export async function planFacts(db: Database, documentId: number, only?: Readonl
 }
 
 export async function extractFacts(db: Database, documentId: number, model: ClaimModel, { budgetId, jobId = null, concurrency = FACT_CONCURRENCY, maxBatches, only, unitsPerBatch = MAX_UNITS_PER_BATCH, shouldStop }: FactExtractOptions = {}): Promise<FactExtractResult> {
+  const [held] = await heldDocuments(db, [documentId]);
+  if (held) throw new Error(`Document ${documentId}'s evidence is held by ${held.hold}; extract after the correction.`);
   const { units, status, staleUnits } = await syncUnits(db, documentId);
   const due = units.filter((u) => DUE.includes(status.get(u.unitKey)!) && (!only || only.has(u.unitKey)));
   const batches = batchUnits(due, MAX_BATCH_CHARS, unitsPerBatch).slice(0, maxBatches);
   const seen = await storedFactKeys(db, documentId);
-  const result: FactExtractResult = { units: units.length, staleUnits, batches: { planned: batches.length, sent: 0, split: 0, failed: 0 }, facts: { indexed: 0, rejected: 0, duplicates: 0 }, rejectionReasons: {}, stopped: null };
+  const result: FactExtractResult = { units: units.length, staleUnits, sourceChangedUnits: 0, batches: { planned: batches.length, sent: 0, split: 0, failed: 0 }, facts: { indexed: 0, rejected: 0, duplicates: 0 }, rejectionReasons: {}, stopped: null };
 
   // Batches run at once, so readings are checked and saved one at a time: `seen` then always reflects
   // everything saved before, and two windows of one answer can't both store the same fact.
@@ -60,6 +64,15 @@ export async function extractFacts(db: Database, documentId: number, model: Clai
     inOrder(async () => {
       const reading = read();
       await db.transaction(async (tx) => {
+        // The source may have changed while the model read it (an evidence correction): keep only the units
+        // whose stored source hash is still the one sent; the rest stay due and are read again.
+        const sent = new Map(units.map((u) => [u.unitKey, u.sourceHash]));
+        const keys = reading.outcomes.map((o) => o.unitKey);
+        const current = keys.length ? await tx.select({ key: factUnits.unitKey, hash: factUnits.sourceHash }).from(factUnits).where(and(inArray(factUnits.unitKey, keys), eq(factUnits.extractorVersion, FACT_EXTRACTOR_VERSION))) : [];
+        const fresh = new Set(current.filter((r) => r.hash === sent.get(r.key)).map((r) => r.key));
+        result.sourceChangedUnits += keys.filter((k) => !fresh.has(k)).length;
+        reading.facts = reading.facts.filter((c) => fresh.has(c.unitKey));
+        reading.outcomes = reading.outcomes.filter((o) => fresh.has(o.unitKey));
         const rows = reading.facts.map((c) => factRow(c, llmCallId));
         for (let i = 0; i < rows.length; i += 200) {
           // A stale fact found again in the changed source becomes current again; anything else is kept as is.

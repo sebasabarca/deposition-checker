@@ -996,3 +996,60 @@ Module `server/src/claims/facts/` (in `claims/`, one of the two modules allowed 
 ## Implementation note: packet versus pairwise adjudication (Milestone 2, November 3, on the `multi-analysis` branch, evaluation only)
 
 The packet contract (`server/src/adjudicate/packetSchema.ts`, `packetPrompt.ts`), loader (`packetLoad.ts`), client (`packetModel.ts`) and verifier (`server/src/verify/packet.ts`) evaluate grouping evidence pairs into issue packets against one pair per request; normal analyses don't use them. Results, costs and limits are in `docs/milestone-2-results.md`: the same targets were found in both arms at 32% less cost, but only 1 of 4 real review-worthy targets, so real-world detection is not validated.
+
+## Implementation note: safe evidence correction (November 5, on `feature/safe-evidence-correction`, needs approval)
+
+Not merged. It changes what the model sees and adds a schema migration, so it needs approval before it is merged
+or run on working data. Procedure: `docs/evidence-correction.md`.
+
+**Parser revision 12 (segments-v2).**
+- **The rule:** a bare "Q" after a sentence's end inside an archive statement starts the examiner's turn
+  ("A: Cocaine, no. Q You've never…").
+- **What it fixes:** the question no longer stays inside the previous answer's exchange, and the next answer no
+  longer attaches to the wrong question.
+- **What it doesn't split:** a bare "A", because "A" is an English word.
+- **Measured effect:** across the stored corpus it changes exactly 11 statements, in Simpson day 2, Simpson
+  day 9 and Resnick day 9 (`tests/fixtures/segments-v2-confirmed.json`). PDF reads are byte-identical.
+
+**Packet rendering spans-v1 (model input).**
+- A statement shared by two exchanges is shown to each exchange as only the turns it owns: a slice of the
+  stored text, marked "(part 2 of 2)" on its page:line.
+- No wording of the prompt changed, and the prompt versions stand. Each verdict's packet record says `render:
+  "spans-v1"`, so it is known which rendering a verdict saw.
+
+**Correction (`server/src/evidence/correction.ts`).** Correcting a stored document wraps the existing in-place
+correction. It adds:
+- integrity checks before and after: fact units, facts, screening entries, candidate group numbers;
+- a gate that only the expected lines change;
+- facts on a replaced exchange kept, detached and stale, instead of deleted by the foreign key;
+- screening entries on a replaced exchange block the correction;
+- fact units re-keyed by verified source identity: `syncUnits` now updates group numbers when a unit's source is
+  unchanged;
+- a dry run that is the whole correction rolled back, and execution only with its plan hash;
+- a ledger (`evidence_migrations`), a backup, and an exact rollback.
+
+**Quarantine (`evidence_quarantine`).**
+- **What is quarantined:** findings, verdicts and candidates whose evidence a correction changed, or that sit on a
+  superseded source (`scripts/evidence.ts quarantine`).
+- **What is kept:** the rows and a person's review are never changed; the quarantine keeps the review as it was.
+- **What a quarantined finding is:**
+  - It sits in its own "Needs revalidation" group, out of every review queue, count of decisions, report and
+    replay.
+  - Its earlier review is shown in the past tense.
+  - It can't be reviewed again (HTTP 409).
+- **Revalidation** is a new analysis of the corrected transcript.
+
+**Worker coordination (migration 0039).**
+- **The hold:** while a correction holds a deposition (`depositions.evidence_hold`), the database refuses every
+  write to its lines, exchanges and derived rows, and to the deposition row itself, except the holder's
+  (SQLSTATE VE001).
+- **Lock order:** the guard takes the same key-share lock as a foreign-key check, so a correction waits for
+  writers already running, and writers that arrive during it wait and are then refused.
+- **When a hold is allowed:** only while no analysis or case run of the case is unfinished.
+- **Workers during a hold:**
+  - analysis and case-run jobs wait;
+  - ingestion retries;
+  - fact extraction refuses;
+  - an extraction reading whose source changed while the model read it is not saved.
+- **Releasing:** the hold is released only after the correction commits; a crash leaves it for an explicit
+  `release`.

@@ -16,7 +16,9 @@ import { countsToward, provenanceOf, type Provenance } from "../retrieve/provena
 
 import type { SessionCoverage } from "../verify";
 
-export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified";
+// quarantined: an evidence correction changed the finding's source (evidence/correction.ts). Kept, with its review,
+// for audit, but never in an ordinary group, queue, count of decisions or report.
+export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified" | "quarantined";
 export type FindingRow = {
   type: string;
   evidenceStatus: string;
@@ -25,7 +27,8 @@ export type FindingRow = {
   priority: string;
 };
 
-export function findingGroup(f: FindingRow): FindingGroup {
+export function findingGroup(f: FindingRow, quarantined = false): FindingGroup {
+  if (quarantined) return "quarantined";
   if (f.evidenceStatus === "wrong_reference" || f.evidenceStatus === "unsupported" || f.unscoredReason === "attribution_failed") return "unverified";
   if (f.type === "insufficient_evidence" || f.unscoredReason === "insufficient_evidence") return "needs_context";
   const scored = f.score !== null || f.unscoredReason === "direct_discovery"; // a compatible direct finding has no score to give
@@ -38,8 +41,9 @@ export const GROUP_LABELS: Record<FindingGroup, string> = {
   needs_context: "Needs context",
   compatible: "Compatible or dismissed",
   unverified: "Unverified",
+  quarantined: "Needs revalidation",
 };
-export const GROUP_ORDER: FindingGroup[] = ["contradictions", "needs_context", "compatible", "unverified"];
+export const GROUP_ORDER: FindingGroup[] = ["contradictions", "needs_context", "compatible", "unverified", "quarantined"];
 
 const PRIORITY_ORDER = ["high", "medium", "low", "needs_context", "unverified"];
 export function compareFindings(a: { id: number; priority: string; score: number | null }, b: { id: number; priority: string; score: number | null }): number {

@@ -105,6 +105,7 @@ export const GROUP_LABEL: Record<FindingSummary["group"], string> = {
   needs_context: "Needs context",
   compatible: "Compatible or dismissed",
   unverified: "Unverified",
+  quarantined: "Needs revalidation",
 };
 
 export const GROUP_HELP: Record<FindingSummary["group"], string> = {
@@ -112,6 +113,7 @@ export const GROUP_HELP: Record<FindingSummary["group"], string> = {
   needs_context: "They may conflict, but the evidence is incomplete or qualified. Not a contradiction as it stands.",
   compatible: "Not established as conflicting. Shown so nothing is hidden.",
   unverified: "A citation, quotation or speaker check failed. Don't rely on these without reading the source.",
+  quarantined: "The transcript was re-read with a corrected parser after these were made. Kept for audit; not current findings.",
 };
 
 const MODEL_CLASSIFICATION: Record<string, string> = {
@@ -139,6 +141,7 @@ export const analysisTitle = (a: { kind: string; witnesses: { a: { name: string 
 // The headline follows code's lane, never the model's label alone: a finding the checks hold back
 // must not read as a contradiction.
 export function findingHeadline(f: Pick<FindingSummary, "group" | "classification"> & { cross?: unknown }) {
+  if (f.group === "quarantined") return "Needs revalidation";
   if (f.group === "contradictions" && f.cross) return "Potential conflict between witnesses";
   if (f.group === "contradictions") return f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction";
   if (f.group === "unverified") return "Unverified finding";

@@ -14,6 +14,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "../db/client";
 import { candidates, depositions, verdicts } from "../db/schema";
 import { SYNTHETIC_SUITES } from "../eval/synthetic";
+import { verdictNotQuarantined } from "../evidence/correction";
 import { loadPacket } from "./packet";
 import { PROMPT_VERSIONS } from "./prompt";
 import { storeVerdict } from "./run";
@@ -53,6 +54,7 @@ export async function replayCandidate(db: Database, candidateId: number, preferP
         eq(storedB.fileSha256, fileB.sha),
         eq(storedB.parserVersion, fileB.parser),
         eq(candidates.groupB, c.groupB),
+        verdictNotQuarantined(verdicts.id), // a verdict whose evidence a correction changed is never copied
       ),
     )
     .orderBy(desc(verdicts.id));

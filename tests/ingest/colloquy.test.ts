@@ -128,7 +128,8 @@ describe("colloquy-format transcripts", () => {
 // Every transcript of the independent corpus, and the real files under data/raw when they are present.
 // Each read is hashed as a snapshot (lines with roles; exchanges with members, texts and evidence fields):
 // the hashes below were taken before revision 11 for every file it doesn't change, and after it for the
-// four colloquy-format files it fixes.
+// four colloquy-format files it fixes. Revision 12 changed three Simpson-archive reads, by exactly the 11 bare-"Q"
+// splits of tests/fixtures/segments-v2-confirmed.json (checked line by line against revision 11's segments).
 const CORPUS = "data/eval/independent-cross-v1";
 const FIXTURE = `${CORPUS}-fixture.json`;
 const SNAPSHOTS: Record<string, string> = {
@@ -143,9 +144,9 @@ const RAW_SNAPSHOTS: Record<string, [string, string | undefined, string]> = {
   "ellison/p3171": ["data/raw/ellison/p3171.pdf", "Lawrence Ellison", "cf5f39000f32c59c"],
   "ellison/p3173": ["data/raw/ellison/p3173.pdf", "Lawrence Ellison", "6c9cbe3f1d0fcfa1"],
   "simpson/resnick-cross": ["data/raw/simpson/faye_resnick_february_11_1996_day_9_cross_examination.txt", "Faye Resnick", "a967467935050802"],
-  "simpson/resnick-direct": ["data/raw/simpson/faye_resnick_february_11_1996_day_9_direct_examination.txt", "Faye Resnick", "655972bc42c99dc7"],
-  "simpson/simpson-day9": ["data/raw/simpson/o_j_simpson_february_27_1996_day_9.txt", "O.J. Simpson", "20f3b5e4672bbdcc"],
-  "simpson/simpson-day2": ["data/raw/simpson/o_j_simpson_january_23_1996_day_2.txt", "O.J. Simpson", "24e572b588d3258e"],
+  "simpson/resnick-direct": ["data/raw/simpson/faye_resnick_february_11_1996_day_9_direct_examination.txt", "Faye Resnick", "8a16adebcbd43df1"],
+  "simpson/simpson-day9": ["data/raw/simpson/o_j_simpson_february_27_1996_day_9.txt", "O.J. Simpson", "eae3b6abc3f23a33"],
+  "simpson/simpson-day2": ["data/raw/simpson/o_j_simpson_january_23_1996_day_2.txt", "O.J. Simpson", "76b488d5b8248086"],
   "li-sample.txt": ["data/raw/transcripts/legalinformatics/li-sample.txt", undefined, "3c16bfe63bc5b0ae"],
   "li-sample.rtf": ["data/raw/transcripts/derived/li-sample.textutil.rtf", undefined, "1d0daa5557506866"],
   "li-sample.docx": ["data/raw/transcripts/derived/li-sample.textutil.docx", undefined, "c6f0a8d229a7be9e"],

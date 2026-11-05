@@ -3,6 +3,7 @@
 // run says so on every finding. Unread pairs are counted in the coverage, never listed as cleared.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { StandingNotice } from "../components/FindingRegister";
 import { TranscriptRows } from "../components/FindingView";
 import { Alert, Badge, Breadcrumbs, Button, Card, cx, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
@@ -76,7 +77,7 @@ export function CaseRunPage({ id }: { id: number }) {
 
       <Card className="overflow-hidden">
         <div className="px-5 pt-2">
-          <Tabs label="Findings by lane" value={lane} onChange={(l) => { setLane(l); setShown(PAGE); }} items={LANES.map((l) => ({ id: l.id, label: l.label, count: byLane.get(l.id)!.length }))} />
+          <Tabs label="Findings by lane" value={lane} onChange={(l) => { setLane(l); setShown(PAGE); }} items={LANES.filter((l) => l.id !== "quarantined" || lane === l.id || byLane.get(l.id)!.length > 0).map((l) => ({ id: l.id, label: l.label, count: byLane.get(l.id)!.length }))} />
         </div>
         {list.length === 0 ? (
           <p className="px-5 py-6 text-sm text-muted">
@@ -100,14 +101,20 @@ export function CaseRunPage({ id }: { id: number }) {
 
 function FindingRow({ f, test }: { f: CaseRunFinding; test: boolean }) {
   const explanation = (f.model.verdict as { explanation?: unknown } | null)?.explanation;
+  const kind = CLASSIFICATION[f.type as keyof typeof CLASSIFICATION] ?? f.type;
+  const setAside = f.standing?.state === "quarantined";
   return (
     <article className="space-y-3 px-5 py-5">
       <header className="flex flex-wrap items-center gap-2">
-        <h3 className="font-semibold">{CLASSIFICATION[f.type as keyof typeof CLASSIFICATION] ?? f.type}</h3>
-        <Badge tone="neutral">{PRIORITY[f.priority as keyof typeof PRIORITY] ?? f.priority}</Badge>
+        {setAside ? (
+          <><h3 className="font-semibold">Needs revalidation</h3><Badge tone="neutral">Earlier verdict: {kind}</Badge></>
+        ) : (
+          <><h3 className="font-semibold">{kind}</h3><Badge tone="neutral">{PRIORITY[f.priority as keyof typeof PRIORITY] ?? f.priority}</Badge></>
+        )}
         <Badge tone="neutral">{f.crossWitness ? "Across witnesses" : "Same witness"}</Badge>
-        {f.score !== null && <span className="text-sm text-muted tabular-nums">Evidence strength {f.score}/100</span>}
+        {f.score !== null && !setAside && <span className="text-sm text-muted tabular-nums">Evidence strength {f.score}/100</span>}
       </header>
+      <StandingNotice standing={f.standing} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Side side={f.a} cited={f.verification.a.lineIds} status={f.verification.a.status} />
         <Side side={f.b} cited={f.verification.b.lineIds} status={f.verification.b.status} />

@@ -1,0 +1,192 @@
+{
+ "source": "The 11 confirmed bare-Q merges from parser-v2/diff.json: the stored line only (public-record archive transcripts), no surrounding testimony",
+ "cases": [
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:262",
+   "text": "A: I believe she called it or she caused it to be caused--called. Q What was the purpose of the intervention?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: I believe she called it or she caused it to be caused--called."
+    },
+    {
+     "role": "attorney",
+     "text": "Q What was the purpose of the intervention?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:347",
+   "text": "A: Not that I recall. Q Okay. And in your conversation with Reichardt, was there any discussion of Nicole?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: Not that I recall."
+    },
+    {
+     "role": "attorney",
+     "text": "Q Okay. And in your conversation with Reichardt, was there any discussion of Nicole?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:360",
+   "text": "A: No. Q You've never witnessed Faye Resnick taking cocaine. Correct?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: No."
+    },
+    {
+     "role": "attorney",
+     "text": "Q You've never witnessed Faye Resnick taking cocaine. Correct?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:466",
+   "text": "A: I don't believe so, no. Q Did you maintain any other kind of appointment book or calendar yourself, like one of those computerized or any kind, for that matter?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: I don't believe so, no."
+    },
+    {
+     "role": "attorney",
+     "text": "Q Did you maintain any other kind of appointment book or calendar yourself, like one of those computerized or any kind, for that matter?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:581",
+   "text": "A: Yes. Q And with the dog?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: Yes."
+    },
+    {
+     "role": "attorney",
+     "text": "Q And with the dog?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:684",
+   "text": "A: I can only surmise. Q What is your best understanding of that?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: I can only surmise."
+    },
+    {
+     "role": "attorney",
+     "text": "Q What is your best understanding of that?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:971",
+   "text": "A: Because I stayed at her house a lot, and some nights when I would either walk the dog or run to the store to get something, I'd go out the front door, and I'd use the key to get back in the front door. Q Where would you get that key?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: Because I stayed at her house a lot, and some nights when I would either walk the dog or run to the store to get something, I'd go out the front door, and I'd use the key to get back in the front door."
+    },
+    {
+     "role": "attorney",
+     "text": "Q Where would you get that key?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "1:1104",
+   "text": "A: No. Q Was--",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: No."
+    },
+    {
+     "role": "attorney",
+     "text": "Q Was--"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "74e895f9f0a801bba54592bcd724c6ff31c78eaf9412586fe3765cc3d201a573",
+   "ref": "3:1357",
+   "text": "A: This is to the best of my recollection. This is--you know, I came out, dropped the two bags. I didn't see Kato. The limo driver was standing there. I think I heard Kato, because he wasn't standing in front of the house. I looked in my bag, and I went back into the house and into the kitchen, came back out, and then I saw Kato over by the garage and he was talking to me from over there. Q The garage door was closed Right?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: This is to the best of my recollection. This is--you know, I came out, dropped the two bags. I didn't see Kato. The limo driver was standing there. I think I heard Kato, because he wasn't standing in front of the house. I looked in my bag, and I went back into the house and into the kitchen, came back out, and then I saw Kato over by the garage and he was talking to me from over there."
+    },
+    {
+     "role": "attorney",
+     "text": "Q The garage door was closed Right?"
+    }
+   ]
+  },
+  {
+   "witness": "Faye Resnick",
+   "fileSha256": "3b1508dae47393eebdb6e7923bd2f6a69d23cd2c0b02fe2ae3df655ffc0290fb",
+   "ref": "0:298",
+   "text": "A: I have no knowledge of Nicole ever having anywhere close to a nervous breakdown. I - she was very stressed at the end of her life, due to the fact that her life was threatened. Q By whom?",
+   "before": [],
+   "after": [
+    {
+     "role": "witness",
+     "text": "A: I have no knowledge of Nicole ever having anywhere close to a nervous breakdown. I - she was very stressed at the end of her life, due to the fact that her life was threatened."
+    },
+    {
+     "role": "attorney",
+     "text": "Q By whom?"
+    }
+   ]
+  },
+  {
+   "witness": "O.J. Simpson",
+   "fileSha256": "a3ac0014816b3ae716664027b8086881ab61a25a718c92418a818062cc99ba2b",
+   "ref": "0:1874",
+   "text": "MR. KELLY: Insulter. Q With the letter you eventually had hand-delivered to Nicole on June 6, 1994, can you tell me when you first drafted that letter that was ultimately delivered?",
+   "before": [],
+   "after": [
+    {
+     "role": "colloquy",
+     "text": "MR. KELLY: Insulter."
+    },
+    {
+     "role": "attorney",
+     "text": "Q With the letter you eventually had hand-delivered to Nicole on June 6, 1994, can you tell me when you first drafted that letter that was ultimately delivered?"
+    }
+   ]
+  }
+ ]
+}

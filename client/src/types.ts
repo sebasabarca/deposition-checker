@@ -102,7 +102,12 @@ export type CaseDetail = {
 };
 
 export type ReviewDecision = "confirmed" | "needs_context" | "dismissed";
-export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified";
+// "quarantined": the transcript was re-read with a corrected parser after the finding was made, and its evidence
+// changed. Kept for audit with its earlier review, never a current finding.
+export type FindingGroup = "contradictions" | "needs_context" | "compatible" | "unverified" | "quarantined";
+export type FindingStanding =
+  | { state: "current" }
+  | { state: "quarantined"; reason: string; since: string; parser: string | null; priorReview: { state: ReviewDecision | "unreviewed"; note: string | null; reviewedAt: string | null } };
 export type VerdictSource = "model" | "replayed" | "fixture";
 
 export type DiscoveryAttempt = {
@@ -181,6 +186,7 @@ export type FindingSummary = {
   contextRequested: boolean;
   reviewState: string;
   reviewNote: string | null;
+  standing: FindingStanding;
   subject: string | null;
   source: VerdictSource;
   model: string;
@@ -237,6 +243,7 @@ export type FindingDetail = {
   reviewState: string;
   reviewNote: string | null;
   reviewedAt: string | null;
+  standing: FindingStanding;
   rubricVersion: string;
   factors: Factor[];
   caps: Cap[];
@@ -315,7 +322,7 @@ export type CaseRun = {
 };
 export type CaseRunSide = { exchange: string; depositionId: number; witnessId: number | null; witness: string | null; takenOn: string | null; range: string | null; lines: { id: number; at: string; text: string }[] };
 export type CaseRunFinding = {
-  id: number; crossWitness: boolean; type: string; priority: string; score: number | null; band: string | null; unscoredReason: string | null; evidenceStatus: string; reviewState: string;
+  id: number; crossWitness: boolean; type: string; priority: string; score: number | null; band: string | null; unscoredReason: string | null; evidenceStatus: string; reviewState: string; standing: FindingStanding;
   verification: { a: { status: string | null; lineIds: number[] }; b: { status: string | null; lineIds: number[] } };
   a: CaseRunSide; b: CaseRunSide;
   model: { origin: "model" | "fixture"; model: string; promptVersion: string; outcome: string | null; verdict: unknown };

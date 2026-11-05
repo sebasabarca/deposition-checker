@@ -38,8 +38,8 @@ function roleOf(text: string, witnessSurname?: string): { role: SpeakerRole; nam
   return { role, name };
 }
 
-// The statement's segments, or [] when it holds one turn only.
-export function speakerSegments(text: string, witnessSurname?: string): SpeakerSegment[] {
+// The statement's segments by label, or [] when it holds one turn only.
+function labelSegments(text: string, witnessSurname?: string): SpeakerSegment[] {
   const lead = text.match(LEADING);
   const starts = [0];
   let quotes = 0;
@@ -63,5 +63,43 @@ export function speakerSegments(text: string, witnessSurname?: string): SpeakerS
   return starts.map((start, k) => {
     const end = k + 1 < starts.length ? start + text.slice(start, starts[k + 1]).trimEnd().length : text.length;
     return { start, end, ...roleOf(text.slice(start, end), witnessSurname) };
+  });
+}
+
+// Positions where a turn could start: after a sentence's end, each with whether it sits inside quotes or
+// parentheses there (read-back testimony).
+function turnStarts(text: string): { at: number; quoted: boolean }[] {
+  const out: { at: number; quoted: boolean }[] = [];
+  let quotes = 0;
+  let parens = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') quotes++;
+    else if (c === "(") parens++;
+    else if (c === ")") parens = Math.max(0, parens - 1);
+    if (!/\s/.test(c)) continue;
+    const at = i + text.slice(i).match(/^\s+/)![0].length;
+    if (at < text.length && ENDS_TURN.test(text.slice(0, i).trimEnd())) out.push({ at, quoted: quotes % 2 === 1 || parens > 0 });
+    i = at - 1;
+  }
+  return out;
+}
+const BARE_Q = /Q\s+(?=[A-Z])/y; // "Q And": a bare Q with no punctuation (labelSegments reads "Q." and "Q:")
+
+// The statement's segments, or [] when it holds one turn only. Revision 12 (segments-v2) adds one rule to the
+// labels: a bare "Q" after a sentence's end, outside quotes and parentheses, before a capitalized word, starts
+// the examiner's turn ("A: Yes. Q And with the dog?"). A bare "A" is never split: it is also an English word
+// ("Yes. A man came in"). Text is never edited; a segment is a character range of the stored statement.
+export function speakerSegments(text: string, witnessSurname?: string): SpeakerSegment[] {
+  const base = labelSegments(text, witnessSurname);
+  const starts = new Set(base.length ? base.map((s) => s.start) : [0]);
+  const added = turnStarts(text).filter((c) => !c.quoted && !starts.has(c.at) && ((BARE_Q.lastIndex = c.at), BARE_Q.test(text))).map((c) => c.at);
+  if (!added.length) return base;
+  const all = [...new Set([...starts, ...added])].sort((a, b) => a - b);
+  return all.map((start, k) => {
+    const end = k + 1 < all.length ? start + text.slice(start, all[k + 1]).trimEnd().length : text.length;
+    const kept = base.find((x) => x.start === start);
+    if (kept) return { start, end, role: kept.role, name: kept.name };
+    return /^Q\s+[A-Z]/.test(text.slice(start, end)) ? { start, end, role: "attorney" as const, name: null } : { start, end, ...roleOf(text.slice(start, end), witnessSurname) };
   });
 }

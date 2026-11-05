@@ -40,7 +40,8 @@ import { classifyFailure, closeRequest, openRequest } from "../adjudicate/reques
 import type { AdjudicatorReply } from "../adjudicate/model";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, reconcileStale, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
-import { adjudicationRequests, budgets, candidates, caseRuns, findings, llmCalls, screeningEntries, screeningRuns, verdicts, witnesses } from "../db/schema";
+import { standingOf } from "../evidence/correction";
+import { adjudicationRequests, budgets, candidates, caseRuns, depositions, findings, llmCalls, screeningEntries, screeningRuns, verdicts, witnesses } from "../db/schema";
 import { mockPacketReply } from "../eval/mockPacketModel";
 import { buildCasePool, CASE_POOL_VERSION, type CaseItem } from "../retrieve/casePool";
 import { CHARS_PER_TOKEN, INSTRUCTION_TOKENS } from "../retrieve/grouping";
@@ -182,6 +183,8 @@ export async function runCaseRun(db: Database, pool: Pool, id: number, deps: Cas
 }
 
 async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus | "polling"> {
+  // A case whose evidence is being corrected is not read until the correction ends (evidence/correction.ts).
+  if ((await db.select({ id: depositions.id }).from(depositions).where(and(eq(depositions.caseId, run.caseId), sql`${depositions.evidenceHold} is not null`))).length) return "polling";
   let ledger = await ledgerOf(db, run.id);
   if (!ledger) {
     await update(db, run.id, { status: "retrieving", startedAt: run.startedAt ?? new Date(), finishedAt: null, error: null });
@@ -814,6 +817,7 @@ export async function caseRunFindings(db: Database, id: number) {
   const stored = lineIds.length ? await db.execute<{ id: number; deposition_id: number; printed_page: number; line_no: number; raw_text: string }>(sql`select id, deposition_id, printed_page, line_no, raw_text from lines where id in (${sql.join(lineIds.map((x) => sql`${x}`), sql`, `)})`).then((r) => new Map(r.rows.map((l) => [Number(l.id), l]))) : new Map();
   const people = await db.execute<{ id: number; witness: string; witness_id: number; taken_on: string | null }>(sql`select d.id, w.name as witness, w.id as witness_id, d.taken_on from depositions d join witnesses w on w.id = d.witness_id where d.case_id = (select case_id from case_runs where id = ${id})`).then((r) => new Map(r.rows.map((d) => [Number(d.id), d])));
   const at = (l: { printed_page: number; line_no: number }) => `${l.printed_page}:${String(l.line_no).padStart(2, "0")}`;
+  const standing = await standingOf(db, rows.map((r) => r.f.id));
   return rows.map(({ f, v }) => {
     const sides = (v.packet as { sides: { id: string; depositionId: number; lineIds: number[] }[] }).sides.map((s) => {
       const lines = s.lineIds.map((x) => stored.get(x)).filter((l) => l !== undefined);
@@ -822,7 +826,7 @@ export async function caseRunFindings(db: Database, id: number) {
     });
     const checks = f.checks as { source?: { a?: { evidenceLineIds?: number[]; status?: string }; b?: { evidenceLineIds?: number[]; status?: string } }; outcome?: string };
     return {
-      id: f.id, crossWitness: sides[0]?.witnessId !== sides[1]?.witnessId, type: f.type, priority: f.priority, score: f.score, band: f.band, unscoredReason: f.unscoredReason, evidenceStatus: f.evidenceStatus, reviewState: f.reviewState,
+      id: f.id, crossWitness: sides[0]?.witnessId !== sides[1]?.witnessId, type: f.type, priority: f.priority, score: f.score, band: f.band, unscoredReason: f.unscoredReason, evidenceStatus: f.evidenceStatus, reviewState: f.reviewState, standing: standing.get(f.id)!,
       // Code's verification: which stored lines each side's citation was found on.
       verification: { a: { status: checks.source?.a?.status ?? null, lineIds: checks.source?.a?.evidenceLineIds ?? [] }, b: { status: checks.source?.b?.status ?? null, lineIds: checks.source?.b?.evidenceLineIds ?? [] } },
       a: sides[0], b: sides[1],

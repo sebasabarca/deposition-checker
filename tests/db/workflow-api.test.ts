@@ -154,7 +154,7 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     expect(done.body.analysis.progress).toMatchObject({ fixture: 5, replayed: 0, findings: 5 });
 
     const { body } = await call("GET", `/analyses/${id}/findings`);
-    expect(body.groups.map((g: { group: string }) => g.group)).toEqual(["contradictions", "needs_context", "compatible", "unverified"]);
+    expect(body.groups.map((g: { group: string }) => g.group)).toEqual(["contradictions", "needs_context", "compatible", "unverified", "quarantined"]);
     const all = body.groups.flatMap((g: { findings: unknown[] }) => g.findings);
     expect(all).toHaveLength(5);
     expect(all.every((f: { source: string }) => f.source === "fixture")).toBe(true);

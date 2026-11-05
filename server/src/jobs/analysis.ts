@@ -20,6 +20,7 @@ import { buildTopicMap, CARD_EXTRACTOR_VERSION, extractCards, type ClaimModel } 
 import { budgetStatus, reconcileStale } from "../costs";
 import type { Database } from "../db/client";
 import { analyses, candidates, depositions, findings, verdicts } from "../db/schema";
+import { heldDocuments } from "../evidence/correction";
 import { findPathB, findTopicPairs, hybridRetrievalVersion, unionCandidates, type Pool } from "../retrieve";
 import { timed, timedSync } from "../timing";
 
@@ -208,6 +209,8 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
 
   // Parsing: both depositions must be read. Waiting is bounded; a deposition that can't be used fails the analysis.
   const docs = await db.select({ id: depositions.id, status: depositions.status }).from(depositions).where(inArray(depositions.id, [a.depositionA, a.depositionB]));
+  // A deposition whose evidence is being corrected is not read until the correction ends (evidence/correction.ts).
+  if ((await heldDocuments(db, [a.depositionA, a.depositionB])).length) return "waiting";
   const notReady = docs.filter((d) => d.status !== "ready");
   if (notReady.some((d) => d.status === "processing")) {
     const checks = (progress.parsingChecks ?? 0) + 1;

@@ -10,6 +10,7 @@ import { Alert, Badge, Breadcrumbs, Button, buttonClass, Loading, PageHeader } f
 import { api } from "../lib/api";
 import { isActive } from "../lib/insights";
 import { analysisTitle, ANALYSIS_STATUS, DISCOVERY_ATTEMPT, formatDate, formatUsd, GROUP_LABEL } from "../lib/labels";
+import { isQuarantined, shownDecision } from "../lib/review";
 import { href, usePoll } from "../lib/router";
 import type { AnalysisView, CaseDetail, DiscoveryView, EvidenceCoverage, FindingGroup, FindingGroups, NotStoredFinding } from "../types";
 import { CheckProgress } from "../components/CheckProgress";
@@ -86,7 +87,10 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   const [a, b] = analysis.depositions;
   const cross = analysis.kind === "cross_witness";
   const done = analysis.status === "completed";
-  const decided = findings.filter((f) => f.reviewState !== "unreviewed").length;
+  // Findings that need revalidation are not current: counted apart, never as decided.
+  const setAside = findings.filter(isQuarantined).length;
+  const current = findings.length - setAside;
+  const decided = findings.filter((f) => !["unreviewed", "quarantined"].includes(shownDecision(f))).length;
 
   return (
     <>
@@ -95,7 +99,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
         title={cross ? <>{analysisTitle(analysis)}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></> : <>{a.witness}<span className="font-normal text-muted">: {formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span></>}
         description={
           done
-            ? <>Checked {formatDate(analysis.finishedAt ?? analysis.createdAt)} · {findings.length} {findings.length === 1 ? "finding" : "findings"} · {decided} decided</>
+            ? <>Checked {formatDate(analysis.finishedAt ?? analysis.createdAt)} · {current} {current === 1 ? "finding" : "findings"} · {decided} decided{setAside > 0 && <> · {setAside} {setAside === 1 ? "needs" : "need"} revalidation</>}</>
             : <>{active ? "Check running" : ANALYSIS_STATUS[analysis.status].label}</>
         }
         actions={done ? (

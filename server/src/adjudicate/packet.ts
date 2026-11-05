@@ -5,12 +5,16 @@
 
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { candidates, depositions, exchangeLines, exchanges, lines, witnesses } from "../db/schema";
+import { candidates, depositions, exchangeLines, exchanges, lines, lineSegments, witnesses } from "../db/schema";
 import type { EvidenceExchange, EvidenceLine } from "../verify";
 
 export const CONTEXT_LINES = 5;
 
-export type PacketLine = { id: number; page: number; line: number; text: string };
+// A statement that holds several turns (line_segments) is shared by the exchanges its turns belong to. Each
+// exchange shows only the turns it owns, as a slice of the stored text, marked "part 2 of 2" (render
+// "spans-v1"), so a question that starts inside an answer's statement is never shown as part of the answer.
+export type PacketLine = { id: number; page: number; line: number; text: string; span?: { first: number; last: number; of: number } };
+export const PACKET_RENDER = "spans-v1";
 export type PacketExchange = {
   id: string; // "E<first part id>": the ID the model cites
   depositionId: number;
@@ -40,7 +44,8 @@ export const evidenceOf = (x: PacketExchange): EvidenceExchange => ({
   context: [...x.before, ...x.after],
 });
 
-const ref = (l: PacketLine) => `${l.page}:${String(l.line).padStart(2, "0")}`;
+export const spanLabel = (l: PacketLine) => (l.span ? ` (part ${l.span.first}${l.span.last > l.span.first ? `-${l.span.last}` : ""} of ${l.span.of})` : "");
+const ref = (l: PacketLine) => `${l.page}:${String(l.line).padStart(2, "0")}${spanLabel(l)}`;
 const show = (ls: readonly PacketLine[]) => ls.map((l) => `  ${ref(l)}  ${l.text}`).join("\n");
 
 // The user message: plain text with page:line on every line. Pure.
@@ -63,6 +68,7 @@ export const packetRecord = (p: Packet) => ({
   candidateId: p.candidateId,
   witnessId: p.witnessId,
   contextLines: CONTEXT_LINES,
+  render: PACKET_RENDER,
   sides: [p.a, p.b].map((x) => ({
     id: x.id,
     session: x.session,
@@ -90,6 +96,14 @@ export function untilGap<T extends { page: number }>(from: { page: number }, nea
   return { lines: kept, gap: false };
 }
 
+// The text an exchange shows of one statement: the turns it owns, sliced from the stored text, or the whole
+// statement when it owns all of them (or the statement has one turn). Pure.
+export function ownedTurns(text: string, segments: readonly { seq: number; start: number; end: number }[], owned: { from: number; to: number } | null): Pick<PacketLine, "text" | "span"> {
+  const segs = [...segments].sort((a, b) => a.seq - b.seq);
+  if (!owned || segs.length < 2 || (owned.from <= 0 && owned.to >= segs.length - 1)) return { text };
+  return { text: text.slice(segs[owned.from].start, segs[owned.to].end), span: { first: owned.from + 1, last: owned.to + 1, of: segs.length } };
+}
+
 export async function loadSide(db: Database, depositionId: number, groupId: number, session: "A" | "B"): Promise<PacketExchange> {
   const parts = await db
     .select({ id: exchanges.id, partCount: exchanges.partCount, witnessId: exchanges.witnessId })
@@ -97,13 +111,22 @@ export async function loadSide(db: Database, depositionId: number, groupId: numb
     .where(and(eq(exchanges.depositionId, depositionId), eq(exchanges.groupId, groupId)))
     .orderBy(asc(exchanges.partNo));
   if (parts.length === 0) throw new Error(`No exchange ${depositionId}:${groupId}.`);
-  // Parts overlap (a long answer repeats its question), so a line is kept once, with its first role.
-  const members = await db
-    .selectDistinctOn([lines.id], { id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, role: exchangeLines.role })
+  // Parts overlap (a long answer repeats its question), so a line is kept once, with its first role and the
+  // turns any part owns.
+  const rows = await db
+    .select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, role: exchangeLines.role, from: exchangeLines.segmentFrom, to: exchangeLines.segmentTo })
     .from(exchangeLines)
     .innerJoin(lines, eq(lines.id, exchangeLines.lineId))
     .where(inArray(exchangeLines.exchangeId, parts.map((p) => p.id)))
     .orderBy(asc(lines.id), asc(exchangeLines.exchangeId));
+  const segmented = [...new Set(rows.filter((r) => r.from !== null).map((r) => r.id))];
+  const segs = segmented.length ? await db.select({ lineId: lineSegments.lineId, seq: lineSegments.seq, start: lineSegments.startOffset, end: lineSegments.endOffset }).from(lineSegments).where(inArray(lineSegments.lineId, segmented)).orderBy(asc(lineSegments.seq)) : [];
+  const members = [...new Set(rows.map((r) => r.id))].map((id) => {
+    const mine = rows.filter((r) => r.id === id);
+    const { from: _f, to: _t, ...line } = mine[0];
+    const owned = mine.every((r) => r.from !== null && r.to !== null) ? { from: Math.min(...mine.map((r) => r.from!)), to: Math.max(...mine.map((r) => r.to!)) } : null;
+    return { ...line, ...ownedTurns(line.text, segs.filter((x) => x.lineId === id), owned) };
+  });
   members.sort((x, y) => x.page - y.page || x.line - y.line);
   const first = members[0];
   const last = members[members.length - 1];

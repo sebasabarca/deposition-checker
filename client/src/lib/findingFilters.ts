@@ -1,9 +1,9 @@
 // The findings list's filters and order, as pure functions so they can be tested without a browser.
 
 import type { FindingSummary } from "../types";
-import { decisionOf } from "./review";
+import { isQuarantined, shownDecision } from "./review";
 
-export const GROUP_ORDER: FindingSummary["group"][] = ["contradictions", "needs_context", "compatible", "unverified"];
+export const GROUP_ORDER: FindingSummary["group"][] = ["contradictions", "needs_context", "compatible", "unverified", "quarantined"];
 export const PRIORITY_ORDER: FindingSummary["priority"][] = ["high", "medium", "low", "needs_context", "unverified"];
 const RANK = Object.fromEntries(PRIORITY_ORDER.map((p, i) => [p, i])) as Record<FindingSummary["priority"], number>;
 
@@ -14,7 +14,7 @@ export const evidenceCheck = (s: FindingSummary["evidenceStatus"]): EvidenceChec
 export type FindingFilters = { caseId: string; group: string; priority: string; evidence: string; decision: string; q: string };
 export const NO_FILTERS: FindingFilters = { caseId: "", group: "", priority: "", evidence: "", decision: "", q: "" };
 
-type Row = Pick<FindingSummary, "group" | "priority" | "evidenceStatus" | "reviewState" | "subject" | "explanation" | "rank"> & {
+type Row = Pick<FindingSummary, "group" | "priority" | "evidenceStatus" | "reviewState" | "subject" | "explanation" | "rank"> & Partial<Pick<FindingSummary, "standing">> & {
   a: { ref: string | null }; b: { ref: string | null };
   analysis: { id: number; caseId: number }; title: string;
 };
@@ -23,26 +23,32 @@ export function filterFindings<T extends Row>(rows: readonly T[], f: FindingFilt
   const term = f.q.trim().toLowerCase();
   return rows
     .filter((r) => (!f.caseId || String(r.analysis.caseId) === f.caseId) && (!f.group || r.group === f.group) && (!f.priority || r.priority === f.priority))
-    .filter((r) => (!f.evidence || evidenceCheck(r.evidenceStatus) === f.evidence) && (!f.decision || decisionOf(r.reviewState) === f.decision))
+    .filter((r) => (!f.evidence || evidenceCheck(r.evidenceStatus) === f.evidence) && (!f.decision || shownDecision(r) === f.decision))
+    // A quarantined finding has no current priority, citation check or decision: those filters never match it.
+    .filter((r) => !isQuarantined(r) || (!f.priority && !f.evidence && !f.decision))
     .filter((r) => !term || [r.subject, r.explanation, r.a.ref, r.b.ref, r.title].some((s) => s?.toLowerCase().includes(term)))
     .sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group) || RANK[a.priority] - RANK[b.priority] || b.analysis.id - a.analysis.id || a.rank - b.rank);
 }
 
 // A case's findings by review priority. Potential contradictions split by their scored priority; findings
 // that need context or failed a citation check have no score and form their own sections; compatible or
-// dismissed findings are counted apart, never mixed into "Low".
+// dismissed findings are counted apart, never mixed into "Low"; quarantined ones (needing revalidation) are kept
+// apart from every review section.
 export type PrioritySection = "high" | "medium" | "low" | "needs_context" | "unverified";
 export const SECTION_ORDER: PrioritySection[] = ["high", "medium", "low", "needs_context", "unverified"];
-export function prioritySections<T extends Pick<FindingSummary, "group" | "priority" | "rank">>(findings: readonly T[]) {
+export function prioritySections<T extends Pick<FindingSummary, "group" | "priority" | "rank"> & Partial<Pick<FindingSummary, "standing">>>(findings: readonly T[]) {
   const sections = new Map<PrioritySection, T[]>(SECTION_ORDER.map((s) => [s, []]));
   const compatible: T[] = [];
+  const quarantined: T[] = [];
   for (const f of findings) {
-    if (f.group === "compatible") compatible.push(f);
+    if (isQuarantined(f)) quarantined.push(f);
+    else if (f.group === "compatible") compatible.push(f);
     else if (f.group === "contradictions" && (f.priority === "high" || f.priority === "medium" || f.priority === "low")) sections.get(f.priority)!.push(f);
     else sections.get(f.group === "unverified" ? "unverified" : "needs_context")!.push(f);
   }
   for (const list of sections.values()) list.sort((a, b) => a.rank - b.rank);
-  return { sections: SECTION_ORDER.map((id) => ({ id, findings: sections.get(id)! })), compatible };
+  quarantined.sort((a, b) => a.rank - b.rank);
+  return { sections: SECTION_ORDER.map((id) => ({ id, findings: sections.get(id)! })), compatible, quarantined };
 }
 
 export const isFiltered =(f: FindingFilters) => Object.entries(f).some(([k, v]) => (k === "q" ? v.trim() !== "" : v !== ""));

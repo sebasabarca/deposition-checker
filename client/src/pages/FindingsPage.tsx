@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { ArrowLeftRight, CircleAlert, CircleCheck } from "lucide-react";
 import { Alert, Badge, Button, Card, cx, Empty, Loading, PageHeader, rowClass, Search, selectClass, Strength, tdClass, thClass } from "../components/ui";
 import { analysisTitle, EVIDENCE_STATUS, findingHeadline, GROUP_LABEL, PRIORITY } from "../lib/labels";
-import { decisionOf, REVIEW_LABEL } from "../lib/review";
+import { isQuarantined, REVIEW_LABEL, SHOWN_DECISION_LABEL, shownDecision } from "../lib/review";
 import { href } from "../lib/router";
-import { DECISION_DOT, shortRef } from "../components/FindingRegister";
+import { DECISION_DOT, shortRef, StandingNotice } from "../components/FindingRegister";
 import { evidenceCheck, filterFindings, GROUP_ORDER, isFiltered, NO_FILTERS, PRIORITY_ORDER, type FindingFilters } from "../lib/findingFilters";
 import { useWorkspace, useWorkspaceFindings } from "../lib/workspace";
 import type { FindingSummary } from "../types";
@@ -52,11 +52,13 @@ export function FindingsPage() {
                 <thead><tr><th className={thClass}>Finding</th><th className={thClass}>Witness</th><th className={thClass}>Testimony</th><th className={thClass}>Category</th><th className={thClass}>Citations</th><th className={cx(thClass, "text-right")}>Strength</th><th className={thClass}>Decision</th></tr></thead>
                 <tbody>
                   {rows.map((f) => {
-                    const d = decisionOf(f.reviewState);
+                    const d = shownDecision(f);
+                    const setAside = isQuarantined(f);
                     return (
                       <tr key={f.id} className={cx(rowClass, "cursor-pointer align-top")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.analysis(f.analysis.id, f.id))}>
                         <td className={cx(tdClass, "max-w-[28rem]")}>
                           <a href={href.analysis(f.analysis.id, f.id)} className="line-clamp-2 font-medium hover:underline">{f.subject ?? f.explanation}</a>
+                          <StandingNotice standing={f.standing} compact />
                         </td>
                         <td className={tdClass}>
                           <span className="block whitespace-nowrap">{f.title}</span>
@@ -67,9 +69,9 @@ export function FindingsPage() {
                           <Badge tone={f.group === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : f.group === "unverified" ? "bad" : f.group === "needs_context" ? "warn" : "neutral"}>{findingHeadline(f)}</Badge>
                           {f.group === "contradictions" && <span className="mt-1 block text-xs text-muted">{PRIORITY[f.priority]}</span>}
                         </td>
-                        <td className={tdClass}><CitationCheck status={f.evidenceStatus} /></td>
-                        <td className={cx(tdClass, "text-right")}>{f.group !== "compatible" && f.score !== null ? <Strength score={f.score} /> : <span className="text-faint">–</span>}</td>
-                        <td className={cx(tdClass, "whitespace-nowrap")}><span className="flex items-center gap-2"><span aria-hidden className={cx("size-2.5 rounded-full", DECISION_DOT[d])} />{REVIEW_LABEL[d]}</span></td>
+                        <td className={tdClass}>{setAside ? <span className="text-muted">Transcript re-read</span> : <CitationCheck status={f.evidenceStatus} />}</td>
+                        <td className={cx(tdClass, "text-right")}>{f.group !== "compatible" && !setAside && f.score !== null ? <Strength score={f.score} /> : <span className="text-faint">–</span>}</td>
+                        <td className={cx(tdClass, "whitespace-nowrap")}><span className="flex items-center gap-2"><span aria-hidden className={cx("size-2.5 rounded-full", DECISION_DOT[d])} />{SHOWN_DECISION_LABEL[d]}</span></td>
                       </tr>
                     );
                   })}

@@ -36,6 +36,7 @@ export async function syncUnits(db: Database, documentId: number, extractorVersi
     return { doc, units, status, staleUnits: changed.length + gone.length };
   }
   let staleUnits = 0;
+  let rekeyed = 0;
   await db.transaction(async (tx) => {
     const stale = async (keys: string[]) => {
       if (!keys.length) return;
@@ -49,15 +50,26 @@ export async function syncUnits(db: Database, documentId: number, extractorVersi
       unitKey: u.unitKey, extractorVersion, caseId: u.caseId, witnessId: u.witnessId, depositionId: u.depositionId, groupId: u.groupId, windowNo: u.windowNo, windowCount: u.windowCount,
       exchangeIds: u.exchangeIds, sourceHash: u.sourceHash, parserVersion: doc.parserVersion, ...initialStatus(u), facts: 0, rejected: 0, duplicates: 0, llmCallId: null, updatedAt: new Date(),
     }));
+    // A unit whose source is the same (same key, which is its first and last source position, and same source
+    // hash, which covers every span's text, speaker and role) keeps its status and facts, but follows the
+    // exchanges it is read from: a correction that splits an exchange renumbers the groups after it.
+    const moved = units.filter((u) => {
+      const r = stored.get(u.unitKey);
+      return r && r.sourceHash === u.sourceHash && (r.groupId !== u.groupId || r.windowNo !== u.windowNo || r.windowCount !== u.windowCount || r.exchangeIds.join() !== u.exchangeIds.join());
+    });
+    for (const u of moved) {
+      await tx.update(factUnits).set({ groupId: u.groupId, windowNo: u.windowNo, windowCount: u.windowCount, exchangeIds: u.exchangeIds }).where(and(eq(factUnits.unitKey, u.unitKey), eq(factUnits.extractorVersion, extractorVersion)));
+    }
+    rekeyed = moved.length;
     for (let i = 0; i < rows.length; i += 500) {
       await tx.insert(factUnits).values(rows.slice(i, i + 500)).onConflictDoUpdate({
         target: [factUnits.unitKey, factUnits.extractorVersion],
-        set: { sourceHash: sql`excluded.source_hash`, parserVersion: sql`excluded.parser_version`, status: sql`excluded.status`, error: sql`excluded.error`, exchangeIds: sql`excluded.exchange_ids`, facts: 0, rejected: 0, duplicates: 0, llmCallId: null, updatedAt: new Date() },
+        set: { sourceHash: sql`excluded.source_hash`, parserVersion: sql`excluded.parser_version`, status: sql`excluded.status`, error: sql`excluded.error`, exchangeIds: sql`excluded.exchange_ids`, groupId: sql`excluded.group_id`, windowNo: sql`excluded.window_no`, windowCount: sql`excluded.window_count`, facts: 0, rejected: 0, duplicates: 0, llmCallId: null, updatedAt: new Date() },
       });
     }
   });
   const status = new Map((await db.select({ key: factUnits.unitKey, status: factUnits.status }).from(factUnits).where(and(eq(factUnits.depositionId, documentId), eq(factUnits.extractorVersion, extractorVersion)))).map((r) => [r.key, r.status as UnitStatus]));
-  return { doc, units, status, staleUnits };
+  return { doc, units, status, staleUnits, rekeyed };
 }
 
 export const factRow = (c: CheckedFact, llmCallId: number | null, extractorVersion = FACT_EXTRACTOR_VERSION) => ({

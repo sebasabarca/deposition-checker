@@ -4,6 +4,7 @@
 // answers. Changing the wording is a new version; old versions stay so their replies can be re-read.
 // The input is built from stored lines only (packetLoad.ts); this file is pure.
 
+import { spanLabel } from "./packet";
 import { ADJUDICATION_MODEL } from "./prompt";
 import { PACKET_REPLY_JSON_SCHEMA, PACKET_REPLY_V2_JSON_SCHEMA, PACKET_REPLY_V3_JSON_SCHEMA } from "./packetSchema";
 
@@ -18,7 +19,7 @@ export const MODEL_MAX_OUTPUT_TOKENS = 128_000; // Sonnet 5.5's ceiling
 export const maxOutputTokensFor = (pairs: number) => Math.min(MODEL_MAX_OUTPUT_TOKENS, PACKET_OUTPUT_TOKENS_PER_PAIR * pairs);
 export { PACKET_REPLY_JSON_SCHEMA };
 
-export type PassageLine = { id: number; page: number; line: number; text: string };
+export type PassageLine = { id: number; page: number; line: number; text: string; span?: { first: number; last: number; of: number } };
 // One answer group from stored lines, as packetLoad.ts builds it.
 export type PacketPassage = {
   key: string; // the frozen item key (document#first-last): the evaluation's join to labels
@@ -51,7 +52,7 @@ export type AdjacentExchange = {
 export type PacketPair = { pairId: string; a: string; b: string }; // passage IDs ("E…")
 export type IssuePacket = { id: string; passages: PacketPassage[]; pairs: PacketPair[] };
 
-const ref = (l: PassageLine) => `${l.page}:${String(l.line).padStart(2, "0")}`;
+const ref = (l: PassageLine) => `${l.page}:${String(l.line).padStart(2, "0")}${spanLabel(l)}`;
 const show = (ls: readonly PassageLine[]) => ls.map((l) => `  ${ref(l)}  ${l.text}`).join("\n");
 
 // The user message: every passage with page:line on every line, then the pairs to compare. Retrieval

@@ -18,6 +18,7 @@ import { sessionCoverage } from "../verify";
 import { caseDetail, caseSummaries } from "./cases";
 import { estimateCrossDiscovery, estimateDiscovery } from "../adjudicate/estimateDiscovery";
 import { CROSS_DISCOVERY_MODEL, CROSS_DISCOVERY_PROMPT_VERSION, CROSS_FALLBACK_MODEL, crossSidesOf } from "../adjudicate/discoverCross";
+import { isEvidenceOnHold, standingOf } from "../evidence/correction";
 import { candidateCoverage, compareFindings, coverageNotes, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
@@ -76,12 +77,14 @@ export async function analysisView(db: Database, id: number) {
     .where(inArray(depositions.id, sessionIds));
   const witnessNames = await db.select({ id: witnesses.id, name: witnesses.name }).from(witnesses).where(inArray(witnesses.id, [a.witnessId, ...(a.witnessBId ? [a.witnessBId] : [])]));
   const rows = await db
-    .select({ type: findings.type, evidenceStatus: findings.evidenceStatus, score: findings.score, unscoredReason: findings.unscoredReason, priority: findings.priority, reviewState: findings.reviewState })
+    .select({ id: findings.id, type: findings.type, evidenceStatus: findings.evidenceStatus, score: findings.score, unscoredReason: findings.unscoredReason, priority: findings.priority, reviewState: findings.reviewState })
     .from(findings)
     .innerJoin(candidates, eq(candidates.id, findings.candidateId))
     .where(eq(candidates.candidateSet, candidateSetOf(id)));
-  const groups: Record<FindingGroup, number> = { contradictions: 0, needs_context: 0, compatible: 0, unverified: 0 };
-  for (const r of rows) groups[findingGroup(r)]++;
+  const standing = await standingOf(db, rows.map((r) => r.id));
+  const quarantined = (r: { id: number }) => standing.get(r.id)?.state === "quarantined";
+  const groups: Record<FindingGroup, number> = { contradictions: 0, needs_context: 0, compatible: 0, unverified: 0, quarantined: 0 };
+  for (const r of rows) groups[findingGroup(r, quarantined(r))]++;
   const cost = await analysisCost(db, a);
   const runs = a.retrieval === DIRECT_FABLE ? await discoveryRunsOf(db, a.id) : [];
   return {
@@ -109,7 +112,7 @@ export async function analysisView(db: Database, id: number) {
     cancelRequested: a.cancelRequestedAt !== null,
     // Every session compared, side A's first, each in date order. For a same-witness check, its two sessions.
     depositions: sessionIds.map((d, i) => ({ ...docs.find((x) => x.id === d)!, side: (cross ? (i < cross.a.length ? "A" : "B") : i === 0 ? "A" : "B") as "A" | "B" })),
-    findings: { total: rows.length, groups, decided: rows.filter((r) => r.reviewState !== "unreviewed").length },
+    findings: { total: rows.length, groups, decided: rows.filter((r) => r.reviewState !== "unreviewed" && !quarantined(r)).length },
     cost: { calls: cost.calls, actualUsd: cost.actualUsd, budgetUsd: a.budgetUsd, budgetSpentUsd: cost.budget?.spentUsd ?? 0, budgetReservedUsd: cost.budget?.reservedUsd ?? 0 },
     createdAt: a.createdAt,
     startedAt: a.startedAt,
@@ -164,13 +167,16 @@ export async function analysisFindings(db: Database, id: number) {
     .innerJoin(candidates, eq(candidates.id, findings.candidateId))
     .where(eq(candidates.candidateSet, candidateSetOf(id)));
   const firstLines = await firstLineRefs(db, rows.flatMap((r) => [r.c.exchangeA, r.c.exchangeB]));
+  const standing = await standingOf(db, rows.map((r) => r.f.id));
   const items = rows
     .map(({ f, v, c }) => {
       const parsed = v.parsed as Verdict;
       const direct = (f.checks as { direct?: DirectChecks }).direct ?? null;
+      const st = standing.get(f.id)!;
       return {
         id: f.id,
-        group: findingGroup(f),
+        group: findingGroup(f, st.state === "quarantined"),
+        standing: st,
         model: v.model,
         modelName: modelName(v.model, (f.checks as { cross?: unknown }).cross !== undefined),
         direct: direct ? { modelClassification: direct.modelClassification, evidenceKey: direct.evidenceKey, duplicates: direct.duplicates.length, ocrRead: direct.a.ocr.read || direct.b.ocr.read, lowOcrLines: [...direct.a.ocr.lowLines, ...direct.b.ocr.lowLines], speakers: [direct.a.speaker, direct.b.speaker] } : null,
@@ -230,6 +236,8 @@ export async function findingDetail(db: Database, id: number) {
   if (!row) return null;
   const { f, v, c } = row;
   const parsed = v.parsed as Verdict;
+  const standing = (await standingOf(db, [f.id])).get(f.id)!;
+  const quarantined = standing.state === "quarantined";
   const packet = v.packet as { sides: PacketSide[] };
   const checks = f.checks as {
     source: { status: string; a: SideCheck; b: SideCheck };
@@ -299,8 +307,9 @@ export async function findingDetail(db: Database, id: number) {
   return {
     id: f.id,
     analysisId: c.jobId,
-    group: findingGroup(f),
-    groupLabel: GROUP_LABELS[findingGroup(f)],
+    group: findingGroup(f, quarantined),
+    groupLabel: GROUP_LABELS[findingGroup(f, quarantined)],
+    standing,
     classification: f.type,
     priority: f.priority,
     score: f.score,
@@ -508,8 +517,15 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
     const body = z.object({ decision: z.enum(["confirmed", "needs_context", "dismissed"]).nullable(), note: z.string().trim().max(5000).optional() }).safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: "Invalid review decision." });
     const { decision, note } = body.data;
+    // A quarantined finding's source changed: its earlier review stays as it was, and it can't be reviewed again.
+    const standing = (await standingOf(db, [id.data])).get(id.data)!;
+    if (standing.state === "quarantined") return res.status(409).json({ error: `This finding's transcript was re-read with a corrected parser (${standing.reason}). It is kept for audit and can't be reviewed; revalidate it by analysing the corrected transcript again.`, standing });
     const changes = decision === null ? { reviewState: "unreviewed", reviewNote: null, reviewedAt: null } : { reviewState: decision, reviewNote: note || null, reviewedAt: new Date() };
-    const [row] = await db.update(findings).set(changes).where(eq(findings.id, id.data)).returning({ reviewState: findings.reviewState, reviewNote: findings.reviewNote, reviewedAt: findings.reviewedAt });
+    const [row] = await db.update(findings).set(changes).where(eq(findings.id, id.data)).returning({ reviewState: findings.reviewState, reviewNote: findings.reviewNote, reviewedAt: findings.reviewedAt }).catch((e) => {
+      if (isEvidenceOnHold(e)) return [{ held: true as const }];
+      throw e;
+    });
+    if (row && "held" in row) return res.status(409).json({ error: "This finding's transcript is being corrected right now. Try again in a moment.", standing });
     if (!row) return res.status(404).json({ error: "Finding not found." });
     return res.json({ review: row });
   });

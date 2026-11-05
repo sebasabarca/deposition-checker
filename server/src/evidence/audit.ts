@@ -170,6 +170,8 @@ export async function reprocessDocument(db: Database, documentId: number, opts: 
     impact: await reprocessImpact(db, documentId),
   };
   if (!opts.execute) return { ...report, outcome: "dry_run" as const };
+  // A re-read deletes the findings on the document (the foreign keys cascade); a person's review is never deleted that way.
+  if (report.impact.reviewedFindings > 0) return { ...report, outcome: "refused" as const, detail: `Re-reading would delete ${report.impact.reviewedFindings} reviewed findings. Nothing was changed; correct the document instead (scripts/evidence.ts correct), which quarantines them and keeps their reviews.` };
   if (report.impact.findings > 0 && !opts.acceptImpact) return { ...report, outcome: "refused" as const, detail: `Re-reading would remove ${report.impact.findings} findings (${report.impact.reviewedFindings} reviewed) of analyses ${report.impact.analyses.join(", ")}. Nothing was changed; pass --accept-impact to proceed.` };
   const saved = await saveDeposition(db, { caseId: doc.caseId, witnessId: doc.witnessId, takenOn: doc.takenOn, fileSha256: doc.fileSha256, storageKey: doc.storageKey, read, reprocessOf: documentId });
   if (!("depositionId" in saved) || saved.depositionId !== documentId) throw new Error("The re-read didn't replace the document in place.");

@@ -32,7 +32,8 @@ export async function reportData(db: Database, caseId: number, analysisIds: numb
   const done = detail.analyses.filter((a) => a.status === "completed" && (analysisIds === null || analysisIds.includes(a.id)));
   if (analysisIds !== null && done.length !== new Set(analysisIds).size) return null;
   // Newest analysis first, so the first copy of a re-checked finding is its latest.
-  const all = (await Promise.all(done.map((a) => analysisFindings(db, a.id)))).flatMap((r) => r.groups.flatMap((g) => g.findings));
+  // A quarantined finding is never reported: its source changed after it was made.
+  const all = (await Promise.all(done.map((a) => analysisFindings(db, a.id)))).flatMap((r) => r.groups.flatMap((g) => g.findings)).filter((f) => f.standing.state === "current");
   const seen = new Set<string>();
   const unique = all.filter((f) => {
     const key = f.direct?.evidenceKey ?? `id:${f.id}`;

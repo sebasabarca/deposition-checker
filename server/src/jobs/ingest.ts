@@ -34,6 +34,8 @@ export async function runIngestJob(db: Database, job: IngestJob, uploadsDir = UP
   if (!deposition || deposition.status !== "processing" || deposition.ingestRun !== job.run) {
     return { outcome: "skipped", status: deposition?.status ?? null };
   }
+  // Held by an evidence correction: fail this attempt so the queue retries it after the correction.
+  if (deposition.evidenceHold) throw new Error(`Deposition ${deposition.id}'s evidence is held by ${deposition.evidenceHold}; retrying later.`);
   if (deposition.parserVersion !== PARSER_VERSION) {
     const adopted = await adoptParserVersion(db, deposition, job);
     if (adopted !== "adopted") return { outcome: "skipped", status: adopted };

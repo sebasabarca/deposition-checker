@@ -100,6 +100,8 @@ describe.skipIf(!TEST_DATABASE_URL)("ingestion schema (Postgres)", () => {
       "deposition_sessions",
       "depositions",
       "discovery_runs",
+      "evidence_migrations",
+      "evidence_quarantine",
       "exchange_lines",
       "exchanges",
       "fact_units",

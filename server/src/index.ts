@@ -1,11 +1,12 @@
 import "dotenv/config";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import express from "express";
+import express, { type ErrorRequestHandler } from "express";
 import { sql } from "drizzle-orm";
 import { analysisRoutes, caseRunRoutes, caseRoutes, depositionRoutes, reportRoutes } from "./api";
 import { accountGates, authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
 import { connect } from "./db/client";
+import { isEvidenceOnHold } from "./evidence";
 import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, startBoss } from "./jobs";
 
 const app = express();
@@ -52,6 +53,8 @@ async function mountDepositionRoutes() {
     app.use("/api", caseRunRoutes({ db, boss }));
     app.use("/api", depositionRoutes({ db, pool, boss }));
     app.use("/api", reportRoutes({ db }));
+    // A write the database refused because the deposition's evidence is being corrected (evidence/correction.ts).
+    app.use("/api", ((error, _req, res, next) => (isEvidenceOnHold(error) ? res.status(409).json({ error: "This deposition's transcript is being corrected right now. Nothing was changed; try again in a moment." }) : next(error))) as ErrorRequestHandler);
   } catch (error) {
     console.warn(
       `Deposition endpoints are off: ${error instanceof Error ? error.message : error}`,

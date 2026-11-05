@@ -33,15 +33,18 @@ export const COVERAGE: Record<CoverageState, { label: string; tone: Tone; help: 
   partial: { label: "Partial: work left", tone: "warn", help: "Some pairs have not been read yet. Unread pairs are not reviewed and not cleared." },
 };
 
-export type Lane = "contradictions" | "needs_context" | "compatible" | "unverified";
+export type Lane = "contradictions" | "needs_context" | "compatible" | "unverified" | "quarantined";
 export const LANES: { id: Lane; label: string }[] = [
   { id: "contradictions", label: "Potential contradictions" },
   { id: "needs_context", label: "Needs context" },
   { id: "unverified", label: "Unverified" },
   { id: "compatible", label: "Compatible or dismissed" },
+  { id: "quarantined", label: "Needs revalidation" },
 ];
 
-export function laneOf(f: Pick<CaseRunFinding, "evidenceStatus" | "unscoredReason" | "type" | "score" | "priority">): Lane {
+// A finding whose transcript was re-read with a corrected parser is set aside for revalidation, whatever its verdict.
+export function laneOf(f: Pick<CaseRunFinding, "evidenceStatus" | "unscoredReason" | "type" | "score" | "priority"> & { standing?: CaseRunFinding["standing"] }): Lane {
+  if (f.standing?.state === "quarantined") return "quarantined";
   if (f.evidenceStatus === "wrong_reference" || f.evidenceStatus === "unsupported" || f.unscoredReason === "attribution_failed") return "unverified";
   if (f.type === "insufficient_evidence" || f.unscoredReason === "insufficient_evidence") return "needs_context";
   if (f.score === null || f.priority === "needs_context") return "needs_context";

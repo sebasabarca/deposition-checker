@@ -8,7 +8,8 @@ import { Alert, Badge, Button, cx, fieldClass, Strength, VerifiedMark } from "./
 import { api } from "../lib/api";
 import { citesInferredPage, pinpointCitation } from "../lib/insights";
 import { EVIDENCE_STATUS, evidenceStrength, findingHeadline, formatDate, modelCalledIt, PRIORITY } from "../lib/labels";
-import { decisionOf, REVIEW_LABEL } from "../lib/review";
+import { decisionOf, isQuarantined, REVIEW_LABEL, reviewFailure, reviewLock } from "../lib/review";
+import { StandingNotice } from "./FindingRegister";
 import { href } from "../lib/router";
 import type { FindingDetail, ReviewDecision } from "../types";
 
@@ -27,6 +28,7 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
   const verified = f.group !== "unverified" && (f.evidenceStatus === "verified" || f.evidenceStatus === "approximate");
   const closerLook = f.reasons.filter((r) => !r.startsWith("The model said")); // the notice above already says so
   const citation = pinpointCitation(f.a, f.b);
+  const setAside = isQuarantined(f); // needs revalidation: no current lane, strength or citation check is claimed
 
   return (
     <article aria-labelledby="finding-title" className="min-w-0 space-y-4">
@@ -34,11 +36,11 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={contradiction ? "contradiction" : f.group === "unverified" ? "bad" : f.group === "needs_context" ? "warn" : "neutral"} dot>{findingHeadline(f)}</Badge>
           {f.group === "contradictions" && <Badge tone={f.priority === "high" ? "contradiction" : "neutral"}>{PRIORITY[f.priority]}</Badge>}
-          {verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
+          {setAside ? null : verified ? <VerifiedMark>{EVIDENCE_STATUS[f.evidenceStatus]}</VerifiedMark> : <Badge tone="bad">{f.group === "unverified" && f.evidenceStatus === "verified" ? "Not the witness's words" : EVIDENCE_STATUS[f.evidenceStatus]}</Badge>}
         </div>
         <div className="mt-2.5 flex items-start justify-between gap-6">
           <h2 id="finding-title" className="font-serif text-[22px] leading-[30px] font-semibold tracking-[-0.01em]">{f.direct?.sharedSubject ?? findingHeadline(f)}</h2>
-          {f.group !== "compatible" && <Strength score={f.score} size="lg" />}
+          {f.group !== "compatible" && !setAside && <Strength score={f.score} size="lg" />}
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
           <p className="min-w-0 flex-1 basis-80 font-mono text-[13px] leading-5 break-words text-muted">{citation}</p>
@@ -46,6 +48,7 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
         </div>
       </header>
 
+      <StandingNotice standing={f.standing} />
       {f.source.kind !== "model" && <Alert tone="info">{f.source.label}.</Alert>}
       {f.source.usedFallback && <Alert tone="warn">{f.source.label}</Alert>}
       {f.direct && closerLook.length > 0 && <Alert tone="warn" title="Why this needs a closer look"><ul className="list-disc pl-5">{closerLook.map((r) => <li key={r}>{r}</li>)}</ul></Alert>}
@@ -115,10 +118,12 @@ const OPTIONS: { d: ReviewDecision; label: string; icon: typeof X; on: string }[
 function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analysisId: number; next?: number; onDecided: (id: number, state: string) => void }) {
   const [state, setState] = useState(decisionOf(f.reviewState));
   const [at, setAt] = useState(f.reviewedAt);
-  const [note, setNote] = useState(f.reviewNote ?? "");
+  const [note, setNote] = useState(reviewLock(f) ? "" : (f.reviewNote ?? "")); // a set-aside finding's old note is in its notice
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lock, setLock] = useState(reviewLock(f));
   const save = async (decision: ReviewDecision | null) => {
+    if (lock) return;
     setBusy(true);
     setError(null);
     try {
@@ -127,7 +132,9 @@ function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analys
       setAt(review.reviewedAt);
       onDecided(f.id, review.reviewState);
     } catch (e) {
-      setError((e as Error).message);
+      const failure = reviewFailure(e);
+      setError(failure.message);
+      if (failure.locked) setLock("This finding can no longer be reviewed. Reload the analysis to see where it stands.");
     } finally {
       setBusy(false);
     }
@@ -135,9 +142,11 @@ function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analys
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-line bg-sheet p-5" data-tour="finding-decision">
       <h2 className="text-md font-semibold">Your decision</h2>
-      <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Decision">
+      {lock && <p id={`review-lock-${f.id}`} className="text-sm text-muted">{lock}</p>}
+      {/* Locked controls stay focusable (aria-disabled, not disabled) so a keyboard or screen reader user hears why. */}
+      <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Decision" aria-describedby={lock ? `review-lock-${f.id}` : undefined}>
         {OPTIONS.map((o) => (
-          <button key={o.d} type="button" aria-pressed={state === o.d} disabled={busy} onClick={() => void save(o.d)} className={cx("flex h-14 flex-col items-center justify-center gap-1 rounded-md text-xs font-semibold ring-1 ring-inset transition-colors disabled:cursor-wait", state === o.d ? o.on : "bg-sheet text-ink ring-control hover:bg-hover")}>
+          <button key={o.d} type="button" aria-pressed={!lock && state === o.d} aria-disabled={lock ? true : undefined} disabled={busy} onClick={() => void save(o.d)} className={cx("flex h-14 flex-col items-center justify-center gap-1 rounded-md text-xs font-semibold ring-1 ring-inset transition-colors disabled:cursor-wait", lock ? "cursor-not-allowed bg-well text-faint ring-line" : state === o.d ? o.on : "bg-sheet text-ink ring-control hover:bg-hover")}>
             <o.icon aria-hidden className="size-4" strokeWidth={2} />
             {o.label}
           </button>
@@ -145,12 +154,12 @@ function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analys
       </div>
       <label className="block">
         <span className="text-xs font-semibold text-faint">Note for the file</span>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} onBlur={() => state !== "unreviewed" && note !== (f.reviewNote ?? "") && void save(state)} rows={3} maxLength={5000} className={cx(fieldClass, "mt-1.5 w-full py-2 leading-5")} placeholder="Why you decided this, or what to ask the witness" />
+        <textarea value={note} readOnly={!!lock} aria-describedby={lock ? `review-lock-${f.id}` : undefined} onChange={(e) => setNote(e.target.value)} onBlur={() => !lock && state !== "unreviewed" && note !== (f.reviewNote ?? "") && void save(state)} rows={3} maxLength={5000} className={cx(fieldClass, "mt-1.5 w-full py-2 leading-5")} placeholder="Why you decided this, or what to ask the witness" />
       </label>
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-rule pt-3 text-sm">
         <span className="text-muted" aria-live="polite">
-          {state === "unreviewed" ? "Not decided yet." : <>{REVIEW_LABEL[state]}{at ? ` · ${formatDate(at)}` : ""} · <button type="button" onClick={() => void save(null)} className="font-medium text-info hover:underline">Undo</button></>}
+          {lock ? "No current decision." : state === "unreviewed" ? "Not decided yet." : <>{REVIEW_LABEL[state]}{at ? ` · ${formatDate(at)}` : ""} · <button type="button" onClick={() => void save(null)} className="font-medium text-info hover:underline">Undo</button></>}
         </span>
         {next !== undefined && <a href={href.analysis(analysisId, next)} className="inline-flex items-center gap-1 font-semibold text-ink hover:underline">Next<ArrowRight aria-hidden className="size-4" /></a>}
       </div>

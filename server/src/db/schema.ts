@@ -228,6 +228,12 @@ export const depositions = pgTable(
     // witness's or case's testimony stored under this one). Null: active.
     excludedReason: text("excluded_reason"),
     duplicateOf: ref("duplicate_of").references((): AnyPgColumn => depositions.id),
+    // Evidence correction (evidence/correction.ts). evidence_hold names the correction or rollback that holds
+    // this document's evidence: while it is set, the database rejects every write to the document's lines,
+    // exchanges and everything derived from them, except the holder's own (migration 0039's triggers).
+    // evidence_epoch counts committed corrections, so a reading taken before one is recognisably older.
+    evidenceHold: text("evidence_hold"),
+    evidenceEpoch: integer("evidence_epoch").notNull().default(0),
     createdAt: createdAt(),
   },
   (t) => [
@@ -1338,5 +1344,62 @@ export const screeningEntries = pgTable(
     check("screening_entries_screen_status_check", sql`${t.screenStatus} in ('prioritized', 'deferred', 'consolidated')`),
     check("screening_entries_adjudication_status_check", sql`${t.adjudicationStatus} in ('not_started', 'in_progress', 'adjudicated', 'incomplete', 'failed')`),
     check("screening_entries_consolidated_check", sql`(${t.screenStatus} = 'consolidated') = (${t.consolidatedInto} is not null) and (${t.screenStatus} = 'consolidated') = (${t.rank} is null)`),
+  ],
+);
+
+// One correction, rollback or quarantine of a document's evidence (evidence/correction.ts). A correction is
+// first `holding` (the document's evidence is held, nothing changed yet), then `applied` with its plan, the
+// document hashes before and after, and its backup, all in one transaction with the change itself. A hold
+// whose correction failed is `abandoned` by an explicit release, after checking nothing changed. A rolled-back
+// correction is `rolled_back`, and the rollback is its own `rollback` row. Never deleted: the audit trail.
+export const evidenceMigrations = pgTable(
+  "evidence_migrations",
+  {
+    id: text("id").primaryKey(),
+    depositionId: ref("deposition_id")
+      .notNull()
+      .references(() => depositions.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(), // correction | rollback | quarantine
+    status: text("status").notNull(), // holding | applied | rolled_back | abandoned
+    version: text("version").notNull(), // the correction code's version
+    fromParser: text("from_parser").notNull(),
+    toParser: text("to_parser").notNull(),
+    planHash: text("plan_hash"),
+    plan: jsonb("plan"),
+    beforeHash: text("before_hash").notNull(), // the document's evidence and derived rows, hashed (correction.ts documentHash)
+    afterHash: text("after_hash"),
+    backup: text("backup"), // the backup file; null for a quarantine, which changes no evidence row
+    rollbackOf: text("rollback_of"), // a rollback's correction
+    reason: text("reason"),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("evidence_migrations_deposition_idx").on(t.depositionId, t.createdAt),
+    uniqueIndex("evidence_migrations_plan_applied").on(t.depositionId, t.planHash).where(sql`${t.status} = 'applied' and ${t.kind} = 'correction'`),
+    check("evidence_migrations_kind_check", sql`${t.kind} in ('correction', 'rollback', 'quarantine')`),
+    check("evidence_migrations_status_check", sql`${t.status} in ('holding', 'applied', 'rolled_back', 'abandoned')`),
+  ],
+);
+
+// A finding, verdict or candidate whose evidence a correction changed, or that sits on a superseded parse.
+// The row itself, and a person's review of it, are never changed: `prior` keeps the review as it was. Active
+// while its migration is `applied`; a rollback removes it with the correction.
+export const evidenceQuarantine = pgTable(
+  "evidence_quarantine",
+  {
+    migrationId: text("migration_id")
+      .notNull()
+      .references(() => evidenceMigrations.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(), // finding | verdict | candidate
+    rowId: ref("row_id").notNull(),
+    reason: text("reason").notNull(),
+    prior: jsonb("prior").notNull(), // a finding's review (state, note, time) and the parser it was made on
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ name: "evidence_quarantine_pk", columns: [t.migrationId, t.kind, t.rowId] }),
+    index("evidence_quarantine_row_idx").on(t.kind, t.rowId),
+    check("evidence_quarantine_kind_check", sql`${t.kind} in ('finding', 'verdict', 'candidate')`),
   ],
 );

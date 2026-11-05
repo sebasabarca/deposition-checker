@@ -11,7 +11,7 @@ import { Alert, Button, buttonClass, cx, Loading } from "../components/ui";
 import { api } from "../lib/api";
 import { displayRef, PHYSICAL_LINE, pinpointCitation } from "../lib/insights";
 import { findingHeadline, formatDate } from "../lib/labels";
-import { decisionOf, REVIEW_LABEL } from "../lib/review";
+import { decisionOf, isQuarantined, REVIEW_LABEL, shownDecision } from "../lib/review";
 import { href } from "../lib/router";
 import type { CaseDetail, FindingDetail, FindingSummary } from "../types";
 
@@ -42,7 +42,8 @@ export function ReportPage({ id }: { id: number }) {
   const summaries = useMemo(() => {
     if (!checks) return null;
     const seen = new Set<string>();
-    return checks.filter((c) => picked.has(c.id)).flatMap((c) => c.findings).filter((f) => {
+    // A finding that needs revalidation never goes in a report, and never hides an older current copy of itself.
+    return checks.filter((c) => picked.has(c.id)).flatMap((c) => c.findings).filter((f) => !isQuarantined(f)).filter((f) => {
       const key = f.direct?.evidenceKey ?? `id:${f.id}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -65,7 +66,7 @@ export function ReportPage({ id }: { id: number }) {
   const loading = ready.length < chosen.length;
   const kept = summaries.filter((f) => decisionOf(f.reviewState) === "confirmed").length;
   const context = summaries.filter((f) => decisionOf(f.reviewState) === "needs_context").length;
-  const keptIn = (fs: FindingSummary[]) => fs.filter((f) => decisionOf(f.reviewState) === "confirmed").length;
+  const keptIn = (fs: FindingSummary[]) => fs.filter((f) => shownDecision(f) === "confirmed").length;
   const toggle = (aid: number) => setPicked((s) => {
     const next = new Set(s);
     if (!next.delete(aid)) next.add(aid);

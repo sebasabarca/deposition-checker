@@ -9,6 +9,7 @@ import { Alert, Badge, buttonClass, Card, CardHeader, cx, Loading, rowClass, Str
 import { shortRef } from "../components/FindingRegister";
 import { isActive, nextStep, recentActivity, relativeTime, type NextStep } from "../lib/insights";
 import { analysisTitle, DEPOSITION_STATUS, findingHeadline, formatDate } from "../lib/labels";
+import { shownDecision } from "../lib/review";
 import { href } from "../lib/router";
 import { useUser } from "../lib/session";
 import { useWorkspace, useWorkspaceFindings, type WorkspaceFinding } from "../lib/workspace";
@@ -29,9 +30,10 @@ export function OverviewPage() {
   if (error) return <Alert title="The overview couldn't be loaded">{error}</Alert>;
   if (!data || findings === null) return <><Welcome first={first} line="Getting your cases ready…" /><Loading /></>;
 
-  const waiting = findings.filter((f) => (f.group === "contradictions" || f.group === "needs_context") && f.reviewState === "unreviewed").sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.rank - b.rank);
-  const kept = findings.filter((f) => f.reviewState === "confirmed");
-  const decided = findings.filter((f) => f.reviewState !== "unreviewed");
+  const waiting = findings.filter((f) => (f.group === "contradictions" || f.group === "needs_context") && shownDecision(f) === "unreviewed").sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.rank - b.rank);
+  // A finding that needs revalidation has no current decision, whatever was decided before.
+  const kept = findings.filter((f) => shownDecision(f) === "confirmed");
+  const decided = findings.filter((f) => !["unreviewed", "quarantined"].includes(shownDecision(f)));
   const running = data.analyses.filter((a) => isActive(a.status));
   const depositions = data.details.flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness" })));
   const failed = depositions.filter((d) => d.status === "failed" || d.status === "unsupported" || d.status === "needs_review");
