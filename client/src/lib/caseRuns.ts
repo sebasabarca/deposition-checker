@@ -77,7 +77,7 @@ export const isTestRun = (run: Pick<CaseRun, "mode">) => run.mode === "mock";
 // the time it takes and the price differ (docs/case-run-api.md).
 export const EXECUTION: Record<CaseRunExecution, { label: string; short: string; description: string }> = {
   standard: { label: "Fast Analysis", short: "Fast", description: "Get your results sooner. Ideal when you need to review potential contradictions as quickly as possible." },
-  batch: { label: "Economy Analysis", short: "Economy", description: "Save on analysis costs when you're not in a hurry. Results may take up to 24 hours." },
+  batch: { label: "Economy Analysis", short: "Economy", description: "Save on analysis costs when you're not in a hurry." },
 };
 
 // What the confirm step shows for a mode: the cost as a single figure (fast) or a range (economy: the provider's

@@ -416,7 +416,7 @@ function Progress({ run }: { run: CaseRun }) {
     </dl>
     {bt && run.status === "adjudicating" && (
       <p className="max-w-3xl text-xs text-muted">
-        Economy runs on the provider's schedule: each batch usually finishes within an hour and always within 24 hours. You can leave this page; the analysis continues on the server and findings appear as each batch finishes.{bt.oldestOpenSince ? ` Oldest open batch sent ${formatDate(bt.oldestOpenSince)}.` : ""}
+        Economy runs on the provider's schedule: each batch usually finishes within an hour. You can leave this page; the analysis continues on the server and findings appear as each batch finishes.{bt.oldestOpenSince ? ` Oldest open batch sent ${formatDate(bt.oldestOpenSince)}.` : ""}
       </p>
     )}
     </div>
@@ -483,13 +483,13 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
         <div className="px-4 py-3"><dt className="text-xs text-faint">Evidence packets</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{e.packets.toLocaleString()}</dd></div>
         <div className="px-4 py-3"><dt className="text-xs text-faint">Candidate pairs to read</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{e.listedPairs.toLocaleString()}</dd></div>
       </dl>
-      <Alert tone="warn" title={economy ? "This analysis is paid, and can take up to 24 hours" : "This analysis is paid"}>
+      <Alert tone="warn" title="This analysis is paid">
         <p>
           Reading every packet uses Veridict's model and is charged to the API account configured on this server. The estimate is a projection from the size of this case's evidence, not a quote: larger cases cost more. The run stops before any request the limit can't cover; whatever is left stays unread, never counted as reviewed, until you resume with a higher limit.
         </p>
         {economy && (
           <p className="mt-1">
-            Economy sends the packets in batches that the provider processes on its own schedule, usually within an hour each and always within 24 hours. The range above runs from the price with the shared instructions cached to the price with no cache hits, which the provider doesn't guarantee. While a batch is processing, each of its requests holds its largest possible cost against your limit, so a limit close to the estimate means fewer packets at once and a longer run, never a higher charge.
+            Economy sends the packets in batches that the provider processes on its own schedule, usually within an hour each. The range above runs from the price with the shared instructions cached to the price with no cache hits, which the provider doesn't guarantee. While a batch is processing, each of its requests holds its largest possible cost against your limit, so a limit close to the estimate means fewer packets at once and a longer run, never a higher charge.
           </p>
         )}
         {run.candidates.deferred + run.candidates.uncovered > 0 && <p className="mt-1">Retrieval set aside {(run.candidates.deferred + run.candidates.uncovered).toLocaleString()} pairs; they won't be read in this run.</p>}
