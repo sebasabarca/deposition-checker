@@ -4,6 +4,9 @@
 // stretch-v2 finds contradictions. No key, no network, no paid call.
 
 import { eq, sql } from "drizzle-orm";
+import express from "express";
+import type { PgBoss } from "pg-boss";
+import { caseRunRoutes } from "../../server/src/api";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PACKET_MODEL, PACKET_PROMPT_VERSION } from "../../server/src/adjudicate/packetPrompt";
@@ -14,7 +17,7 @@ import { FakeBatchProvider } from "../../server/src/eval/mockPacketBatch";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
 import { caseRunFindings, caseRunReport, caseRunSetOf, createCaseRun, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
-import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
+import { emptyTables, listen, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 const STRETCH = STRETCH_V2_PROMPT_VERSION;
 
@@ -178,5 +181,35 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
     expect(await db.$count(verdicts)).toBe(verdictsBefore);
     expect(await db.$count(findings)).toBe(findingsBefore);
     expect((await budgetOf(run.id)).reservedUsd).toBeCloseTo(0, 9);
+  }, 180_000);
+
+  it("is offered over the API only where the server allows it, and a stretch run keeps its contract", async () => {
+    const boss = { send: async () => null } as unknown as PgBoss;
+    const app = express();
+    app.use(express.json());
+    let env: Record<string, string> = {};
+    app.use("/api", (req, res, next) => caseRunRoutes({ db, boss, env })(req, res, next));
+    const server = await listen(app);
+    const post = (body: unknown) => fetch(`${server.url}/api/cases/${caseId}/case-runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    try {
+      const off = await post({ mode: "mock", contract: "stretch-v2" });
+      expect(off.status).toBe(409);
+      expect((await off.json()).code).toBe("stretch_disabled");
+      expect((await (await fetch(`${server.url}/api/cases/${caseId}/case-runs`)).json()).stretchAvailable).toBe(false);
+      expect((await post({ mode: "mock", contract: "stretch-v9" })).status).toBe(400);
+      env = { ALLOW_STRETCH_V2: "true" };
+      expect((await (await fetch(`${server.url}/api/cases/${caseId}/case-runs`)).json()).stretchAvailable).toBe(true);
+      const on = await post({ mode: "mock", contract: "stretch-v2" });
+      expect(on.status).toBe(202);
+      const run = (await on.json()).caseRun;
+      expect(run).toMatchObject({ contract: "stretch-v2", stretchAvailable: true });
+      expect(await runCaseRun(db, pool, run.id, plain)).toBe("completed");
+      // Without a contract a run is packet-v1, as before.
+      const plainRun = (await (await post({ mode: "mock" })).json()).caseRun;
+      expect(plainRun.contract).toBe(PACKET_PROMPT_VERSION);
+      expect(await runCaseRun(db, pool, plainRun.id, plain)).toBe("completed");
+    } finally {
+      await server.close();
+    }
   }, 180_000);
 });

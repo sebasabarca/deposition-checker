@@ -14,6 +14,9 @@
 //                              inputs and results for 29 days (not zero data retention). The command checks the
 //                              batches every CASE_RUN_BATCH_POLL_SECONDS until the run stops; Ctrl-C is safe and a
 //                              later --resume <runId> --execute carries on from the database
+//   --stretch                  with --mock or --live: the experimental whole-stretch contract (stretch-v2,
+//                              adjudicate/stretch.ts) instead of packet-v1. Not validated for accuracy; needs
+//                              ALLOW_STRETCH_V2=true
 //   --resume <runId> [--budget <usd>] [--retry-uncertain] [--execute]
 //                              continues a stopped run; incomplete packets and failures known not to have been
 //                              billed are tried again; --retry-uncertain also retries ones that may have been billed
@@ -32,7 +35,7 @@ import { batchSettings, economyAllowed } from "../server/src/jobs/caseRunBatch";
 import { connect } from "../server/src/db/client";
 import { COST_ASSUMPTIONS, projectCost } from "../server/src/eval/screeningBenchmark";
 import { paidCallsAllowed } from "../server/src/jobs/analysis";
-import { caseRunReport, createCaseRun, fromPacketAdjudicator, resumeCaseRun, runCaseRun, type CaseRunDeps } from "../server/src/jobs/caseRun";
+import { caseRunReport, contractOf, createCaseRun, fromPacketAdjudicator, resumeCaseRun, runCaseRun, stretchAllowed, type CaseRunDeps } from "../server/src/jobs/caseRun";
 import { caseRunSettings, ProviderLimiter } from "../server/src/jobs/limiter";
 import { buildCasePool } from "../server/src/retrieve/casePool";
 import { INSTRUCTION_TOKENS } from "../server/src/retrieve/grouping";
@@ -42,7 +45,7 @@ const { values } = parseArgs({
   options: {
     "database-env": { type: "string" }, case: { type: "string" }, plan: { type: "boolean" }, mock: { type: "boolean" }, live: { type: "boolean" },
     budget: { type: "string" }, execute: { type: "boolean" }, "retry-uncertain": { type: "boolean" }, resume: { type: "string" }, minilm: { type: "string", default: "off" }, concurrency: { type: "string", default: "1" },
-    economy: { type: "boolean" }, "acknowledge-retention": { type: "boolean" },
+    economy: { type: "boolean" }, "acknowledge-retention": { type: "boolean" }, stretch: { type: "boolean" },
   },
 });
 
@@ -53,7 +56,7 @@ async function main() {
   if (name !== "DATABASE_URL" && url === process.env.DATABASE_URL) throw new Error(`${name} points at DATABASE_URL, the app (demo) database. Use a dedicated database.`);
   const { db, pool } = connect(url);
   const minilm = values.minilm === "auto" ? "auto" : "off";
-  const adjudicator = () => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator()) : null);
+  const adjudicator: CaseRunDeps["adjudicator"] = (run) => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator(undefined, contractOf(run))) : null);
   const concurrency = Number(values.concurrency);
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency takes a whole number of at least 1.");
   const limiter = new ProviderLimiter({ ...caseRunSettings(process.env).limits, maxInFlight: concurrency });
@@ -98,7 +101,8 @@ async function main() {
     if (values.live && !paidCallsAllowed(process.env)) throw new Error("Paid calls are off (ANTHROPIC_API_KEY and ALLOW_PAID_CALLS=true are both required).");
     if (values.live && values.economy && !economyAllowed(process.env)) throw new Error("Paid economy runs are off: set ALLOW_ECONOMY_ANALYSIS=true only once a real pilot is authorized.");
     if (values.live && values.economy && !values["acknowledge-retention"]) throw new Error("A live economy run needs --acknowledge-retention: the provider stores batch inputs and results for 29 days.");
-    const run = await createCaseRun(db, caseId, { mode: values.live ? "live" : "mock", budgetUsd: Number(values.budget ?? 0), confirmed: values.live === true, execution: values.economy ? "batch" : "standard" });
+    if (values.stretch && !stretchAllowed(process.env)) throw new Error("The whole-stretch contract is experimental: set ALLOW_STRETCH_V2=true to use it.");
+    const run = await createCaseRun(db, caseId, { mode: values.live ? "live" : "mock", budgetUsd: Number(values.budget ?? 0), confirmed: values.live === true, execution: values.economy ? "batch" : "standard", contract: values.stretch ? "stretch-v2" : undefined });
     console.log(`case run ${run.id}: ${await runUntilStopped(run.id)}`);
     console.log(JSON.stringify(await caseRunReport(db, run.id), null, 2));
   } finally {

@@ -302,6 +302,10 @@ export type CaseAnalysisView = {
 
 // Mirrors server/src/jobs/caseRun.ts (CaseRunReport, caseRunFindings) and docs/case-run-api.md: a whole-case run
 // over every witness and session of a case. A mock run uses the deterministic test model: no model, no cost.
+// The request contract: packet-v1 (the default) or the experimental whole-stretch reading (stretch-v2).
+export type CaseRunContract = "packet-v1" | "stretch-v2";
+// A whole-stretch run's read pairs by status. no_conflict_identified and unclear pairs have no finding.
+export type CaseRunStretch = { flagged: number; flagged_unverified: number; unclear: number; no_conflict_identified: number; related: number; note: string };
 export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | "adjudicating" | "completed" | "incomplete" | "failed" | "blocked_budget" | "blocked_credentials" | "cancelled" | "interrupted" | "reconciling";
 export type CoverageState = "complete" | "processed_with_unread" | "partial";
 // economy: the same projection at Message Batches API prices (absent on runs prepared before economy mode existed).
@@ -311,7 +315,7 @@ export type CaseRunExecution = "standard" | "batch";
 export type CaseRunBatches = { total: number; submitting: number; processing: number; awaitingImport: number; imported: number; notSubmitted: number; unknown: number; oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number> };
 export type CaseRun = {
   // economyAvailable: paid economy runs can be confirmed on this server (ALLOW_ECONOMY_ANALYSIS).
-  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; economyAvailable?: boolean; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
+  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; contract?: CaseRunContract; stretch?: CaseRunStretch | null; stretchAvailable?: boolean; economyAvailable?: boolean; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
   createdAt: string; startedAt: string | null; finishedAt: string | null; confirmedAt: string | null; cancelRequested: boolean;
   estimate: CaseRunEstimate | null;
   coverageState: CoverageState; complete: boolean; incompleteReasons: string[];

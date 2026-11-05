@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { Database } from "../db/client";
 import { caseRuns, cases } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
-import { caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun } from "../jobs/caseRun";
+import { CASE_RUN_CONTRACTS, caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun, stretchAllowed } from "../jobs/caseRun";
 import { economyAllowed } from "../jobs/caseRunBatch";
 
 const Id = z.coerce.number().int().positive();
@@ -16,7 +16,9 @@ const NO_ACCESS = { error: "Paid checks aren't enabled for this account yet. Ver
 const Execution = z.enum(["standard", "batch"]);
 // execution: a test-model run picks its transport at start (it needs no confirmation); a live run picks it when
 // it is confirmed, after its estimate.
-const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execution.optional() }).strict();
+// contract: packet-v1 by default; the experimental whole-stretch contract only where the server allows it
+// (ALLOW_STRETCH_V2=true). A live stretch run is then estimated and confirmed like any other.
+const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execution.optional(), contract: z.enum(CASE_RUN_CONTRACTS).optional() }).strict();
 // A whole case is far larger than one pair of sessions (the six-document real fixtures project about $60), so
 // case runs have their own ceiling. The budget itself is always the person's explicit confirmation.
 export const MAX_CASE_RUN_BUDGET_USD = 250;
@@ -28,18 +30,19 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
   // Every report says whether paid economy runs can be confirmed here, so the UI offers the choice only then.
   const reportOf = async (id: number) => {
     const r = await caseRunReport(db, id);
-    return r && { ...r, economyAvailable: economyAllowed(env) };
+    return r && { ...r, economyAvailable: economyAllowed(env), stretchAvailable: stretchAllowed(env) };
   };
 
   router.post("/cases/:id/case-runs", async (req, res) => {
     const caseId = Id.safeParse(req.params.id);
     const body = StartCaseRun.safeParse(req.body ?? {});
     if (!caseId.success || !body.success) return res.status(400).json({ error: "Give the mode: live or mock. A live run stops after retrieval with its estimate; confirm it with a budget to start." });
+    if (body.data.contract === "stretch-v2" && !stretchAllowed(env)) return res.status(409).json({ error: "Whole-stretch reading is experimental and isn't enabled on this server.", code: "stretch_disabled" });
     const [kase] = await db.select({ id: cases.id }).from(cases).where(eq(cases.id, caseId.data));
     if (!kase) return res.status(404).json({ error: "Case not found." });
     const [active] = await db.select({ id: caseRuns.id }).from(caseRuns).where(and(eq(caseRuns.caseId, caseId.data), inArray(caseRuns.status, ACTIVE)));
     if (active) return res.status(409).json({ error: `Case run ${active.id} is still running for this case.`, caseRunId: active.id });
-    const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard" });
+    const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard", contract: body.data.contract });
     await enqueueCaseRun(boss, { caseRunId: run.id });
     return res.status(202).json({ caseRun: await reportOf(run.id) });
   });
@@ -48,7 +51,8 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const caseId = Id.safeParse(req.params.id);
     if (!caseId.success) return res.status(400).json({ error: "The case ID must be a positive number." });
     const ids = await db.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, caseId.data)).orderBy(desc(caseRuns.id));
-    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))) });
+    // stretchAvailable at the top too: a case with no run yet still needs to know whether to offer the option.
+    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))), stretchAvailable: stretchAllowed(env) });
   });
 
   router.get("/case-runs/:id", async (req, res) => {

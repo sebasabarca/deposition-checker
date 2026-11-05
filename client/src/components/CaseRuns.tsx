@@ -16,20 +16,23 @@ import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputCl
 
 export function useCaseRuns(caseId: number) {
   const [runs, setRuns] = useState<CaseRun[] | null>(null);
+  const [stretchAvailable, setStretchAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(() => {
-    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setError(null); }, (e: Error) => setError(e.message));
+    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setError(null); }, (e: Error) => setError(e.message));
   }, [caseId]);
   useEffect(load, [load]);
   usePoll(!!runs?.[0] && MOVING_RUN.includes(runs[0].status), 3000, load);
-  return { runs, error, reload: load };
+  return { runs, stretchAvailable, error, reload: load };
 }
 
 export const WHOLE_CASE_PANEL = "whole-case-analysis";
 
 export function CaseRunPanel({ caseId, readySessions, witnesses }: { caseId: number; readySessions: number; witnesses: number }) {
-  const { runs, error, reload } = useCaseRuns(caseId);
+  const { runs, stretchAvailable, error, reload } = useCaseRuns(caseId);
   const [busy, setBusy] = useState(false);
+  const [stretch, setStretch] = useState(false); // the experimental whole-stretch reading, offered only where the server allows it
+  const contract = stretch && stretchAvailable ? ("stretch-v2" as const) : undefined;
   const [problem, setProblem] = useState<string | null>(null);
   const user = useUser();
   const latest = runs?.[0] ?? null;
@@ -63,10 +66,19 @@ export function CaseRunPanel({ caseId, readySessions, witnesses }: { caseId: num
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <Button disabled={busy || !!blocked || !!paidBlocked} onClick={() => act(api.startCaseRun(caseId, "live"))}>{latest ? "Prepare a new cost estimate" : "Analyze entire case"}</Button>
-              <Button variant="secondary" disabled={busy || !!blocked} onClick={() => act(api.startCaseRun(caseId, "mock"))}>Run with the test model (free)</Button>
-              <Button variant="secondary" disabled={busy || !!blocked} onClick={() => act(api.startCaseRun(caseId, "mock", "batch"))}>Test economy mode (free)</Button>
+              <Button disabled={busy || !!blocked || !!paidBlocked} onClick={() => act(api.startCaseRun(caseId, "live", "standard", contract))}>{latest ? "Prepare a new cost estimate" : "Analyze entire case"}</Button>
+              <Button variant="secondary" disabled={busy || !!blocked} onClick={() => act(api.startCaseRun(caseId, "mock", "standard", contract))}>Run with the test model (free)</Button>
+              <Button variant="secondary" disabled={busy || !!blocked} onClick={() => act(api.startCaseRun(caseId, "mock", "batch", contract))}>Test economy mode (free)</Button>
             </div>
+            {stretchAvailable && (
+              <label className="flex max-w-3xl items-start gap-2 text-sm">
+                <input type="checkbox" checked={stretch} onChange={(ev) => setStretch(ev.target.checked)} className="mt-0.5 size-4 rounded accent-navy" />
+                <span>
+                  Use the experimental whole-stretch reading
+                  <span className="mt-0.5 block text-xs text-muted">The model reads the full stretch of testimony around nearby pairs and reports only the conflicts it finds. Cheaper per pair, but its accuracy hasn't been validated: a pair with no conflict identified is read, not cleared.</span>
+                </span>
+              </label>
+            )}
             <p className="max-w-3xl text-xs text-muted">
               {blocked ?? paidBlocked ?? "The test model is a deterministic stand-in that exercises the whole pipeline at no cost, in fast or economy mode. Its results are labelled as test results and say nothing about the testimony."}
               {!blocked && paidBlocked && " You can still run the test model."}
@@ -89,6 +101,7 @@ function RunState({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean
         <Badge tone={s.tone} dot>{s.label}</Badge>
         {test ? <Badge tone="accent">Test model: not a real analysis</Badge> : <Badge tone="neutral">Paid model: {run.model}</Badge>}
         {(run.confirmedAt !== null || test) && <Badge tone="neutral">{EXECUTION[run.execution].label}</Badge>}
+        {run.contract === "stretch-v2" && <Badge tone="warn">Experimental: whole-stretch reading</Badge>}
         <span className="text-sm text-muted">Started {formatDate(run.createdAt)}</span>
       </div>
 
@@ -100,6 +113,12 @@ function RunState({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean
       )}
 
       {run.status === "awaiting_confirmation" && run.estimate && <Confirm run={run} busy={busy} act={act} paidBlocked={paidBlocked} cancel={cancel} />}
+
+      {run.stretch && run.status !== "queued" && run.status !== "retrieving" && run.status !== "awaiting_confirmation" && (
+        <p className="max-w-3xl text-sm text-muted tabular-nums">
+          Pairs read: {run.stretch.flagged} flagged with verified citations, {run.stretch.flagged_unverified} flagged but not verified, {run.stretch.unclear} unclear, {run.stretch.no_conflict_identified} with no conflict identified (read, not cleared).
+        </p>
+      )}
 
       {run.status === "adjudicating" && (
         <div className="flex flex-wrap items-center justify-between gap-3">
