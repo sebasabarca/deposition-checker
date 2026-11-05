@@ -27,6 +27,7 @@ export type FakeBatchOptions = {
   onSubmit?: (submission: number) => FakeSubmit;
   duplicateResults?: boolean; // every result delivered twice
   completeOnCancel?: number; // requests that still finish (and are billed) after a cancel
+  cancelMs?: number; // how long a cancelled batch stays `canceling` before it ends (0: at once)
   outputPerPair?: number; // reported output tokens per answered pair (the mock's own default otherwise)
   failRetrieve?: (call: number) => boolean;
 };
@@ -77,7 +78,7 @@ export class FakeBatchProvider implements PacketBatchProvider {
 
   async cancel(batchId: string): Promise<void> {
     const b = this.get(batchId);
-    if (!this.ended(b)) b.canceledAt = this.now();
+    if (!this.ended(b) && b.canceledAt === null) b.canceledAt = this.now();
   }
 
   async *list(createdAfter: Date): AsyncIterable<BatchState> {
@@ -92,7 +93,7 @@ export class FakeBatchProvider implements PacketBatchProvider {
     if (!b) throw apiError(404, `no batch ${batchId}`);
     return b;
   }
-  private ended = (b: FakeBatch) => b.canceledAt !== null || this.now() >= b.endsAt;
+  private ended = (b: FakeBatch) => (b.canceledAt !== null && this.now() >= b.canceledAt + (this.options.cancelMs ?? 0)) || this.now() >= b.endsAt;
 
   private resultOf(b: FakeBatch, r: PacketBatchRequest, index: number): BatchResult | null {
     if (b.canceledAt !== null && index >= (this.options.completeOnCancel ?? 0)) return { customId: r.customId, type: "canceled" };
@@ -120,7 +121,7 @@ export class FakeBatchProvider implements PacketBatchProvider {
       if (res === null) counts.errored++; // the real provider always accounts for every request
       else counts[res.type === "succeeded" ? "succeeded" : res.type === "errored" ? "errored" : res.type === "expired" ? "expired" : "canceled"]++;
     });
-    const endedAt = ended ? (b.canceledAt ?? b.endsAt) : null;
+    const endedAt = ended ? (b.canceledAt !== null ? Math.min(b.endsAt, b.canceledAt + (this.options.cancelMs ?? 0)) : b.endsAt) : null;
     return { id: b.id, status: ended ? "ended" : b.canceledAt !== null ? "canceling" : "in_progress", counts, createdAt: new Date(b.createdAt), endedAt: endedAt === null ? null : new Date(endedAt), expiresAt: new Date(b.createdAt + 24 * 3600_000) };
   }
 }

@@ -1238,7 +1238,7 @@ export const caseRuns = pgTable(
     check("case_runs_budget_check", sql`${t.budgetUsd} >= 0`),
     check(
       "case_runs_status_check",
-      sql`${t.status} in ('queued', 'retrieving', 'awaiting_confirmation', 'adjudicating', 'completed', 'incomplete', 'failed', 'blocked_budget', 'blocked_credentials', 'cancelled', 'interrupted')`,
+      sql`${t.status} in ('queued', 'retrieving', 'awaiting_confirmation', 'adjudicating', 'completed', 'incomplete', 'failed', 'blocked_budget', 'blocked_credentials', 'cancelled', 'interrupted', 'reconciling')`,
     ),
     check("case_runs_execution_check", sql`${t.execution} in ('standard', 'batch')`),
   ],

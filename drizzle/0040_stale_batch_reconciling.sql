@@ -1,0 +1,2 @@
+ALTER TABLE "case_runs" DROP CONSTRAINT "case_runs_status_check";--> statement-breakpoint
+ALTER TABLE "case_runs" ADD CONSTRAINT "case_runs_status_check" CHECK ("case_runs"."status" in ('queued', 'retrieving', 'awaiting_confirmation', 'adjudicating', 'completed', 'incomplete', 'failed', 'blocked_budget', 'blocked_credentials', 'cancelled', 'interrupted', 'reconciling'));

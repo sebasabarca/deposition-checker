@@ -302,7 +302,7 @@ export type CaseAnalysisView = {
 
 // Mirrors server/src/jobs/caseRun.ts (CaseRunReport, caseRunFindings) and docs/case-run-api.md: a whole-case run
 // over every witness and session of a case. A mock run uses the deterministic test model: no model, no cost.
-export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | "adjudicating" | "completed" | "incomplete" | "failed" | "blocked_budget" | "blocked_credentials" | "cancelled" | "interrupted";
+export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | "adjudicating" | "completed" | "incomplete" | "failed" | "blocked_budget" | "blocked_credentials" | "cancelled" | "interrupted" | "reconciling";
 export type CoverageState = "complete" | "processed_with_unread" | "partial";
 // economy: the same projection at Message Batches API prices (absent on runs prepared before economy mode existed).
 export type CaseRunEconomyEstimate = { expectedUsd: number; noCacheUsd: number; worstCaseUsd: number; worstCasePerBatchUsd: number; recommendedBudgetUsd: number; batchSize: number; discount: number };

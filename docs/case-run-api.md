@@ -16,6 +16,7 @@ POST /cases/:id/case-runs {mode:"live"}
   queued → retrieving → awaiting_confirmation (estimate ready; nothing sent, nothing spent)
 POST /case-runs/:id/confirm {budgetUsd, execution?, retentionAcknowledged?}
   queued → adjudicating → completed | incomplete | failed | blocked_budget | cancelled | interrupted
+  (economy, transcript corrected) adjudicating → reconciling → failed
 POST /case-runs/:id/resume {budgetUsd?, retryUncertain?}   (from incomplete, failed, blocked_*, cancelled, interrupted)
   queued → adjudicating → …
 ```
@@ -38,6 +39,8 @@ A run reads its packets in one of two ways, chosen when it is confirmed (`execut
 
 An economy run is a series of short checks: each one imports ended batches, sends recovery requests and retries, and submits new batches, then queues the next check (`CASE_RUN_BATCH_POLL_SECONDS`, 60 by default; 2 for a mock run). Its status stays `adjudicating` while any batch is open. It never falls back to standard requests.
 
+**A transcript corrected while an economy run is pending.** The run reads each deposition's evidence version (epoch) once and writes every result against it; the database refuses verdicts and findings computed from a version that has since changed. An economy run that finds its evidence changed becomes `reconciling`: it submits and publishes nothing more, asks the provider to cancel its open batches, and imports what they hold for accounting only (each billed reply recorded once and its reservation settled; cancelled, errored and expired requests released; a request with no result counted in full as possibly billed; an unconfirmed submission reconciled by custom ID as usual). When no batch is open it becomes `failed` with the reason and the counts. `reconciling` is not an active status: a new run of the case can start meanwhile, and it can't be cancelled (it is already stopping). If the provider can't be reached, it stays `reconciling` with the error on each batch and is checked again.
+
 - **Results** are matched by `custom_id`, imported once each (a duplicate delivery is skipped), recorded in `llm_calls` with `batch = true` and their raw text before they are parsed, and settled against their reservation.
 - **Errored** (not an invalid request) and **expired** requests are not billed: each is retried once in a later batch, then its packet fails unbilled. An **invalid** request is not retried. A **cancelled** request returns its packet to the queue.
 - **A request with no result** in an ended batch is uncertain: its reservation is charged in full and its packet is retried only on `retryUncertain`.
@@ -57,6 +60,7 @@ An economy run is a series of short checks: each one imports ended batches, send
 | `blocked_credentials` | The server can't make paid calls | Message only |
 | `failed` | Several packets failed in a row, or the stored evidence changed during retrieval (`error`) | Resume, or start a new run |
 | `cancelled`, `interrupted` | Stopped by a person, or by a worker shutdown or crash | Resume |
+| `reconciling` | Economy only: a transcript was corrected while batches were pending; settling their costs, nothing published | Message only; start a new run |
 
 ## Endpoints
 

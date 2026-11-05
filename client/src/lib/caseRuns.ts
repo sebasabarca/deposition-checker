@@ -25,6 +25,7 @@ export const RUN_STATUS: Record<CaseRunStatus, { label: string; tone: Tone }> = 
   blocked_credentials: { label: "Paid calls are off on this server", tone: "warn" },
   cancelled: { label: "Cancelled", tone: "neutral" },
   interrupted: { label: "Interrupted", tone: "warn" },
+  reconciling: { label: "Stopped: transcript corrected (settling costs)", tone: "warn" },
 };
 
 export const COVERAGE: Record<CoverageState, { label: string; tone: Tone; help: string }> = {

@@ -11,12 +11,17 @@
 //                 when someone resumes with retryUncertain. A submission is never repeated blindly.
 //   2. poll       each open batch's status; a cancelled run asks the provider to cancel its open batches.
 //   3. import     an ended batch's results, streamed: each by custom_id, each at most once (a result whose
-//                 request is no longer `sent` is a duplicate). A reply is recorded (llm_calls, raw text) and its
-//                 pointer stored on the ledger entry before it is parsed, exactly as in standard execution.
-//   4. advance    every entry with no open request: parse a stored reply; then done, a recovery request (round 2),
+//                 request is no longer `sent` is a duplicate). A reply is recorded (llm_calls, raw text, the
+//                 reservation settled) in a transaction of accounting rows only, before it is parsed.
+//   4. advance    every entry with no open request: link a newly imported reply to the entry (evidence-checked),
+//                 parse a stored reply; then done, a recovery request (round 2),
 //                 one retry of an unbilled errored or expired request, or the end (incomplete or failed).
 //   5. submit     new batches while fewer than CASE_RUN_BATCHES_IN_FLIGHT are open. Claims, reservations, the
-//                 batch row and its request rows are written in one transaction, then the provider is called.
+//                 batch row and its request rows are written in one transaction, which checks the run's evidence
+//                 epochs last, then the provider is called.
+//
+// Corrected evidence (evidence/epoch.ts): once a transcript the run read is corrected, the run is `reconciling`.
+// Nothing more is sent or published; its batches are cancelled and settled (reconcileStaleBatchRun), then it fails.
 //
 // Budget: every request reserves its worst case at batch prices (its max_tokens of output) before its batch is
 // submitted, and keeps it until its result is imported, so spending can never pass the limit. A batch takes only
@@ -162,6 +167,12 @@ async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entr
     await failEntry(db, ledgerId, entry, ctx, false);
     return null;
   }
+  // A reply imported since the entry last moved: link it to the entry (its cost is already recorded with the
+  // request). This write is evidence-checked: after a correction it is refused, and the reply stays unpublished.
+  if (last && (last.status === "completed" || last.status === "partial") && entry.requestId !== last.id) {
+    await db.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: last.id, llmCallId: last.llmCallId, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+    entry = { ...entry, attempts: entry.attempts + 1, requestId: last.id, llmCallId: last.llmCallId };
+  }
   const at = { entry };
   let mock = last && pending.has(last.id) ? { candidateIds: last.candidateIds, text: pending.get(last.id)!, requestId: last.id } : undefined;
   for (;;) {
@@ -259,6 +270,10 @@ async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[
         const id = await openRequest(tx, context, { candidateIds: i.send.sentIds, model: model.model, promptVersion: model.promptVersion, estimatedInputTokens: inputTokenBound(chars), maxOutputTokens: maxOutputTokensFor(i.send.packet.pairs.length), maxCostUsd: i.maxCostUsd, reservationId: i.reservationId });
         await tx.update(adjudicationRequests).set({ caseRunBatchId: batch.id, customId: i.request.customId, screeningEntryId: i.send.entry.id, round: i.send.round, retryOf: i.send.retryOf }).where(eq(adjudicationRequests.id, id));
       }
+      // Nothing is sent from evidence that has changed: the guard (migration 0039) checks every epoch this run
+      // declared, under the lock a correction must wait for, and refuses (VE002) before the provider is called. A
+      // recovery request or a retry otherwise writes nothing evidence-checked on its way to a batch.
+      await tx.execute(sql`select evidence_guard(array(select jsonb_object_keys(nullif(current_setting('evidence.read_epochs', true), '')::jsonb)::bigint))`);
       return { batch, requests: items.map((i) => i.request) };
     });
     if (!written) return { budgetMessage: short && open === 0 ? short : null, fatal: null };
@@ -442,22 +457,22 @@ async function recordResult(db: Database, run: CaseRun, req: Request, r: BatchRe
     const status = reply.stopReason === "max_tokens" ? "partial" : "completed";
     const errorKind = reply.stopReason === "max_tokens" ? "cut_off" : reply.stopReason === "refusal" ? "refused" : null;
     if (!live) {
-      await db.transaction(async (txRaw) => {
-        const tx = asDb(txRaw);
-        await closeRequest(tx, req.id, { status, errorKind, latencyMs: reply.latencyMs });
-        await tx.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: req.id, updatedAt: sql`now()` }).where(eq(screeningEntries.id, req.screeningEntryId!));
-      });
+      await closeRequest(db, req.id, { status, errorKind, latencyMs: reply.latencyMs });
       pending.set(req.id, reply.text);
       return;
     }
-    // The reply is paid for: recorded with its raw text, its reservation settled, and its pointer stored on the
-    // entry, in one transaction, before anything parses it.
+    // The reply is paid for: recorded with its raw text, its reservation settled and its request closed, in one
+    // transaction that touches only accounting tables, so a correction of the evidence (which refuses writes to
+    // ledger entries and verdicts, evidence/epoch.ts) can never roll it back. The request row, locked while still
+    // `sent`, is the idempotency key: a result is recorded once however often it is delivered or re-imported.
+    // advance() links the reply to its ledger entry afterwards, in a separate, evidence-checked write.
     await db.transaction(async (txRaw) => {
       const tx = asDb(txRaw);
+      const [open] = (await tx.execute<{ id: number }>(sql`select id from adjudication_requests where id = ${req.id} and status = 'sent' for update`)).rows;
+      if (!open) return;
       const call = await recordCall(tx, { jobId: null, stage: "adjudication", model: reply.model, usage: reply.usage as Anthropic.Usage, attempt: req.retryOf === null ? 1 : 2, items: req.candidateIds.length, batch: true, rawOutput: reply.text, effort: PACKET_EFFORT, latencyMs: reply.latencyMs });
       if (req.reservationId !== null) await settle(tx, req.reservationId, { id: call.id, costUsd: call.costUsd });
       await closeRequest(tx, req.id, { status, errorKind, llmCallId: call.id, latencyMs: reply.latencyMs });
-      await tx.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: req.id, llmCallId: call.id, updatedAt: sql`now()` }).where(eq(screeningEntries.id, req.screeningEntryId!));
     });
     return;
   }
@@ -468,8 +483,33 @@ async function recordResult(db: Database, run: CaseRun, req: Request, r: BatchRe
   else await closeRequest(db, req.id, { status: "aborted", errorKind: "canceled", error: "The batch was cancelled before this request ran." });
 }
 
+// An economy run whose evidence was corrected after it read it (status `reconciling`, set by caseRun.ts). Nothing
+// more is submitted or published; what the provider already holds is settled: open batches are asked to cancel,
+// every ended batch is imported (each billed reply recorded once and its reservation settled; cancelled, errored
+// and expired requests, not billed, released; a request with no result counted in full as uncertain), and a
+// submission left unconfirmed is reconciled by custom ID as usual. Once no batch is open the run fails with the
+// stale-evidence reason. Run on the plain (unfenced) connection: it writes only accounting rows (case_run_batches,
+// adjudication_requests, llm_calls, budgets) and the run's own row, never ledger entries, verdicts or findings.
+// Each tick repeats safely; a provider that can't be reached leaves the batch open with its error, checked again.
+export async function reconcileStaleBatchRun(db: Database, run: CaseRun, deps: BatchDeps): Promise<"polling" | "failed"> {
+  const s = { ...BATCH_DEFAULTS, ...deps.settings };
+  const now = () => deps.now?.() ?? Date.now();
+  await reconcile(db, run, deps, s, now);
+  await poll(db, run, deps, true);
+  for (const b of await batchesOf(db, run.id, ["ended"])) await importBatch(db, run, b, deps, run.mode === "live", new Map());
+  if ((await batchesOf(db, run.id, OPEN)).length) return "polling";
+  const [r] = (await db.execute<{ recorded: number; uncertain: number }>(sql`
+    select count(*) filter (where llm_call_id is not null)::int as recorded, count(*) filter (where error_kind = 'uncertain')::int as uncertain
+    from adjudication_requests where candidate_set = ${caseRunSetOf(run.id)}`)).rows;
+  const note = ` Every provider batch has ended: ${r.recorded} billed repl${r.recorded === 1 ? "y" : "ies"} recorded but not published${r.uncertain ? `; ${r.uncertain} request${r.uncertain === 1 ? "" : "s"} with no result counted in full as possibly billed` : ""}.`;
+  await db.update(caseRuns).set({ status: "failed", error: `${STALE_BATCH_RUN}${note}`, finishedAt: new Date(), updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
+  return "failed";
+}
+export const STALE_BATCH_RUN = "A transcript in this case was corrected after this run read it, so none of its later results were saved as findings.";
+export const STALE_BATCH_RECONCILING = `${STALE_BATCH_RUN} Nothing more is sent; its open provider batches are being cancelled and every billed result recorded before the run ends. A new run on the corrected transcripts can start now.`;
+
 // Economy runs that should be ticking: the worker queues them again on start, in case a tick's follow-up job
 // was lost (pg-boss keeps queued jobs, so this is a backstop).
 export async function batchRunsToResume(db: Database) {
-  return db.select({ id: caseRuns.id, mode: caseRuns.mode }).from(caseRuns).where(and(eq(caseRuns.execution, "batch"), eq(caseRuns.status, "adjudicating")));
+  return db.select({ id: caseRuns.id, mode: caseRuns.mode }).from(caseRuns).where(and(eq(caseRuns.execution, "batch"), inArray(caseRuns.status, ["adjudicating", "reconciling"])));
 }

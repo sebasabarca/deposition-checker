@@ -41,7 +41,7 @@ import type { AdjudicatorReply } from "../adjudicate/model";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, reconcileStale, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { standingOf } from "../evidence/correction";
-import { isStaleEvidence, jobEpochs, withEvidenceFence } from "../evidence/epoch";
+import { captureEpochs, isStaleEvidence, jobEpochs, withEvidenceFence } from "../evidence/epoch";
 import { adjudicationRequests, budgets, candidates, caseRuns, depositions, findings, llmCalls, screeningEntries, screeningRuns, verdicts, witnesses } from "../db/schema";
 import { mockPacketReply } from "../eval/mockPacketModel";
 import { buildCasePool, CASE_POOL_VERSION, type CaseItem } from "../retrieve/casePool";
@@ -56,10 +56,10 @@ import { screen } from "../screen/strategies";
 import { MAX_RECOVERY_ROUNDS, verifyPacketReply } from "../verify/packet";
 import { VERIFICATION_VERSION } from "../verify/version";
 import { Aborted, ProviderLimiter, realClock, UNLIMITED, type Clock } from "./limiter";
-import { BATCH_DEFAULTS, runBatchTick, type BatchDeps } from "./caseRunBatch";
+import { BATCH_DEFAULTS, reconcileStaleBatchRun, runBatchTick, STALE_BATCH_RECONCILING, type BatchDeps } from "./caseRunBatch";
 import { BATCH_MULTIPLIER } from "../costs/pricing";
 
-export const CASE_RUN_STATUSES = ["queued", "retrieving", "awaiting_confirmation", "adjudicating", "completed", "incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted"] as const;
+export const CASE_RUN_STATUSES = ["queued", "retrieving", "awaiting_confirmation", "adjudicating", "completed", "incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted", "reconciling"] as const;
 export type CaseRunStatus = (typeof CASE_RUN_STATUSES)[number];
 export const CASE_RUN_TERMINAL: CaseRunStatus[] = ["completed", "incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted"];
 export const CASE_RUN_RESUMABLE: CaseRunStatus[] = ["incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted"];
@@ -184,19 +184,38 @@ export async function runCaseRun(db: Database, pool: Pool, id: number, deps: Cas
 }
 
 async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus | "polling"> {
+  // Already stale: only accounting is left, which reads and writes no evidence, so a correction's hold doesn't wait it.
+  if (run.status === "reconciling") return settleStaleBatch(db, run, deps);
   // A case whose evidence is being corrected is not read until the correction ends (evidence/correction.ts).
   if ((await db.select({ id: depositions.id }).from(depositions).where(and(eq(depositions.caseId, run.caseId), sql`${depositions.evidenceHold} is not null`))).length) return "polling";
   // Every result is written through a connection declaring the evidence epochs this run first read
   // (evidence/epoch.ts): a result from a transcript corrected since is refused by the database, never stored.
   const ids = (await db.select({ id: depositions.id }).from(depositions).where(eq(depositions.caseId, run.caseId))).map((d) => d.id);
   const epochs = await jobEpochs(db, "case_runs", run.id, run.sourceEpochs, ids);
+  // An economy run whose evidence changed sends and publishes nothing more, but settles what the provider holds.
+  if (run.execution === "batch" && Object.entries(await captureEpochs(db, Object.keys(epochs).map(Number))).some(([id, e]) => epochs[id] !== e)) return settleStaleBatch(db, run, deps);
   try {
     return await withEvidenceFence(db, epochs, (fenced) => runFenced(fenced, pool, run, deps));
   } catch (e) {
     if (!isStaleEvidence(e)) throw e;
+    if (run.execution === "batch") return settleStaleBatch(db, run, deps);
     await update(db, run.id, { status: "failed", error: STALE_CASE_RUN, finishedAt: new Date() });
     return "failed";
   }
+}
+
+// A stale economy run: `reconciling` (not active, so a new run of the case can start) until every provider batch
+// it opened has ended and been accounted for (caseRunBatch.ts, reconcileStaleBatchRun), then failed.
+async function settleStaleBatch(db: Database, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus | "polling"> {
+  if (run.status !== "reconciling") await update(db, run.id, { status: "reconciling", error: STALE_BATCH_RECONCILING });
+  const batch = deps.batch?.(run) ?? null;
+  if (!batch) {
+    // No provider on this server now (economy turned off): nothing can be checked. The run stays reconciling,
+    // visibly, and the worker picks it up again on its next start.
+    await update(db, run.id, { error: `${STALE_BATCH_RECONCILING} This server can't reach the provider for economy runs now, so its batches will be accounted for when it can.` });
+    return "reconciling";
+  }
+  return reconcileStaleBatchRun(db, { ...run, status: "reconciling" }, batch);
 }
 export const STALE_CASE_RUN = "A transcript in this case was corrected after this run read it, so its remaining results were not saved. Start a new run on the corrected transcripts.";
 
