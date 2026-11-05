@@ -51,6 +51,7 @@ export function CasePage({ id }: { id: number }) {
 
   if (error) return <Alert title="This case couldn't be loaded">{error}</Alert>;
   if (!detail) return <Loading />;
+  // The report covers finished analyses only (api/report.ts), so it is offered once one exists.
   const witnessName = (w: number) => detail.witnesses.find((x) => x.id === w)?.name ?? "Unknown witness";
   const workflowSessions = [...detail.depositions]
     .sort((a, b) => witnessName(a.witnessId).localeCompare(witnessName(b.witnessId)) || (a.takenOn ?? "").localeCompare(b.takenOn ?? ""))
@@ -124,7 +125,7 @@ export function CasePage({ id }: { id: number }) {
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
         title={detail.case.name}
         description={summary}
-        actions={<>{caseAnalysis && <CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} />}<a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a></>}
+        actions={<>{caseAnalysis && <CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} />}{detail.analyses.some((a) => a.status === "completed") && <a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a>}</>}
       />
 
       <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} />
