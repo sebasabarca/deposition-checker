@@ -375,8 +375,8 @@ export async function applyCorrection(db: Database, dep: number, opts: Correctio
       await tx.update(depositions).set({ evidenceEpoch: sql`${depositions.evidenceEpoch} + 1` }).where(eq(depositions.id, dep));
       return { ...body.result, outcome: "applied" as const, migrationId: held.id, backup };
     }).then(async (r) => {
-      // Committed with the hold still set, so a writer that waited on the row lock wakes to the hold and fails
-      // instead of writing what it prepared from the evidence before. Only then is the hold released.
+      // Committed with the hold still set, then released. A job's write that waited on the row lock is refused
+      // either way: by the hold (VE001) or, once released, by its stale epoch (VE002, evidence/epoch.ts).
       await releaseApplied(db, held.id);
       return r;
     });

@@ -15,7 +15,7 @@ import { analysisFindings, analysisRoutes, analysisView, findingDetail } from ".
 import { reportData } from "../../server/src/api/report";
 import type { Database } from "../../server/src/db/client";
 import { analyses, candidates, cases, depositions, evidenceMigrations, exchangeLines, exchanges, factUnits, facts, findings, lines, orgs, screeningEntries, screeningRuns, verdicts, witnesses } from "../../server/src/db/schema";
-import { applyCorrection, captureEpochs, correctInPlace, isStaleEvidence, withEvidenceFence, documentHash, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined, type CorrectionOptions, type Step } from "../../server/src/evidence";
+import { applyCorrection, captureEpochs, correctInPlace, isEvidenceOnHold, isStaleEvidence, withEvidenceFence, documentHash, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined, type CorrectionOptions, type Step } from "../../server/src/evidence";
 import { readDeposition, saveDeposition } from "../../server/src/ingest";
 import { buildExchangeParts } from "../../server/src/ingest/exchanges";
 import { speakerSegments } from "../../server/src/ingest/segments";
@@ -343,20 +343,22 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
     expect((await holdOf()).hold).toBeNull();
   });
 
-  it("a writer that starts while the correction runs waits for it, then is refused instead of writing stale data", async () => {
+  it("a job's write that arrives while the correction runs waits for it, then is refused, whatever the timing", async () => {
     const o = { expect: { lines: [await ref(22)] } };
     const dry = await planCorrection(db, doc, opts(o));
     const far = (await qa()).at(-1)!;
+    const read = await captureEpochs(db, [doc]); // the job read the evidence before the correction
     let late: Promise<string> | null = null;
     const onStep = async (s: Step) => {
       if (s !== "units") return;
-      // A separate connection, as another worker: its insert waits on the correction's lock on the deposition.
-      late = pool.query("insert into facts (fact_key, unit_key, extractor_version, case_id, witness_id, deposition_id, exchange_id, source_span_ids, line_ids, attribution_status, source_verification, status, source_hash, raw) select 'late', unit_key, extractor_version, case_id, witness_id, deposition_id, $1, '{}', '{}', 'verified', 'verified', 'rejected', 'x', '{}' from fact_units where deposition_id = $2 limit 1", [far.id, doc])
-        .then(() => "accepted", (e) => (e.code === "VE001" ? "VE001" : String(e)));
+      // Its own connection, declaring what it read, as every job's does: the insert waits on the correction's lock.
+      late = withEvidenceFence(db, read, (f) => f.insert(facts).values({ factKey: "late", unitKey: "u", extractorVersion: "v", caseId, witnessId, depositionId: doc, exchangeId: far.id, sourceSpanIds: [], lineIds: [], attributionStatus: "verified", sourceVerification: "verified", status: "rejected", sourceHash: "x", raw: {} }))
+        .then(() => "accepted", (e) => (isEvidenceOnHold(e) ? "VE001" : isStaleEvidence(e) ? "VE002" : String(e)));
       await new Promise((r) => setTimeout(r, 200));
     };
     expect(await applyCorrection(db, doc, opts({ ...o, planHash: dry.planHash, onStep }))).toMatchObject({ outcome: "applied" });
-    expect(await late).toBe("VE001");
+    // Refused while still held (VE001) or, once released, because its version is stale (VE002); never stored.
+    expect(["VE001", "VE002"]).toContain(await late);
     expect(await db.$count(facts, eq(facts.factKey, "late"))).toBe(0);
     expect(await integrity(db, doc)).toEqual(ZERO);
   });

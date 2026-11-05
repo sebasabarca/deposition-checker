@@ -25,12 +25,19 @@ const CONTAINER = process.env.PG_DOCKER_CONTAINER ?? "deposition-checker-db-1";
 const onPath = (bin: string) => { try { execFileSync("which", [bin], { stdio: "ignore" }); return true; } catch { return false; } };
 
 // Runs a Postgres client tool with the connection's credentials in its environment, never on the command line.
-function tool(bin: "pg_dump" | "pg_restore", args: string[], io: { input?: Buffer } = {}): Buffer {
+// A dump file to read is passed by path (copied into the container when the tools run there): pg_restore --list
+// reads only the archive's table of contents, so feeding it on stdin would break the pipe.
+function tool(bin: "pg_dump" | "pg_restore", args: string[], file?: string): Buffer {
   const u = base();
   const env = { PGUSER: decodeURIComponent(u.username), PGPASSWORD: decodeURIComponent(u.password), PGHOST: u.hostname, PGPORT: u.port || "5432" };
-  if (onPath(bin)) return execFileSync(bin, args, { env: { ...process.env, ...env }, input: io.input, maxBuffer: 1 << 31 });
-  const inner = ["exec", "-i", "-e", `PGUSER=${env.PGUSER}`, "-e", `PGPASSWORD=${env.PGPASSWORD}`, CONTAINER, bin, "-h", "localhost", ...args];
-  return execFileSync("docker", inner, { input: io.input, maxBuffer: 1 << 31 });
+  if (onPath(bin)) return execFileSync(bin, [...args, ...(file ? [file] : [])], { env: { ...process.env, ...env }, maxBuffer: 2 ** 31 });
+  const inside = file ? `/tmp/${path.basename(file)}` : null;
+  if (file) execFileSync("docker", ["cp", file, `${CONTAINER}:${inside}`]);
+  try {
+    return execFileSync("docker", ["exec", "-e", `PGUSER=${env.PGUSER}`, "-e", `PGPASSWORD=${env.PGPASSWORD}`, CONTAINER, bin, "-h", "localhost", ...args, ...(inside ? [inside] : [])], { maxBuffer: 2 ** 31 });
+  } finally {
+    if (inside) execFileSync("docker", ["exec", CONTAINER, "rm", "-f", inside]);
+  }
 }
 
 async function fingerprint(db: string) {
@@ -65,22 +72,23 @@ async function main() {
     const dump = tool("pg_dump", ["-Fc", "-d", v.db!]);
     writeFileSync(out, dump);
     const sha = createHash("sha256").update(readFileSync(out)).digest("hex");
-    const toc = tool("pg_restore", ["--list"], { input: readFileSync(out) }).toString();
+    const toc = tool("pg_restore", ["--list"], out).toString();
     writeFileSync(`${out}.sha256`, `${sha}  ${path.basename(out)}\n`);
     console.log(JSON.stringify({ file: out, bytes: dump.length, sha256: sha, tocEntries: toc.split("\n").filter((l) => l && !l.startsWith(";")).length }));
   } else if (cmd === "restore") {
     const into = v.into!;
     if (!/_rehearsal_/.test(into) || /_batch_/.test(into)) throw new Error(`${into} is not a disposable rehearsal database`);
+    // The dump is checked before anything is created.
+    const file = readFileSync(v.file!);
+    const [line] = readFileSync(`${v.file}.sha256`, "utf8").split("\n");
+    const sha = createHash("sha256").update(file).digest("hex");
+    if (line.split(/\s+/)[0] !== sha) throw new Error(`The dump's SHA-256 is ${sha}, not the recorded ${line.split(/\s+/)[0]}: refusing to restore it.`);
     const admin = new pg.Client({ connectionString: urlOf("postgres") });
     await admin.connect();
     if ((await admin.query("select 1 from pg_database where datname = $1", [into])).rowCount) throw new Error(`${into} exists: a restore never overwrites a database.`);
     await admin.query(`create database "${into}"`);
     await admin.end();
-    const file = readFileSync(v.file!);
-    const [line] = readFileSync(`${v.file}.sha256`, "utf8").split("\n");
-    const sha = createHash("sha256").update(file).digest("hex");
-    if (line.split(/\s+/)[0] !== sha) throw new Error(`The dump's SHA-256 is ${sha}, not the recorded ${line.split(/\s+/)[0]}: refusing to restore it.`);
-    tool("pg_restore", ["--exit-on-error", "--no-owner", "-d", into], { input: file });
+    tool("pg_restore", ["--exit-on-error", "--no-owner", "-d", into], path.resolve(v.file!));
     console.log(JSON.stringify({ restored: into, sha256: sha }));
   } else if (cmd === "verify") {
     const [a, b] = [await fingerprint(v.a!), await fingerprint(v.b!)];

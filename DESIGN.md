@@ -1101,9 +1101,13 @@ API). Meanwhile:
 **The correction transaction** takes the document row `FOR UPDATE`. So it waits for writers already running, and
 writers arriving during it wait. It refuses if work older than the hold is still unfinished.
 
-**Releasing.** The correction commits with the hold still set, so a writer that waited wakes to the hold and is
-refused. Only then is the hold released. A crash in between leaves the hold for an explicit `release`, which
-checks the document is exactly as the ledger says it should be.
+**Releasing.** The correction commits with the hold still set, and only then releases it.
+- **A job's write that waited** on the correction's lock is refused either way: by the hold if it re-checks
+  before the release (`VE001`), and by its stale epoch after (`VE002`).
+- **A write that declares no epochs** (seed and fixture scripts, a person's review) is guarded only by the hold
+  while it lasts. If it waited on the lock, it can land just after the release. No job writes that way.
+- **A crash between commit and release** leaves the hold for an explicit `release`, which checks the document is
+  exactly as the ledger says it should be.
 
 ### Derived-data invalidation (`server/src/evidence/correction.ts`)
 

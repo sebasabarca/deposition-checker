@@ -9,6 +9,8 @@
 //     and recovery, worker coordination, dry run, execute, the split checks, idempotence, rollback, and execute again.
 //   npx tsx scripts/evidence-rehearsal.ts findings --db <copy> --uploads <dir> --backup data/raw/<dir> --out data/raw/<file>.json
 //     Every document with findings: what correcting it would do, and the quarantine policy for its category.
+//   npx tsx scripts/evidence-rehearsal.ts schema --db <copy> --backup data/raw/<dir> --out data/raw/<file>.json
+//     After migrating: the guards installed, existing rows readable, and no reference already broken.
 //   npx tsx scripts/evidence-rehearsal.ts drop --name <copy>
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -20,7 +22,7 @@ import pg from "pg";
 import { analysisFindings } from "../server/src/api/analyses";
 import { connect, type Database } from "../server/src/db/client";
 import { verdicts } from "../server/src/db/schema";
-import { applyCorrection, documentHash, heldDocuments, integrity, isEvidenceOnHold, parserAudit, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined } from "../server/src/evidence";
+import { applyCorrection, captureEpochs, documentHash, isStaleEvidence, withEvidenceFence, heldDocuments, integrity, isEvidenceOnHold, parserAudit, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined } from "../server/src/evidence";
 
 const urlOf = (db: string) => { const u = new URL(process.env.DATABASE_URL!); u.pathname = `/${db}`; return u.toString(); };
 const disposable = (db: string) => { if (!/_rehearsal_/.test(db) || /_batch_/.test(db)) throw new Error(`${db} is not a disposable rehearsal database`); return db; };
@@ -60,6 +62,9 @@ async function splitChecks(c: pg.Client, dep: number, refs: string[]) {
 
 async function splits(db: Database, c: pg.Client, uploadsDir: string, backupDir: string) {
   const startPrint = await fingerprint(c);
+  const allDocs = (await c.query("select id::int from depositions order by id")).rows.map((r) => r.id as number);
+  const hashesBefore = new Map<number, string>();
+  for (const d of allDocs) hashesBefore.set(d, await documentHash(db, d));
   const docs = (await c.query("select d.id, d.file_sha256 sha, d.parser_version parser, w.name witness from depositions d join witnesses w on w.id = d.witness_id where d.file_sha256 = any($1) order by d.id", [[...new Set(FIXTURE.map((f) => f.fileSha256))]])).rows;
   const out = [];
   for (const d of docs) {
@@ -89,8 +94,12 @@ async function splits(db: Database, c: pg.Client, uploadsDir: string, backupDir:
     const [{ id: blocker }] = (await c.query("insert into analyses (case_id, witness_id, deposition_a, deposition_b, mode, prompt_version, effort, max_candidates, budget_usd) select d.case_id, d.witness_id, d.id, (select id from depositions x where x.case_id = d.case_id and x.id <> d.id limit 1), 'demo', 'adjudicate-v1', 'medium', 1, 0 from depositions d where d.id = $1 returning id", [dep])).rows;
     r.holdWithUnfinishedAnalysis = (await applyCorrection(db, dep, { ...o, planHash: dry.planHash })).outcome;
     await c.query("delete from analyses where id = $1", [blocker]);
-    // Execute.
+    // Execute, while a job that read the evidence before it is still running (its write comes later).
+    const readBefore = await captureEpochs(db, [dep]);
     const applied = await applyCorrection(db, dep, { ...o, planHash: dry.planHash });
+    const [anyExchange] = (await c.query("select id from exchanges where deposition_id = $1 limit 1", [dep])).rows;
+    r.delayedWriteAfterRelease = await withEvidenceFence(db, readBefore, (f) => f.execute(sql`update exchanges set flags = flags where id = ${anyExchange.id}`)).then(() => "accepted", (e) => (isStaleEvidence(e) ? "refused (VE002)" : String(e)));
+    r.currentReaderWrite = await withEvidenceFence(db, await captureEpochs(db, [dep]), (f) => f.execute(sql`update exchanges set flags = flags where id = ${anyExchange.id}`)).then(() => "accepted", (e) => String(e));
     r.applied = { outcome: applied.outcome, migrationId: applied.migrationId, integrityAfter: applied.integrityAfter };
     r.splitChecks = await splitChecks(c, dep, expect.lines);
     r.turnsInNoExchange = { before: turnsBefore, after: (r.splitChecks as { turnsInNoExchange: number }).turnsInNoExchange };
@@ -109,9 +118,32 @@ async function splits(db: Database, c: pg.Client, uploadsDir: string, backupDir:
     out.push(r);
     console.log(dep, JSON.stringify({ dry: dry.outcome, applied: applied.outcome, splitsOk: (r.splitChecks as { allOk: boolean }).allOk, duplicate: r.duplicate, rollbackExact: r.rollbackExact, reapplied: reapplied.outcome }));
   }
-  // Only the corrected documents' evidence changed (plus the ledger and quarantine tables).
+  // Only the corrected documents' evidence changed (plus the ledger and quarantine tables): every other
+  // deposition's testimony and derived rows hash the same.
   const changed = differing(startPrint, await fingerprint(c));
-  return { documents: out, tablesChanged: changed };
+  const corrected = new Set(docs.map((d) => Number(d.id)));
+  const othersChanged: number[] = [];
+  for (const d of allDocs) if (!corrected.has(d) && (await documentHash(db, d)) !== hashesBefore.get(d)) othersChanged.push(d);
+  return { documents: out, tablesChanged: changed, otherDocuments: allDocs.length - corrected.size, otherDocumentsChanged: othersChanged };
+}
+
+// After migrating a copy: the schema the code expects, existing rows readable, and nothing already broken.
+async function schemaCheck(db: Database, c: pg.Client) {
+  const q = async (s: string) => (await c.query(s)).rows[0];
+  const docs = (await c.query("select id::int from depositions order by id")).rows.map((r) => r.id as number);
+  const broken: number[] = [];
+  for (const d of docs) if (Object.values(await integrity(db, d)).some((n) => n > 0)) broken.push(d);
+  const audit = await parserAudit(db);
+  return {
+    migrations: (await q("select count(*)::int n from drizzle.__drizzle_migrations")).n,
+    guardTriggers: (await q("select count(*)::int n from pg_trigger where tgname like '%evidence_guard%'")).n,
+    depositions: docs.length,
+    epochZeroNoHold: (await q("select count(*)::int n from depositions where evidence_epoch = 0 and evidence_hold is null")).n,
+    jobsWithoutEpochs: (await q("select (select count(*) from analyses where source_epochs is null)::int + (select count(*) from case_runs where source_epochs is null)::int n")).n,
+    documentsWithBrokenReferences: broken,
+    auditedDocuments: audit.length,
+    currentParser: audit.filter((a) => a.current).length,
+  };
 }
 
 const CATEGORY = (r: { outcome: string; detail?: string }) =>
@@ -188,8 +220,8 @@ async function main() {
   const { db, pool } = connect(urlOf(name), { max: 4 });
   const backupDir = underRaw(v.backup!);
   mkdirSync(backupDir, { recursive: true });
-  const result = cmd === "splits" ? await splits(db, c, v.uploads!, backupDir) : cmd === "findings" ? await findings(db, c, v.uploads!, backupDir) : null;
-  if (!result) throw new Error("usage: evidence-rehearsal.ts create|splits|findings|drop");
+  const result = cmd === "schema" ? await schemaCheck(db, c) : cmd === "splits" ? await splits(db, c, v.uploads!, backupDir) : cmd === "findings" ? await findings(db, c, v.uploads!, backupDir) : null;
+  if (!result) throw new Error("usage: evidence-rehearsal.ts create|schema|splits|findings|drop");
   writeFileSync(underRaw(v.out!), JSON.stringify({ database: name, command: cmd, ...result }, null, 1));
   await pool.end();
   await c.end();
