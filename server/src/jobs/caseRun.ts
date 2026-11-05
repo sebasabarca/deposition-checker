@@ -466,11 +466,15 @@ export type EntryStep =
   | { kind: "stored"; packet: IssuePacket; sentIds: number[]; text: string | null; callId: number | null; requestId: number }
   | { kind: "send"; packet: IssuePacket; sentIds: number[]; remaining: number[] };
 
-export async function entryContext(db: Database, entry: Entry, index: ItemIndex, names: Map<number, string>): Promise<EntryContext | string> {
+// allItems: every item of the entry (all its exchanges), not only its pairs' ends: a whole-stretch request shows
+// the unpaired exchanges between its pairs too.
+export async function entryContext(db: Database, entry: Entry, index: ItemIndex, names: Map<number, string>, { allItems = false }: { allItems?: boolean } = {}): Promise<EntryContext | string> {
   const ids = entry.candidateIds ?? [];
   if (ids.length !== entry.pairs.length) return `the entry lists ${entry.pairs.length} pairs and ${ids.length} candidates`;
   // Passages from stored lines; an item whose stored lines changed or vanished is left out, its pairs excluded.
-  const keys = [...new Set(entry.pairs.flat())];
+  const paired = [...new Set(entry.pairs.flat())];
+  const held = new Set(entry.exchangeIds ?? []);
+  const keys = allItems ? [...new Set([...paired, ...Object.keys(index).filter((k) => index[k].exchangeIds.some((x) => held.has(x)))])] : paired;
   const items: FrozenItem[] = keys.map((k) => ({ key: k, ...index[k], witness: names.get(index[k].witnessId) ?? "", question: "", answer: "", context: "" }));
   const { passages, unresolved } = await resolvePassages(db, items, new Map(keys.map((k) => [index[k].document, index[k].depositionId])));
   return { ids, candidateOfPair: new Map(entry.pairs.map(([a, b], i) => [pairKey(a, b), ids[i]])), pairOfCandidate: new Map(entry.pairs.map((p, i) => [ids[i], p])), keys, passages, unresolved };
@@ -537,7 +541,7 @@ export async function applyReply(db: Database, run: CaseRun, entry: Entry, packe
 }
 
 async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, entry: Entry, index: ItemIndex, names: Map<number, string>, model: CasePacketModel, deps: CaseRunDeps, ex: Exec): Promise<EntryOutcome> {
-  const ctx = await entryContext(db, entry, index, names);
+  const ctx = await entryContext(db, entry, index, names, { allItems: contractOf(run) === STRETCH_V2_PROMPT_VERSION });
   if (typeof ctx === "string") return fail(db, ledgerId, entry, ctx, false);
   const at = { entry };
   const replies = { made: 0 };

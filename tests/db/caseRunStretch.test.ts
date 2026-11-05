@@ -98,9 +98,12 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
 
   it("flagged pairs become verified, scored findings with their stretch status, shown with their stored lines", async () => {
     // A scripted stand-in that reports every original pair as direct, quoting each side's answer line verbatim.
+    let unpairedShown = 0; // exchanges a request shows between its pairs, beyond the pairs' own ends
     const flagAll: CasePacketModel = {
       model: PACKET_MODEL, effort: "mock", promptVersion: STRETCH,
       async adjudicate(packet) {
+        const ends = new Set(packet.pairs.flatMap((p) => [p.a, p.b]));
+        unpairedShown += requestUnits(packet).flatMap((u) => [...u.a, ...u.b]).filter((id) => !ends.has(id)).length;
         const answer = (id: string) => { const p = packet.passages.find((x) => x.id === id)!; return ([...p.lines].reverse().find((l) => l.role === "answer") ?? p.lines.at(-1)!).text.replace(/^\s*(?:A[.:]|THE WITNESS:)\s*/i, "").trim(); };
         const units = requestUnits(packet).map((u) => ({ unitId: u.unitId, findings: u.pairs.map((p) => ({ outcome: "direct", evidenceAId: p.a, evidenceBId: p.b, keyPhraseA: answer(p.a), keyPhraseB: answer(p.b), attributionA: "asserted", attributionB: "asserted", stanceA: "affirms", stanceB: "affirms", sameEvent: "yes", scopeAligned: "yes", conflictBasis: "explicit_negation", conflictSource: "cited_exchanges", explanation: "Scripted.", alternativeExplanation: null, alternativeSupport: null, contextUsed: [] })) }));
         const ledger = requestUnits(packet).flatMap((u) => u.pairs.map((p) => ({ pairId: p.pairId, status: "checked" })));
@@ -109,6 +112,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
     };
     const run = await createCaseRun(db, caseId, { mode: "live", budgetUsd: 50, confirmed: true, contract: STRETCH });
     expect(await runCaseRun(db, pool, run.id, { ...plain, adjudicator: () => flagAll })).toBe("completed");
+    expect(unpairedShown).toBeGreaterThan(0); // the stretches carry the testimony between the pairs, not only their ends
     const report = (await caseRunReport(db, run.id))!;
     const read = report.stretch!.flagged + report.stretch!.flagged_unverified + report.stretch!.unclear + report.stretch!.no_conflict_identified;
     expect(report.stretch!.flagged).toBeGreaterThan(0);
@@ -129,6 +133,8 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
     expect(await fingerprint(run.id)).toEqual(await fingerprint(stretchRun));
     expect(Math.max(...p.sentPerPacket.values())).toBe(1);
     expect([...p.batches.values()].every((b) => b.requests.every((r) => r.contract === STRETCH))).toBe(true);
+    const unpaired = [...p.batches.values()].flatMap((b) => b.requests).reduce((n, r) => { const ends = new Set(r.packet.pairs.flatMap((x) => [x.a, x.b])); return n + r.packet.passages.filter((x) => !ends.has(x.id)).length; }, 0);
+    expect(unpaired).toBeGreaterThan(0); // Economy requests carry the in-between exchanges too
   }, 180_000);
 
   it("live (priced test model): Fast and Economy record every request once, settle every reservation, and Economy costs half", async () => {

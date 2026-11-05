@@ -106,7 +106,7 @@ export async function runBatchTick(db: Database, run: CaseRun, ledgerId: number,
   const names = new Map((await db.select({ id: witnesses.id, name: witnesses.name }).from(witnesses).where(eq(witnesses.caseId, run.caseId))).map((w) => [w.id, w.name]));
   const contexts = new Map<number, EntryContext | string>();
   const contextOf = async (tx: Database, entry: Entry) => {
-    if (!contexts.has(entry.id)) contexts.set(entry.id, await entryContext(tx, entry, index, names));
+    if (!contexts.has(entry.id)) contexts.set(entry.id, await entryContext(tx, entry, index, names, { allItems: contractOf(run) === "stretch-v2" }));
     return contexts.get(entry.id)!;
   };
 
