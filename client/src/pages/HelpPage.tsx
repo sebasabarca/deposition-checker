@@ -93,6 +93,7 @@ export function HelpPage() {
 
           <Section id="data" title="Your data and cost">
             <p>Files and results are stored by the server running Veridict. A check sends the text of both sessions to Veridict's model; nothing is sent until you start one. Example analyses don't use Veridict's model. Every check shows what it cost.</p>
+            <p>Economy Analysis: testimony excerpts sent for analysis and the responses may be retained by the AI provider for up to 29 days, and this processing does not support zero data retention. Fast Analysis follows the provider account's normal retention. Check this against your client obligations before using Economy on real testimony.</p>
             <p>Veridict makes no certification or compliance claim. A qualified person must confirm any use of a finding.</p>
           </Section>
         </div>

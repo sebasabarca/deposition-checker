@@ -4,7 +4,7 @@
 // stand-in for the model and is labelled as such everywhere its results appear.
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, Check, FileUp, LoaderCircle } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, FileUp, Info, LoaderCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { ACTIVE_RUN, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
@@ -431,7 +431,6 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   const [limit, setLimit] = useState(defaultLimit(e.recommendedBudgetUsd));
   const [edited, setEdited] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [retention, setRetention] = useState(false);
   const economy = execution === "batch";
   const problem = budgetProblem(limit);
   const choose = (x: CaseRunExecution) => {
@@ -440,7 +439,8 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   };
   const submit = (ev: FormEvent) => {
     ev.preventDefault();
-    if (!problem && agreed && (!economy || retention)) act(api.confirmCaseRun(run.id, Number(limit), execution, retention));
+    // One checkbox: for economy the privacy notice sits under it and describes it, so authorizing acknowledges it too.
+    if (!problem && agreed) act(api.confirmCaseRun(run.id, Number(limit), execution, economy));
   };
   // Two decimals in this step (the shared formatter shows four below $1); amounts under a cent read "under $0.01".
   const usd = (n: number) => (n > 0 && n < 0.005 ? "under $0.01" : `$${n.toFixed(2)}`);
@@ -517,21 +517,24 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
               <p aria-hidden className="text-sm font-medium">Authorization</p>
               <div className="mt-2 space-y-3">
                 <label className="flex items-start gap-3 text-sm">
-                  <input type="checkbox" checked={agreed} onChange={(ev) => setAgreed(ev.target.checked)} className="mt-0.5 size-4 flex-none rounded accent-navy" />
+                  <input type="checkbox" checked={agreed} onChange={(ev) => setAgreed(ev.target.checked)} aria-describedby={economy ? `privacy-${run.id}` : undefined} className="mt-0.5 size-4 flex-none rounded accent-navy" />
                   <span>I authorize Veridict to spend up to <strong className="font-semibold tabular-nums">{problem ? "the limit set here" : formatUsd(Number(limit))}</strong> on this analysis.</span>
                 </label>
                 {economy && (
-                  <label className="flex items-start gap-3 text-sm">
-                    <input type="checkbox" checked={retention} onChange={(ev) => setRetention(ev.target.checked)} className="mt-0.5 size-4 flex-none rounded accent-navy" />
-                    <span>I understand that for economy processing the AI provider stores this testimony and the results for up to 29 days, and that batch processing isn't covered by zero data retention.</span>
-                  </label>
+                  <div id={`privacy-${run.id}`} className="flex items-start gap-3 text-sm">
+                    <Info aria-hidden className="mt-0.5 size-4 flex-none text-muted" />
+                    <p className="text-muted">
+                      <span className="font-medium text-ink">Economy privacy notice:</span> Testimony excerpts sent for analysis and the responses may be retained by the AI provider for up to 29 days. This processing does not support zero data retention.{" "}
+                      <a href={`${href.help()}`} target="_blank" rel="noreferrer" className="mt-1 flex w-fit items-center gap-0.5 font-medium text-ink underline decoration-dotted underline-offset-4 hover:decoration-solid">Learn about data handling<ArrowUpRight aria-hidden className="size-3.5" /><span className="sr-only"> (opens in a new tab)</span></a>
+                    </p>
+                  </div>
                 )}
               </div>
             </fieldset>
           </div>
           {problem && <p id={`limit-problem-${run.id}`} role="alert" className="text-sm text-conflict">{problem}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={busy || !!problem || !agreed || (economy && !retention)}>{busy ? "Starting…" : economy ? "Start economy analysis" : "Start fast analysis"}</Button>
+            <Button type="submit" disabled={busy || !!problem || !agreed}>{busy ? "Starting…" : economy ? "Start economy analysis" : "Start fast analysis"}</Button>
             {cancel}
           </div>
         </>
