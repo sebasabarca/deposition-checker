@@ -20,7 +20,10 @@ import type { SplitPacket } from "./packetSplit";
 import type { FrozenItem } from "./frozen";
 
 export const STRETCH_SET_VERSION = "stretch-set-v1";
-export const STRETCH_SETTINGS = { gap: 2, maxItemTokens: 6000, maxUnits: 6 } as const; // the experiment's (pilot.ts:42)
+// gap, maxItemTokens, maxUnits: the experiment's (pilot.ts:42). pad: eligible items added on each side of every
+// stretch (0, the experiment's rule; > 0 is an offline prototype, scripts/target-trace.ts --pads, not used by runs).
+export const STRETCH_SETTINGS = { gap: 2, maxItemTokens: 6000, maxUnits: 6, pad: 0 } as const;
+export type StretchSettings = { gap: number; maxItemTokens: number; maxUnits: number; pad: number };
 
 type Located = { key: string; document: string; groupId: number };
 export type StretchUnit = { id: string; docX: string; docY: string; xKeys: string[]; yKeys: string[]; pairs: [string, string][] };
@@ -44,7 +47,7 @@ export function pairUnits(pairs: readonly { a: string; b: string }[], at: Readon
 }
 
 // Units over `items` (every eligible item that may appear in a stretch). Each pair is oriented docX -> docY.
-export function buildUnits(pairs: readonly { a: string; b: string }[], items: ReadonlyMap<string, Located>, gap: number = STRETCH_SETTINGS.gap): StretchUnit[] {
+export function buildUnits(pairs: readonly { a: string; b: string }[], items: ReadonlyMap<string, Located>, gap: number = STRETCH_SETTINGS.gap, pad = 0): StretchUnit[] {
   const byDoc = new Map<string, Located[]>();
   for (const i of items.values()) (byDoc.get(i.document) ?? byDoc.set(i.document, []).get(i.document)!).push(i);
   for (const list of byDoc.values()) list.sort((x, y) => x.groupId - y.groupId);
@@ -57,17 +60,23 @@ export function buildUnits(pairs: readonly { a: string; b: string }[], items: Re
     (members.get(id) ?? members.set(id, []).get(id)!).push(oriented);
   }
   const span = (keys: string[]) => { const g = keys.map((k) => items.get(k)!.groupId); return [Math.min(...g), Math.max(...g)]; };
-  const stretch = (doc: string, [lo, hi]: number[]) => byDoc.get(doc)!.filter((i) => i.groupId >= lo && i.groupId <= hi).map((i) => i.key);
+  const stretch = (doc: string, [lo, hi]: number[]) => {
+    const list = byDoc.get(doc)!;
+    const first = list.findIndex((i) => i.groupId >= lo);
+    let last = list.length - 1;
+    while (last >= 0 && list[last].groupId > hi) last--;
+    return list.slice(Math.max(0, first - pad), Math.min(list.length, last + 1 + pad)).map((i) => i.key);
+  };
   return [...members]
     .map(([id, ps]) => { const [docX, docY] = id.split("@")[0].split("~"); return { id, docX, docY, xKeys: stretch(docX, span(ps.map((p) => p[0]))), yKeys: stretch(docY, span(ps.map((p) => p[1]))), pairs: ps }; })
     .sort((u, v) => (u.docX + u.docY < v.docX + v.docY ? -1 : u.docX + u.docY > v.docX + v.docY ? 1 : items.get(u.xKeys[0])!.groupId - items.get(v.xKeys[0])!.groupId));
 }
 
 // The case's stretch requests as a PacketSet. `kept`: the triage-kept pool pairs (every one is placed).
-export function buildStretchSet(kept: readonly { a: string; b: string }[], items: readonly FrozenItem[], settings = STRETCH_SETTINGS): PacketSet & { packets: SplitPacket[] } {
+export function buildStretchSet(kept: readonly { a: string; b: string }[], items: readonly FrozenItem[], settings: StretchSettings = STRETCH_SETTINGS): PacketSet & { packets: SplitPacket[] } {
   const at = new Map(items.map((i) => [i.key, i]));
   const tokensOf = new Map(items.map((i) => [i.key, itemTokens(i)]));
-  const units = buildUnits(kept, at, settings.gap);
+  const units = buildUnits(kept, at, settings.gap, settings.pad);
   const keysOf = (us: readonly StretchUnit[]) => [...new Set(us.flatMap((u) => [...u.xKeys, ...u.yKeys]))];
   const tokens = (us: readonly StretchUnit[]) => keysOf(us).reduce((n, k) => n + tokensOf.get(k)!, 0);
   const packets: SplitPacket[] = [];
@@ -91,7 +100,7 @@ export function buildStretchSet(kept: readonly { a: string; b: string }[], items
   const held = new Set(packets.flatMap((p) => { const ks = new Set(p.items); return p.pairs.filter(([a, b]) => ks.has(a) && ks.has(b)).map(([a, b]) => pk(a, b)); }));
   const uncovered = kept.filter((p) => !held.has(pk(p.a, p.b))).map((p) => ({ a: p.a, b: p.b, reason: "not placed in a stretch request (a bug: every kept pair should be)" }));
   return {
-    name: `${STRETCH_SET_VERSION}(gap ${settings.gap}, ${settings.maxItemTokens} item tokens, ${settings.maxUnits} units)`, source: "triage-kept pool pairs",
+    name: `${STRETCH_SET_VERSION}(gap ${settings.gap}, ${settings.maxItemTokens} item tokens, ${settings.maxUnits} units${settings.pad ? `, pad ${settings.pad}` : ""})`, source: "triage-kept pool pairs",
     settings: { ...settings, version: STRETCH_SET_VERSION, units: units.length, oversize }, packets, uncovered,
     tokenAssumption: "item tokens as in grouping.ts, plus the packet instruction allowance per request",
   };
