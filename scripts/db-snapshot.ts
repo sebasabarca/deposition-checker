@@ -10,6 +10,7 @@
 //     Compares two databases: every table's rows (by hash), the guard triggers and functions, constraints, the
 //     migration ledger, epochs, quarantine and reviews; then the integrity checks of every document.
 
+import "dotenv/config";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -50,14 +51,18 @@ async function fingerprint(db: string) {
     const rows: Record<string, string> = {};
     for (const { s, t } of tables) { const r = (await c.query(`select count(*)::int n, md5(coalesce(string_agg(md5(x::text), '' order by md5(x::text)), '')) h from "${s}"."${t}" x`)).rows[0]; rows[`${s}.${t}`] = `${r.n}:${r.h}`; }
     const one = async (q: string) => (await c.query(q)).rows;
+    // A database from before migration 0039 has no ledger, epochs or quarantine: those parts read as absent
+    // (null), so a snapshot taken before migrating can still be verified against its source.
+    const has0039 = (await one("select to_regclass('public.evidence_migrations') is not null as x"))[0].x as boolean;
+    const since0039 = async (q: string) => (has0039 ? one(q) : null);
     return {
       rows,
       triggers: (await one("select count(*)::int n from pg_trigger where tgname like '%evidence_guard%'"))[0].n as number,
       functions: (await one("select string_agg(proname, ',' order by proname) f from pg_proc where proname like 'evidence_guard%'"))[0].f as string,
       constraints: (await one("select count(*)::int n, count(*) filter (where not convalidated)::int invalid from pg_constraint c join pg_namespace n on n.oid = c.connamespace where n.nspname = 'public'"))[0],
-      ledger: await one("select id, kind, status, plan_hash from evidence_migrations order by id"),
-      epochs: await one("select id::int, evidence_epoch, evidence_hold from depositions where evidence_epoch > 0 or evidence_hold is not null order by id"),
-      quarantine: (await one("select kind, count(*)::int n from evidence_quarantine group by 1 order by 1")),
+      ledger: await since0039("select id, kind, status, plan_hash from evidence_migrations order by id"),
+      epochs: await since0039("select id::int, evidence_epoch, evidence_hold from depositions where evidence_epoch > 0 or evidence_hold is not null order by id"),
+      quarantine: (await since0039("select kind, count(*)::int n from evidence_quarantine group by 1 order by 1")),
       reviews: (await one("select review_state, count(*)::int n from findings group by 1 order by 1")),
       documents: (await one("select id::int from depositions order by id")).map((r) => r.id as number),
     };
@@ -100,7 +105,7 @@ async function main() {
     const broken = [];
     for (const d of b.documents) { const r = await integrity(db, d); if (Object.values(r).some((n) => n > 0)) broken.push({ document: d, ...r }); }
     await pool.end();
-    console.log(JSON.stringify({ tables: Object.keys(b.rows).length, tablesDiffering: differing, triggers: [a.triggers, b.triggers], functions: same("functions"), constraints: b.constraints, ledger: same("ledger") ? b.ledger.length : "differs", epochs: same("epochs") ? b.epochs : "differs", quarantine: same("quarantine") ? b.quarantine : "differs", reviews: same("reviews") ? b.reviews : "differs", documentsChecked: b.documents.length, brokenReferences: broken }, null, 1));
+    console.log(JSON.stringify({ tables: Object.keys(b.rows).length, tablesDiffering: differing, triggers: [a.triggers, b.triggers], functions: same("functions"), constraints: b.constraints, schema0039: [a.ledger !== null, b.ledger !== null], ledger: same("ledger") ? (b.ledger?.length ?? null) : "differs", epochs: same("epochs") ? b.epochs : "differs", quarantine: same("quarantine") ? b.quarantine : "differs", reviews: same("reviews") ? b.reviews : "differs", documentsChecked: b.documents.length, brokenReferences: broken }, null, 1));
   } else throw new Error("usage: db-snapshot.ts dump|restore|verify");
 }
 main().catch((e) => { console.error(String(e).replace(/PGPASSWORD=\S+/g, "PGPASSWORD=***")); process.exit(1); });

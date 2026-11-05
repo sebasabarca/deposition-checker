@@ -13,6 +13,7 @@
 //     After migrating: the guards installed, existing rows readable, and no reference already broken.
 //   npx tsx scripts/evidence-rehearsal.ts drop --name <copy>
 
+import "dotenv/config";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
