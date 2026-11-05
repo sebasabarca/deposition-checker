@@ -4,6 +4,7 @@
 // answers. Changing the wording is a new version; old versions stay so their replies can be re-read.
 // The input is built from stored lines only (packetLoad.ts); this file is pure.
 
+import { formatStretchRequest, STRETCH_V2_PROMPT_VERSION, STRETCH_V2_REPLY_JSON_SCHEMA, STRETCH_V2_SYSTEM_PROMPT } from "./stretchPrompt";
 import { spanLabel } from "./packet";
 import { ADJUDICATION_MODEL } from "./prompt";
 import { PACKET_REPLY_JSON_SCHEMA, PACKET_REPLY_V2_JSON_SCHEMA, PACKET_REPLY_V3_JSON_SCHEMA } from "./packetSchema";
@@ -235,8 +236,16 @@ Fields, for each verdict:
 
 // All versions, for callers that run any. v1's and v2's text, schema and formatter are the ones above, unchanged.
 export type PromptVersionId = typeof PACKET_PROMPT_VERSION | typeof PACKET_PROMPT_VERSION_V2 | typeof PACKET_PROMPT_VERSION_V3;
+// Every request contract a case run can send: the packet contracts and the experimental whole-stretch one.
+export type ContractId = PromptVersionId | typeof STRETCH_V2_PROMPT_VERSION;
 export const PACKET_PROMPTS = {
   [PACKET_PROMPT_VERSION]: { system: PACKET_SYSTEM_PROMPT, jsonSchema: PACKET_REPLY_JSON_SCHEMA, format: formatIssuePacket, adjacent: false },
   [PACKET_PROMPT_VERSION_V2]: { system: PACKET_SYSTEM_PROMPT_V2, jsonSchema: PACKET_REPLY_V2_JSON_SCHEMA, format: formatIssuePacketV2, adjacent: true },
   [PACKET_PROMPT_VERSION_V3]: { system: PACKET_SYSTEM_PROMPT_V3, jsonSchema: PACKET_REPLY_V3_JSON_SCHEMA, format: formatIssuePacketV2, adjacent: true },
+  // Whole-stretch requests (experimental, off by default): a request is a stretch bundle (retrieve/stretchSet.ts), read by adjudicate/stretch.ts.
+  [STRETCH_V2_PROMPT_VERSION]: { system: STRETCH_V2_SYSTEM_PROMPT, jsonSchema: STRETCH_V2_REPLY_JSON_SCHEMA, format: formatStretchRequest, adjacent: false },
 } as const;
+
+// A request's characters (system prompt and user message) under its contract: what its input bound and
+// reservation are sized from.
+export const requestChars = (packet: IssuePacket, contract: ContractId = PACKET_PROMPT_VERSION) => PACKET_PROMPTS[contract].system.length + PACKET_PROMPTS[contract].format(packet).length;

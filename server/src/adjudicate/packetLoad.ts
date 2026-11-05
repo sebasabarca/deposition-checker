@@ -84,7 +84,9 @@ export async function resolvePassages(db: Database, items: FrozenItem[], docIds:
   return { passages, unresolved, extraStoredLines };
 }
 
-export function buildIssuePacket(packet: EvidencePacket, passages: Map<string, PacketPassage>): {
+// allItems: keep every resolved item of the packet, not only the paired ones (a whole-stretch request shows its
+// stretches' exchanges between the pairs too).
+export function buildIssuePacket(packet: EvidencePacket, passages: Map<string, PacketPassage>, { allItems = false }: { allItems?: boolean } = {}): {
   packet: IssuePacket | null;
   unbuilt: { a: string; b: string; reason: string }[];
 } {
@@ -107,7 +109,7 @@ export function buildIssuePacket(packet: EvidencePacket, passages: Map<string, P
   }
   if (pairs.length === 0) return { packet: null, unbuilt };
   const used = new Set(pairs.flatMap((pair) => [pair.a, pair.b]));
-  return { packet: { id: packet.id, passages: packet.items.map((key) => passages.get(key)).filter((p): p is PacketPassage => !!p && used.has(p.id)), pairs }, unbuilt };
+  return { packet: { id: packet.id, passages: packet.items.map((key) => passages.get(key)).filter((p): p is PacketPassage => !!p && (allItems || used.has(p.id))), pairs }, unbuilt };
 }
 
 export function pairwisePackets(packet: IssuePacket): IssuePacket[] {

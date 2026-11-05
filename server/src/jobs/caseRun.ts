@@ -33,7 +33,10 @@ import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { assessPacketPair } from "../adjudicate/packetAssess";
 import { buildIssuePacket, resolvePassages } from "../adjudicate/packetLoad";
-import { formatIssuePacket, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_SYSTEM_PROMPT, maxOutputTokensFor, type IssuePacket } from "../adjudicate/packetPrompt";
+import { formatIssuePacket, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, maxOutputTokensFor, requestChars, type ContractId, type IssuePacket } from "../adjudicate/packetPrompt";
+import { mockStretchReply, readStretchReply, verificationOf, type StretchReading } from "../adjudicate/stretch";
+import { STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
+import { buildStretchSet } from "../retrieve/stretchSet";
 import type { PacketAdjudicator } from "../adjudicate/packetModel";
 import { parseVerdictsLenient, VERDICT_SCHEMAS } from "../adjudicate/packetSchema";
 import { classifyFailure, closeRequest, openRequest } from "../adjudicate/requests";
@@ -47,7 +50,7 @@ import { mockPacketReply } from "../eval/mockPacketModel";
 import { buildCasePool, CASE_POOL_VERSION, type CaseItem } from "../retrieve/casePool";
 import { CHARS_PER_TOKEN, INSTRUCTION_TOKENS } from "../retrieve/grouping";
 import { PACKET_LIMITS, splitPacketSet, type PacketLimits } from "../retrieve/packetSplit";
-import { COST_ASSUMPTIONS, projectCost } from "../eval/screeningBenchmark";
+import { COST_ASSUMPTIONS, projectCost, STRETCH_COST_ASSUMPTIONS } from "../eval/screeningBenchmark";
 import type { FrozenItem } from "../retrieve/frozen";
 import { pairKey } from "../retrieve/frozen";
 import { RUBRIC_V1 } from "../score/rubric";
@@ -95,19 +98,27 @@ export type CaseRunDeps = {
 };
 export type CaseRunExecution = "standard" | "batch";
 
+// The request contract a run sends: packet-v1 (the default), or the experimental whole-stretch contract when the
+// run was created with it. Stored as the run's promptVersion, so a resumed run keeps its contract.
+export const CASE_RUN_CONTRACTS = [PACKET_PROMPT_VERSION, STRETCH_V2_PROMPT_VERSION] as const;
+export type CaseRunContract = (typeof CASE_RUN_CONTRACTS)[number];
+export const contractOf = (run: Pick<CaseRun, "promptVersion">): CaseRunContract => (run.promptVersion === STRETCH_V2_PROMPT_VERSION ? STRETCH_V2_PROMPT_VERSION : PACKET_PROMPT_VERSION);
+// Whether this server lets a person choose the experimental whole-stretch contract (test-model runs included).
+export const stretchAllowed = (env: Record<string, string | undefined>) => env.ALLOW_STRETCH_V2 === "true";
+
 export const fromPacketAdjudicator = (a: PacketAdjudicator): CasePacketModel => ({
   model: a.model, effort: a.effort, promptVersion: a.promptVersion,
-  adjudicate: (packet, options) => a.adjudicate(formatIssuePacket(packet), packet.pairs.length, options),
+  adjudicate: (packet, options) => a.adjudicate((PACKET_PROMPTS[a.promptVersion as ContractId]?.format ?? formatIssuePacket)(packet), packet.pairs.length, options),
 });
 
 // The deterministic label-blind mock as a packet model. `model` names what the reply stands in for.
-export function mockCaseModel(model = MOCK_MODEL): CasePacketModel & { calls: string[] } {
+export function mockCaseModel(model = MOCK_MODEL, contract: CaseRunContract = PACKET_PROMPT_VERSION): CasePacketModel & { calls: string[] } {
   const calls: string[] = [];
   return {
-    model, effort: "mock", promptVersion: PACKET_PROMPT_VERSION, calls,
+    model, effort: "mock", promptVersion: contract, calls,
     async adjudicate(packet) {
       calls.push(packet.id);
-      const m = mockPacketReply(packet);
+      const m = contract === STRETCH_V2_PROMPT_VERSION ? mockStretchReply(packet) : mockPacketReply(packet);
       const usage = { input_tokens: m.usage.inputTokens, output_tokens: m.usage.outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as AdjudicatorReply["usage"];
       return { model, stopReason: "end_turn", usage, text: m.text, latencyMs: 0, requestId: `mock-${calls.length}` };
     },
@@ -248,7 +259,7 @@ async function runFenced(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDe
     }
     return runBatchTick(db, run, ledger.id, batch);
   }
-  const model = run.mode === "mock" ? mockCaseModel() : deps.adjudicator(run);
+  const model = run.mode === "mock" ? mockCaseModel(MOCK_MODEL, contractOf(run)) : deps.adjudicator(run);
   if (!model) {
     await update(db, run.id, { status: "blocked_credentials", error: "Live case runs need the analysis key and ALLOW_PAID_CALLS=true on this server. Nothing was sent.", finishedAt: new Date() });
     return "blocked_credentials";
@@ -358,9 +369,14 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
   await update(db, run.id, { sourceHash: built.sourceHash, config: { ...(run.config as object), retrieval: built.settings, paths: built.paths, documents: built.documents } });
   const set = caseRunSetOf(run.id);
   const byKey = new Map(built.items.map((i) => [i.key, i]));
+  // The requests: issue packets (packet-v1; packets past 8 pairs or about 9,000 input tokens are split,
+  // retrieve/packetSplit.ts), or whole-stretch requests over every triage-kept pair (stretch-v2). Every pair stays in one.
+  const stretch = contractOf(run) === STRETCH_V2_PROMPT_VERSION;
+  const limits = deps.packetLimits ?? PACKET_LIMITS;
+  const packets = stretch ? buildStretchSet(built.triage.kept, built.items) : splitPacketSet(built.packets, built.items, limits);
   const reasonOf = new Map<string, { status: "selected" | "uncovered" | "deferred"; reason: string | null }>();
-  for (const p of built.packets.packets) for (const [a, b] of p.pairs) reasonOf.set(pairKey(a, b), { status: "selected", reason: null });
-  for (const u of built.packets.uncovered) reasonOf.set(pairKey(u.a, u.b), { status: "uncovered", reason: `in no issue packet: ${u.reason}` });
+  for (const p of (stretch ? packets : built.packets).packets) for (const [a, b] of p.pairs) reasonOf.set(pairKey(a, b), { status: "selected", reason: null });
+  for (const u of (stretch ? packets : built.packets).uncovered) reasonOf.set(pairKey(u.a, u.b), { status: "uncovered", reason: `in no ${stretch ? "stretch request" : "issue packet"}: ${u.reason}` });
   for (const d of built.triage.deferred) reasonOf.set(pairKey(d.a, d.b), { status: "deferred", reason: `triage ${d.stage}: ${d.reason}` });
   const rows = built.pool.candidates.map((c, rank) => {
     const x = byKey.get(c.a)!, y = byKey.get(c.b)!;
@@ -383,9 +399,6 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
     return idOf.get(`${p.depositionId}:${p.groupId}|${q.depositionId}:${q.groupId}`)!;
   };
 
-  // Packets past 8 pairs or about 9,000 input tokens are split (retrieve/packetSplit.ts); every pair stays in one.
-  const limits = deps.packetLimits ?? PACKET_LIMITS;
-  const packets = splitPacketSet(built.packets, built.items, limits);
   const results = screen(packets, built.pool, built.items, { strategy: SCREENING_OFF, budget: packets.packets.length, consolidate: false });
   const itemIndex: ItemIndex = Object.fromEntries(
     built.items.filter((i) => packets.packets.some((p) => p.items.includes(i.key))).map((i) => [i.key, { document: i.document, session: i.session, groupId: i.groupId, positions: i.positions, sourceHash: i.sourceHash, depositionId: i.depositionId, witnessId: i.witnessId, sessionId: i.sessionId, exchangeIds: i.exchangeIds }]),
@@ -396,7 +409,7 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
     {
       corpus: `case-${run.caseId}`, packetSetName: packets.name, packetSetSha256: hash(packets), poolSha256: hash(built.pool), itemsSha256: built.sourceHash,
       strategy: SCREENING_OFF, strategyVersion: results[0]?.strategyVersion ?? "screen-v1", budget: packets.packets.length,
-      settings: { screening: "off: every packet prioritized, baseline order", split: limits, splitFrom: Object.fromEntries(packets.packets.filter((p) => p.splitFrom).map((p) => [p.id, p.splitFrom])), oversize: packets.packets.filter((p) => p.oversize).map((p) => p.id), itemIndex }, poolPairs: built.triage.kept.length, uncovered: built.packets.uncovered,
+      settings: { screening: "off: every packet prioritized, baseline order", contract: contractOf(run), ...(stretch ? { stretches: packets.settings } : {}), split: limits, splitFrom: Object.fromEntries(packets.packets.filter((p) => p.splitFrom).map((p) => [p.id, p.splitFrom])), oversize: packets.packets.filter((p) => p.oversize).map((p) => p.id), itemIndex }, poolPairs: built.triage.kept.length, uncovered: built.packets.uncovered,
       caseId: run.caseId, caseRunId: run.id, sourceHash: built.sourceHash,
     },
     results,
@@ -414,7 +427,8 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
   // The estimate a person confirms before a live run: projected from the packets' size and the Milestone 2
   // calibration's measured output per pair, plus the largest packet's worst case, held while it is in flight.
   const sized = packets.packets.map((p) => ({ passageTokens: p.inputTokens - INSTRUCTION_TOKENS, pairs: p.pairs.length }));
-  const expectedUsd = projectCost(sized);
+  const assumptions = stretch ? STRETCH_COST_ASSUMPTIONS : COST_ASSUMPTIONS;
+  const expectedUsd = projectCost(sized, true, assumptions);
   const largest = packets.packets.reduce((m, p) => Math.max(m, maxRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(p.inputTokens * 4), maxOutputTokens: maxOutputTokensFor(p.pairs.length) })), 0);
   // Economy (the Message Batches API): the same projection at batch prices. Cache hits in a batch are best effort,
   // so the range runs from fast mode's caching to none. Every request in a submitted batch holds its worst case
@@ -423,15 +437,15 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
   const worstOf = (p: (typeof packets.packets)[number]) => maxRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(p.inputTokens * 4), maxOutputTokens: maxOutputTokensFor(p.pairs.length) }) * BATCH_MULTIPLIER;
   const worstTotal = packets.packets.reduce((n, p) => n + worstOf(p), 0);
   const perBatch = packets.packets.length ? (worstTotal / packets.packets.length) * Math.min(BATCH_DEFAULTS.batchSize, packets.packets.length) : 0;
-  const economyNoCache = projectCost(sized, false) * BATCH_MULTIPLIER;
+  const economyNoCache = projectCost(sized, false, assumptions) * BATCH_MULTIPLIER;
   const estimate = {
     packets: sized.length, listedPairs: sized.reduce((n, p) => n + p.pairs, 0), splitPackets: packets.packets.filter((p) => p.splitFrom).length, oversizePackets: packets.packets.filter((p) => p.oversize).length,
-    expectedUsd: round2(expectedUsd), noCacheUsd: round2(projectCost(sized, false)), largestPacketWorstCaseUsd: round2(largest), recommendedBudgetUsd: Math.ceil((expectedUsd + largest) * 100) / 100,
+    expectedUsd: round2(expectedUsd), noCacheUsd: round2(projectCost(sized, false, assumptions)), largestPacketWorstCaseUsd: round2(largest), recommendedBudgetUsd: Math.ceil((expectedUsd + largest) * 100) / 100,
     economy: {
       expectedUsd: round2(expectedUsd * BATCH_MULTIPLIER), noCacheUsd: round2(economyNoCache), worstCaseUsd: round2(worstTotal), worstCasePerBatchUsd: round2(perBatch),
       recommendedBudgetUsd: Math.ceil((economyNoCache + perBatch) * 100) / 100, batchSize: BATCH_DEFAULTS.batchSize, discount: BATCH_MULTIPLIER,
     },
-    assumptions: COST_ASSUMPTIONS, note: "A projection from packet size and measured output per pair, not a measurement. The limit is enforced by Veridict (each request reserves its worst case before it is sent), not by the provider.",
+    contract: contractOf(run), assumptions, note: (stretch ? "Experimental whole-stretch requests (stretch-v2): output per pair measured on a 49-request pilot chosen around known evidence. " : "") + "A projection from packet size and measured output per pair, not a measurement. The limit is enforced by Veridict (each request reserves its worst case before it is sent), not by the provider.",
   };
   await db.update(caseRuns).set({ progress: sql`${caseRuns.progress} || ${JSON.stringify({ estimate })}::jsonb`, updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
   return (await ledgerOf(db, run.id))!;
@@ -484,7 +498,7 @@ export async function nextStep(db: Database, run: CaseRun, at: { entry: Entry },
       return { kind: "done" };
     }
     const sendIds = stored ? stored.candidateIds : remaining;
-    const built = buildIssuePacket({ id: entry.packetId, issue: "", items: keys, pairs: sendIds.map((c) => pairOfCandidate.get(c)!), inputTokens: 0 }, passages);
+    const built = buildIssuePacket({ id: entry.packetId, issue: "", items: keys, pairs: sendIds.map((c) => pairOfCandidate.get(c)!), inputTokens: 0 }, passages, { allItems: contractOf(run) === STRETCH_V2_PROMPT_VERSION });
     const unbuilt = built.unbuilt.map((u) => ({ ...u, candidateId: candidateOfPair.get(pairKey(u.a, u.b))! }));
     if (unbuilt.length) {
       const why = (u: (typeof unbuilt)[number]) => `evidence could not be rebuilt from stored lines: ${u.reason}${unresolved.find((x) => u.reason.endsWith(x.key)) ? ` (${unresolved.find((x) => u.reason.endsWith(x.key))!.reason})` : ""}`;
@@ -511,9 +525,14 @@ export async function markIncomplete(db: Database, entry: Entry, remaining: numb
 
 // The reply text, parsed leniently, checked against the packet by code, and persisted. Returns the entry as it is after.
 export async function applyReply(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], reply: { text: string | null; callId: number | null; requestId: number }, model: Pick<CasePacketModel, "model" | "promptVersion" | "effort">): Promise<Entry> {
+  const meta = { model: model.model, promptVersion: model.promptVersion, effort: model.effort, callId: run.mode === "live" ? reply.callId : null, requestId: reply.requestId };
+  if (contractOf(run) === STRETCH_V2_PROMPT_VERSION) {
+    await persistStretch(db, run, entry, packet, sentIds, readStretchReply(packet, reply.text), meta);
+    return { ...entry, llmCallId: null, requestId: reply.requestId };
+  }
   const parsed = parseVerdictsLenient(reply.text, VERDICT_SCHEMAS["packet-v1"]);
   const verification = verifyPacketReply(packet, parsed);
-  await persist(db, run, entry, packet, sentIds, verification, { model: model.model, promptVersion: model.promptVersion, effort: model.effort, callId: run.mode === "live" ? reply.callId : null, requestId: reply.requestId });
+  await persist(db, run, entry, packet, sentIds, verification, meta);
   return { ...entry, llmCallId: null, requestId: reply.requestId };
 }
 
@@ -557,7 +576,7 @@ async function storedReply(db: Database, requestId: number, llmCallId: number) {
 async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec) {
   const live = run.mode === "live";
   const maxOutputTokens = maxOutputTokensFor(packet.pairs.length);
-  const chars = PACKET_SYSTEM_PROMPT.length + formatIssuePacket(packet).length;
+  const chars = requestChars(packet, contractOf(run));
   const inputTokens = inputTokenBound(chars);
   const maxCostUsd = live ? maxRequestCost(PACKET_MODEL, { inputTokens, maxOutputTokens }) : 0;
   const context = { candidateSet: caseRunSetOf(run.id), analysisId: null, strategy: "packet", maxConcurrency: deps.concurrency ?? 1 };
@@ -633,8 +652,30 @@ async function fail(db: Database, ledgerId: number, entry: Entry, message: strin
 // A candidate that already has a verdict is skipped: nothing is written twice. A packet's statements are batched:
 // its candidates locked together (in id order, so concurrent transactions can't deadlock), then one existence check,
 // one insert of verdicts, one of findings, and one status update, however many pairs it holds.
-async function persist(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], v: ReturnType<typeof verifyPacketReply>, meta: { model: string; promptVersion: string; effort: string; callId: number | null; requestId: number }) {
+type PersistMeta = { model: string; promptVersion: string; effort: string; callId: number | null; requestId: number; contract?: CaseRunContract; stretch?: Map<string, Record<string, unknown>> };
+// plain: pairs read with no finding (a whole-stretch reply's no_conflict_identified and unclear), stored as a verdict
+// recording that status and no finding, in the same transaction as the rest of the reply.
+async function persist(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], v: ReturnType<typeof verifyPacketReply>, meta: PersistMeta, plain: { pairId: string; parsed: Record<string, unknown> }[] = []) {
   await db.transaction(async (tx) => {
+    if (plain.length) {
+      const rows = plain.map((x) => ({ ...x, i: packet.pairs.findIndex((pr) => pr.pairId === x.pairId) })).filter((x) => x.i >= 0);
+      const ids = rows.map((x) => sentIds[x.i]);
+      const locked = new Set((await tx.select({ id: candidates.id }).from(candidates).where(inArray(candidates.id, ids)).orderBy(asc(candidates.id)).for("update")).map((r) => r.id));
+      const has = new Set((await tx.select({ id: verdicts.candidateId }).from(verdicts).where(inArray(verdicts.candidateId, ids))).map((r) => r.id));
+      const todo = rows.filter((x) => locked.has(sentIds[x.i]) && !has.has(sentIds[x.i]));
+      if (todo.length) {
+        await tx.insert(verdicts).values(todo.map((x) => {
+          const pair = packet.pairs[x.i];
+          const sides = [pair.a, pair.b].map((pid) => { const q = packet.passages.find((y) => y.id === pid)!; return { id: q.id, key: q.key, depositionId: q.depositionId, groupId: q.groupId, lineIds: q.lines.map((l) => l.id) }; });
+          return {
+            candidateId: sentIds[x.i], model: meta.model, promptVersion: meta.promptVersion, effort: meta.effort, status: "valid" as const, raw: JSON.stringify(x.parsed), parsed: x.parsed, consistencyIssues: [],
+            packet: { contract: meta.contract ?? PACKET_PROMPT_VERSION, packetId: entry.packetId, pairId: pair.pairId, sides, ...(meta.stretch?.get(pair.pairId) ?? {}) },
+            origin: meta.callId !== null ? ("model" as const) : ("fixture" as const), llmCallId: meta.callId, requestId: meta.requestId,
+          };
+        }));
+        await tx.update(candidates).set({ status: "adjudicated" }).where(inArray(candidates.id, todo.map((x) => sentIds[x.i])));
+      }
+    }
     const answered = packet.pairs.flatMap((pair, i) => {
       const pv = v.pairs.find((p) => p.pairId === pair.pairId);
       return pv && pv.status === "answered" && pv.verdict ? [{ pair, pv, candidateId: sentIds[i] }] : [];
@@ -651,7 +692,7 @@ async function persist(db: Database, run: CaseRun, entry: Entry, packet: IssuePa
             const sides = [pair.a, pair.b].map((pid) => { const p = packet.passages.find((x) => x.id === pid)!; return { id: p.id, key: p.key, depositionId: p.depositionId, groupId: p.groupId, lineIds: p.lines.map((l) => l.id) }; });
             return {
               candidateId, model: meta.model, promptVersion: meta.promptVersion, effort: meta.effort, status: "valid" as const, raw: JSON.stringify(pv.verdict), parsed: pv.verdict,
-              consistencyIssues: pv.semantic?.consistencyIssues ?? [], packet: { contract: PACKET_PROMPT_VERSION, packetId: entry.packetId, pairId: pair.pairId, sides },
+              consistencyIssues: pv.semantic?.consistencyIssues ?? [], packet: { contract: meta.contract ?? PACKET_PROMPT_VERSION, packetId: entry.packetId, pairId: pair.pairId, sides, ...(meta.stretch?.get(pair.pairId) ?? {}) },
               origin: meta.callId !== null ? "model" : "fixture", llmCallId: meta.callId, requestId: meta.requestId,
             };
           }))
@@ -664,7 +705,7 @@ async function persist(db: Database, run: CaseRun, entry: Entry, packet: IssuePa
             // A side the packet verifier left unattributed (an abstention without a quote) has no level to show.
             attributionA: fields.attributionA ?? "not_assessed", attributionB: fields.attributionB ?? "not_assessed",
             score: fields.score, band: fields.band, unscoredReason: fields.unscoredReason, factors: fields.factors, caps: fields.caps,
-            checks: { ...fields.checks, outcome: fields.outcome, caseRunId: run.id, origin: meta.callId !== null ? "model" : "mock" }, rubricVersion: fields.rubricVersion,
+            checks: { ...fields.checks, outcome: fields.outcome, caseRunId: run.id, origin: meta.callId !== null ? "model" : "mock", ...(meta.contract === STRETCH_V2_PROMPT_VERSION ? { contract: STRETCH_V2_PROMPT_VERSION, stretch: meta.stretch?.get(packet.pairs[sentIds.indexOf(candidateId)]?.pairId ?? "") ?? null } : {}) }, rubricVersion: fields.rubricVersion,
             priority: fields.priority, contextRequested: fields.contextRequested,
           }] : [];
         });
@@ -676,15 +717,29 @@ async function persist(db: Database, run: CaseRun, entry: Entry, packet: IssuePa
   });
 }
 
+// A whole-stretch reply (adjudicate/stretch.ts): flagged pairs, verified or not, become verdicts and findings through
+// packet-v1's persistence and scoring above, with the stretch status, unit and audit notes beside them; pairs read
+// with no finding (no_conflict_identified, unclear) get a verdict recording that and no finding, so they are never
+// shown as "compatible"; incomplete pairs stay unread for the recovery request. One transaction.
+async function persistStretch(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], reading: StretchReading, meta: PersistMeta) {
+  const info = new Map(reading.pairs.map((r) => [r.pairId, { stretchStatus: r.status, unitId: r.unitId, related: r.related, modelLedger: r.modelStatus, audit: r.audit }]));
+  const flagged = new Set(reading.pairs.filter((r) => (r.status === "flagged" || r.status === "flagged_unverified") && verificationOf(reading, r.pairId)).map((r) => r.pairId));
+  const verification = { ...reading.verification, pairs: reading.verification.pairs.filter((x) => flagged.has(x.pairId)) };
+  const plain = reading.pairs.filter((r) => r.status === "no_conflict_identified" || r.status === "unclear").map((r) => ({ pairId: r.pairId, parsed: { contract: STRETCH_V2_PROMPT_VERSION, outcome: r.status, related: r.related, modelLedger: r.modelStatus, audit: r.audit } }));
+  await persist(db, run, entry, packet, sentIds, verification, { ...meta, contract: STRETCH_V2_PROMPT_VERSION, stretch: info }, plain);
+  const notes = [...reading.problems, ...(reading.outsidePairs ? [`${reading.outsidePairs} finding(s) on exchanges that are not an original pair of their unit: kept in the raw reply, not published`] : [])];
+  if (notes.length) await db.update(screeningEntries).set({ adjudicationNote: `stretch-v2: ${notes.join("; ")}`.slice(0, 2000), updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
+}
+
 // Creates a run, and a live run's budget. A live run created with `confirmed` (the CLI, after its own plan)
 // may spend at once; otherwise it stops after retrieval for confirmCaseRun. The caller queues the job.
-export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard" }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution }) {
+export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract }) {
   return db.transaction(async (tx) => {
-    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract: PACKET_PROMPT_VERSION, verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
+    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
     const live = mode === "live";
     const [row] = await tx
       .insert(caseRuns)
-      .values({ caseId, mode, execution, retentionAcknowledgedAt: live && confirmed && execution === "batch" ? new Date() : null, budgetUsd: live ? budgetUsd : 0, promptVersion: PACKET_PROMPT_VERSION, model: live ? PACKET_MODEL : MOCK_MODEL, effort: live ? PACKET_EFFORT : "mock", config, confirmedAt: live && confirmed ? new Date() : null })
+      .values({ caseId, mode, execution, retentionAcknowledgedAt: live && confirmed && execution === "batch" ? new Date() : null, budgetUsd: live ? budgetUsd : 0, promptVersion: contract, model: live ? PACKET_MODEL : MOCK_MODEL, effort: live ? PACKET_EFFORT : "mock", config, confirmedAt: live && confirmed ? new Date() : null })
       .returning();
     if (live) {
       const [b] = await tx.insert(budgets).values({ name: caseRunSetOf(row.id), limitUsd: budgetUsd }).returning({ id: budgets.id });
@@ -816,8 +871,18 @@ export async function caseRunReport(db: Database, id: number) {
     ...(coverage.uncovered ? [`${coverage.uncovered} pairs in no packet, unread`] : []),
     ...(coverage.excluded ? [`${coverage.excluded} pairs whose evidence could not be rebuilt from stored lines`] : []),
   ];
+  // Whole-stretch runs (experimental): every read pair's status, from the verdicts. no_conflict_identified and unclear
+  // pairs have no finding; they are read, not cleared.
+  const stretchRows = contractOf(run) === STRETCH_V2_PROMPT_VERSION ? await db.execute<{ status: string; n: number; related: number }>(sql`
+    select coalesce(v.packet->>'stretchStatus', v.parsed->>'outcome') as status, count(*)::int as n, count(*) filter (where v.packet->>'related' = 'true')::int as related
+    from verdicts v join candidates c on c.id = v.candidate_id where c.candidate_set = ${set} group by 1`).then((r) => r.rows) : [];
+  const stretch = contractOf(run) === STRETCH_V2_PROMPT_VERSION ? {
+    ...Object.fromEntries(["flagged", "flagged_unverified", "unclear", "no_conflict_identified"].map((k) => [k, stretchRows.find((r) => r.status === k)?.n ?? 0])),
+    related: stretchRows.reduce((n, r) => n + r.related, 0),
+    note: "Experimental whole-stretch reading. Pairs with no conflict identified were read, not cleared; unclear pairs need a person.",
+  } as { flagged: number; flagged_unverified: number; unclear: number; no_conflict_identified: number; related: number; note: string } : null;
   return {
-    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
+    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, contract: contractOf(run), stretch, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
     config: run.config, sourceHash: run.sourceHash, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, updatedAt: run.updatedAt,
     confirmedAt: run.confirmedAt, cancelRequested: run.cancelRequestedAt !== null,
     estimate: (run.progress as { estimate?: unknown }).estimate ?? null,

@@ -6,7 +6,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { AdjudicatorReply, CallOptions } from "./model";
-import { maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, type PromptVersionId } from "./packetPrompt";
+import { maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, type ContractId } from "./packetPrompt";
 
 export type PacketAdjudicator = {
   model: string;
@@ -17,7 +17,7 @@ export type PacketAdjudicator = {
 
 // The request body for one packet, shared by the Messages API client below and the Message Batches API client
 // (packetBatch.ts), so fast and economy runs send the same model, prompt, schema, effort and output cap.
-export function packetRequestParams(packetText: string, pairCount: number, version: PromptVersionId = PACKET_PROMPT_VERSION) {
+export function packetRequestParams(packetText: string, pairCount: number, version: ContractId = PACKET_PROMPT_VERSION) {
   const prompt = PACKET_PROMPTS[version];
   return {
     model: PACKET_MODEL,
@@ -29,7 +29,7 @@ export function packetRequestParams(packetText: string, pairCount: number, versi
 }
 
 // version selects the contract (packet-v1 by default, unchanged; packet-v2 for Milestone 2.5).
-export function anthropicPacketAdjudicator(client = new Anthropic({ maxRetries: 0 }), version: PromptVersionId = PACKET_PROMPT_VERSION): PacketAdjudicator {
+export function anthropicPacketAdjudicator(client = new Anthropic({ maxRetries: 0 }), version: ContractId = PACKET_PROMPT_VERSION): PacketAdjudicator {
   return {
     model: PACKET_MODEL,
     promptVersion: version,

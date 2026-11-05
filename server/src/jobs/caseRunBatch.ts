@@ -33,13 +33,13 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { classifyFailure, closeRequest, openRequest } from "../adjudicate/requests";
 import { PROVIDER_MAX_BYTES, PROVIDER_MAX_REQUESTS, ProviderStreamError, requestBytes, totalOf, type BatchResult, type BatchState, type PacketBatchProvider, type PacketBatchRequest } from "../adjudicate/packetBatch";
-import { formatIssuePacket, maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_SYSTEM_PROMPT, type IssuePacket } from "../adjudicate/packetPrompt";
+import { maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, requestChars, type IssuePacket } from "../adjudicate/packetPrompt";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxBatchRequestCost, recordCall, releaseUnbilled, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { adjudicationRequests, caseRunBatches, caseRuns, screeningEntries, witnesses } from "../db/schema";
 import { claimNext, markFailed } from "../screen/ledger";
 import { MAX_RECOVERY_ROUNDS } from "../verify/packet";
-import { applyReply, caseRunSetOf, entryContext, finish, markIncomplete, MOCK_MODEL, nextStep, type CaseRun, type CaseRunStatus, type Entry, type EntryContext, type ItemIndex } from "./caseRun";
+import { applyReply, caseRunSetOf, contractOf, entryContext, finish, markIncomplete, MOCK_MODEL, nextStep, type CaseRun, type CaseRunStatus, type Entry, type EntryContext, type ItemIndex } from "./caseRun";
 
 export type BatchSettings = { batchSize: number; maxBytes: number; inFlight: number; pollSeconds: number; reconcileWindowMs: number };
 // 100 requests a batch: about 2.5 MB (well under 256 MB) and a worst-case reservation of roughly $10-$15 at batch
@@ -98,7 +98,7 @@ export async function runBatchTick(db: Database, run: CaseRun, ledgerId: number,
   const s = { ...BATCH_DEFAULTS, ...deps.settings };
   const now = () => deps.now?.() ?? Date.now();
   const live = run.mode === "live";
-  const model: Model = live ? { model: PACKET_MODEL, promptVersion: PACKET_PROMPT_VERSION, effort: PACKET_EFFORT } : { model: MOCK_MODEL, promptVersion: PACKET_PROMPT_VERSION, effort: "mock" };
+  const model: Model = live ? { model: PACKET_MODEL, promptVersion: contractOf(run), effort: PACKET_EFFORT } : { model: MOCK_MODEL, promptVersion: contractOf(run), effort: "mock" };
   const [fresh] = await db.select({ cancel: caseRuns.cancelRequestedAt }).from(caseRuns).where(eq(caseRuns.id, run.id));
   const cancelling = fresh.cancel !== null;
   const ledger = await db.execute<{ settings: { itemIndex: ItemIndex } }>(sql`select settings from screening_runs where id = ${ledgerId}`).then((r) => r.rows[0]);
@@ -227,10 +227,10 @@ async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[
       const items: { send: Send; request: PacketBatchRequest; bytes: number; maxCostUsd: number; reservationId: number | null; fresh: boolean }[] = [];
       let bytes = 0;
       const take = async (send: Send, fresh: boolean) => {
-        const request = { customId: `cr${run.id}-e${send.entry.id}-${randomBytes(6).toString("hex")}`, packet: send.packet };
+        const request = { customId: `cr${run.id}-e${send.entry.id}-${randomBytes(6).toString("hex")}`, packet: send.packet, contract: contractOf(run) };
         const size = requestBytes(request);
         if (items.length && bytes + size > s.maxBytes) return false;
-        const chars = PACKET_SYSTEM_PROMPT.length + formatIssuePacket(send.packet).length;
+        const chars = requestChars(send.packet, contractOf(run));
         const maxCostUsd = live ? maxBatchRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(chars), maxOutputTokens: maxOutputTokensFor(send.packet.pairs.length) }) : 0;
         let reservationId: number | null = null;
         if (live) {
@@ -266,7 +266,7 @@ async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[
       const [batch] = await tx.insert(caseRunBatches).values({ caseRunId: run.id, seq, status: "submitting", requestCount: items.length, payloadBytes: bytes, maxCostUsd: items.reduce((n, i) => n + i.maxCostUsd, 0) }).returning();
       const context = { candidateSet: caseRunSetOf(run.id), analysisId: null, strategy: "packet-batch", maxConcurrency: items.length };
       for (const i of items) {
-        const chars = PACKET_SYSTEM_PROMPT.length + formatIssuePacket(i.send.packet).length;
+        const chars = requestChars(i.send.packet, contractOf(run));
         const id = await openRequest(tx, context, { candidateIds: i.send.sentIds, model: model.model, promptVersion: model.promptVersion, estimatedInputTokens: inputTokenBound(chars), maxOutputTokens: maxOutputTokensFor(i.send.packet.pairs.length), maxCostUsd: i.maxCostUsd, reservationId: i.reservationId });
         await tx.update(adjudicationRequests).set({ caseRunBatchId: batch.id, customId: i.request.customId, screeningEntryId: i.send.entry.id, round: i.send.round, retryOf: i.send.retryOf }).where(eq(adjudicationRequests.id, id));
       }

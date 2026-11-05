@@ -23,6 +23,21 @@ export const COST_ASSUMPTIONS = {
   source: "Milestone 2 calibration-run (12 packets, 37 pairs), measured November 4, 2026",
 } as const;
 
+// Whole-stretch requests (stretch-v2, experimental), measured in the candidate-reduction experiment's v2 pilot
+// (49 requests, 611 original pairs, Sonnet 5.5, November 4, 2026; docs/stretch-v2-results.md on that branch):
+// 32,201 output tokens (about 53 per pair: a finding is written only for a conflict), a cached prefix of 3,873
+// tokens, and rendered stretch text at about 2.4 characters per token, where item tokens here count 3. The 49
+// requests were chosen around known evidence: a projection, not a measurement of a whole case.
+export const STRETCH_COST_ASSUMPTIONS = {
+  model: "claude-sonnet-5-5",
+  outputTokensPerPair: 53,
+  cachedPrefixTokens: 3873,
+  passageTokenFactor: 3 / 2.4,
+  retryAllowance: 0.05,
+  source: "candidate-reduction stretch-v2 pilot (49 requests, 611 pairs), measured November 4, 2026",
+} as const;
+type CostAssumptions = { model: keyof typeof PRICES; outputTokensPerPair: number; cachedPrefixTokens: number; passageTokenFactor?: number; retryAllowance: number };
+
 export type BudgetRow = {
   budget: number; packets: number; listedPairs: number; distinctItems: number; itemReads: number; inputTokens: number;
   expectedUsd: number; noCacheUsd: number;
@@ -35,13 +50,13 @@ export type ScreeningReport = { strategy: string; strategyVersion: string; openP
 
 // Cost of reading a set of packets: passages at the input rate, one cached prefix written once and read
 // after, output per listed pair, plus the retry allowance.
-export function projectCost(packets: readonly { passageTokens: number; pairs: number }[], cache = true) {
-  const r = PRICES[COST_ASSUMPTIONS.model][0].rates;
-  const a = COST_ASSUMPTIONS;
+export function projectCost(packets: readonly { passageTokens: number; pairs: number }[], cache = true, a: CostAssumptions = COST_ASSUMPTIONS) {
+  const r = PRICES[a.model][0].rates;
+  const factor = a.passageTokenFactor ?? 1;
   let usd = 0;
   packets.forEach((p, i) => {
     const prefix = cache ? a.cachedPrefixTokens * (i === 0 ? r.cacheWrite5m : r.cacheRead) : a.cachedPrefixTokens * r.input;
-    usd += (prefix + p.passageTokens * r.input + p.pairs * a.outputTokensPerPair * r.output) / 1e6;
+    usd += (prefix + p.passageTokens * factor * r.input + p.pairs * a.outputTokensPerPair * r.output) / 1e6;
   });
   return usd * (1 + a.retryAllowance);
 }

@@ -11,7 +11,7 @@ import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
 import { anthropicPacketBatches } from "./adjudicate/packetBatch";
 import { FakeBatchProvider } from "./eval/mockPacketBatch";
 import { batchSettings, economyAllowed } from "./jobs/caseRunBatch";
-import { createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
+import { contractOf, createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
 
 const SHUTDOWN_GRACE_MS = 60_000;
 
@@ -46,7 +46,8 @@ async function main() {
       drain: draining.signal,
       concurrency: caseRuns.packetsPerCase,
       limiter: new ProviderLimiter(caseRuns.limits),
-      adjudicator: () => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator()) : null),
+      // A live run sends its own contract (packet-v1, or the experimental stretch-v2 when the run was created with it).
+      adjudicator: (run) => (paidCallsAllowed(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator(undefined, contractOf(run))) : null),
       batch: (run) => (run.mode === "mock" ? { provider: fake, settings: batches } : live ? { provider: live, settings: batches } : null),
     },
     { maxCases: caseRuns.maxCases, batchPollSeconds: batches.pollSeconds },

@@ -12,14 +12,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AdjudicatorReply } from "./model";
 import { packetRequestParams } from "./packetModel";
-import { formatIssuePacket, type IssuePacket } from "./packetPrompt";
+import { PACKET_PROMPT_VERSION, PACKET_PROMPTS, type ContractId, type IssuePacket } from "./packetPrompt";
 
 export const PROVIDER_MAX_REQUESTS = 100_000;
 export const PROVIDER_MAX_BYTES = 256 * 1024 * 1024;
 export const RESULT_RETENTION_DAYS = 29;
 export const CUSTOM_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 
-export type PacketBatchRequest = { customId: string; packet: IssuePacket };
+// contract: the request contract (packet-v1 when absent; stretch-v2 for an experimental whole-stretch run).
+export type PacketBatchRequest = { customId: string; packet: IssuePacket; contract?: ContractId };
 export type BatchCounts = { processing: number; succeeded: number; errored: number; canceled: number; expired: number };
 export type BatchState = { id: string; status: "in_progress" | "canceling" | "ended"; counts: BatchCounts; createdAt: Date; endedAt: Date | null; expiresAt: Date | null };
 export type BatchResult = { customId: string } & (
@@ -56,7 +57,7 @@ async function* fromProvider<T>(items: AsyncIterable<T>): AsyncIterable<T> {
 // filtered by its creation time.
 export const LIST_SCAN_LIMIT = 2_000;
 
-export const requestBody = (r: PacketBatchRequest) => ({ custom_id: r.customId, params: packetRequestParams(formatIssuePacket(r.packet), r.packet.pairs.length) });
+export const requestBody = (r: PacketBatchRequest) => { const c = r.contract ?? PACKET_PROMPT_VERSION; return { custom_id: r.customId, params: packetRequestParams(PACKET_PROMPTS[c].format(r.packet), r.packet.pairs.length, c) }; };
 // The bytes a request adds to a batch's body, for the 256 MB limit.
 export const requestBytes = (r: PacketBatchRequest) => Buffer.byteLength(JSON.stringify(requestBody(r))) + 1;
 export const totalOf = (c: BatchCounts) => c.processing + c.succeeded + c.errored + c.canceled + c.expired;
