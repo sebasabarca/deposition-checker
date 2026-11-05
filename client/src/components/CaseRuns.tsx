@@ -201,6 +201,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
       summary: null,
       content: shown && (
         <div className="space-y-3">
+          {shown.name && <p className="text-base font-semibold">{shown.name}</p>}
           <p className="text-sm"><span className="text-muted">Analyzed:</span> <span className="font-semibold">{scopeText(shown, sessions)}</span></p>
           <RunState run={shown} busy={busy} act={act} paidBlocked={paidBlocked} />
           {!running && <Button variant="secondary" onClick={() => { go("scope"); setScope("case"); }}>Start a new analysis</Button>}
@@ -349,6 +350,11 @@ function SessionPicker({ sessions, selected, onSelect }: { sessions: WorkflowSes
   );
 }
 
+// A suggested name, editable before starting: what it covers and the day.
+export const defaultRunName = (run: CaseRun) => `${!run.scope || run.scope.kind === "case" ? "Whole case" : `${run.scope.depositionIds.length} depositions`}, ${formatDate(run.createdAt)}`;
+// How a run is listed: its name, or for one started before names existed, its number.
+export const runTitle = (run: CaseRun) => run.name ?? `Analysis #${run.id}`;
+
 // What a run analyzes, in words: the whole case, or the depositions chosen for it.
 function scopeText(run: CaseRun, sessions: WorkflowSession[]): string {
   if (!run.scope || run.scope.kind === "case") return "The whole case";
@@ -431,6 +437,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   const [limit, setLimit] = useState(defaultLimit(e.recommendedBudgetUsd));
   const [edited, setEdited] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [name, setName] = useState(defaultRunName(run));
   const economy = execution === "batch";
   const problem = budgetProblem(limit);
   const choose = (x: CaseRunExecution) => {
@@ -440,13 +447,16 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   const submit = (ev: FormEvent) => {
     ev.preventDefault();
     // One checkbox: for economy the privacy notice sits under it and describes it, so authorizing acknowledges it too.
-    if (!problem && agreed) act(api.confirmCaseRun(run.id, Number(limit), execution, economy));
+    if (!problem && agreed) act(api.confirmCaseRun(run.id, Number(limit), execution, economy, name.trim() || undefined));
   };
   // Two decimals in this step (the shared formatter shows four below $1); amounts under a cent read "under $0.01".
   const usd = (n: number) => (n > 0 && n < 0.005 ? "under $0.01" : `$${n.toFixed(2)}`);
   const cost = (x: { lowUsd: number; highUsd: number }) => (usd(x.lowUsd) === usd(x.highUsd) ? usd(x.lowUsd) : `${usd(x.lowUsd)}–${usd(x.highUsd)}`);
   return (
     <form onSubmit={submit} className="space-y-4">
+      <Field label="Analysis name" htmlFor={`name-${run.id}`} hint="So you can tell your analyses apart later.">
+        <input id={`name-${run.id}`} className={cx(inputClass, "sm:max-w-md")} value={name} maxLength={120} onChange={(ev) => setName(ev.target.value)} />
+      </Field>
       <fieldset>
         <legend className="text-sm font-semibold">Choose your analysis speed</legend>
         <p className="mt-0.5 text-sm text-muted">Both options examine the same prepared evidence using the same analysis method. The difference is how quickly results are delivered and how much they cost.</p>
@@ -596,6 +606,7 @@ function EarlierRuns({ runs }: { runs: CaseRun[] }) {
         {runs.map((r) => (
           <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
             <span className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">{runTitle(r)}</span>
               <Badge tone={RUN_STATUS[r.status].tone} dot>{RUN_STATUS[r.status].label}</Badge>
               {isTestRun(r) && <Badge tone="accent">Test model</Badge>}
               {r.confirmedAt !== null || isTestRun(r) ? <Badge tone="neutral">{EXECUTION[r.execution].short}</Badge> : null}

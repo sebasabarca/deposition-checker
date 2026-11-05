@@ -63,7 +63,7 @@ export const api = {
   // execution: a test run picks fast (standard) or economy (batch) here; a paid run picks it when confirmed.
   // depositionIds: analyze only these depositions (the same pipeline); absent = the whole case.
   startCaseRun: (caseId: number, mode: "live" | "mock", execution: CaseRunExecution = "standard", contract?: CaseRunContract, depositionIds?: number[]) => request<{ caseRun: CaseRun }>("POST", `/cases/${caseId}/case-runs`, { mode, ...(mode === "mock" ? { execution } : {}), ...(contract && contract !== "packet-v1" ? { contract } : {}), ...(depositionIds ? { depositionIds } : {}) }),
-  confirmCaseRun: (id: number, budgetUsd: number, execution: CaseRunExecution = "standard", retentionAcknowledged = false) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/confirm`, execution === "batch" ? { budgetUsd, execution, retentionAcknowledged } : { budgetUsd }),
+  confirmCaseRun: (id: number, budgetUsd: number, execution: CaseRunExecution = "standard", retentionAcknowledged = false, name?: string) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/confirm`, { budgetUsd, ...(execution === "batch" ? { execution, retentionAcknowledged } : {}), ...(name ? { name } : {}) }),
   resumeCaseRun: (id: number, budgetUsd?: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/resume`, budgetUsd === undefined ? {} : { budgetUsd }),
   cancelCaseRun: (id: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/cancel`),
   caseRunFindings: (id: number) => request<{ complete: boolean; incompleteReasons: string[]; findings: CaseRunFinding[] }>("GET", `/case-runs/${id}/findings`),

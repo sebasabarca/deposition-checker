@@ -50,7 +50,7 @@ export function CaseRunPage({ id }: { id: number }) {
     <>
       <PageHeader
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }, { label: caseName ?? "Case", href: href.case(run.caseId) }]} />}
-        title="Whole-case analysis"
+        title={run.name ?? "Whole-case analysis"}
         description={`Started ${formatDate(run.createdAt)} · ${run.candidates.sameWitness.toLocaleString()} same-witness and ${run.candidates.crossWitness.toLocaleString()} cross-witness candidate pairs`}
       />
 

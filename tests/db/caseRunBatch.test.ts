@@ -440,9 +440,10 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
       const refused = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch" });
       expect(refused.status).toBe(400);
       expect((await refused.json()).code).toBe("retention_not_acknowledged");
-      const confirmed = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch", retentionAcknowledged: true });
+      expect((await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch", retentionAcknowledged: true, name: "x".repeat(121) })).status).toBe(400);
+      const confirmed = await post(`/case-runs/${live.id}/confirm`, { budgetUsd: 5, execution: "batch", retentionAcknowledged: true, name: "  Webb, first pass  " });
       expect(confirmed.status).toBe(202);
-      expect((await confirmed.json()).caseRun).toMatchObject({ execution: "batch", status: "queued" });
+      expect((await confirmed.json()).caseRun).toMatchObject({ execution: "batch", status: "queued", name: "Webb, first pass" });
 
       // Between checks no runner holds the run, but its batches are open at the provider: cancelling marks it, and
       // the next check cancels them and ends the run.

@@ -778,7 +778,7 @@ export async function createCaseRun(db: Database, caseId: number, { mode, budget
 // A person confirms a live run's estimate with a budget: the only way an unconfirmed run starts spending.
 // Economy (execution "batch") also needs the person to acknowledge that the provider keeps batch inputs and results
 // for 29 days. The execution mode is fixed here: nothing has been sent yet, and it never changes afterwards.
-export async function confirmCaseRun(db: Database, id: number, { budgetUsd, execution = "standard", retentionAcknowledged = false }: { budgetUsd: number; execution?: CaseRunExecution; retentionAcknowledged?: boolean }): Promise<"queued" | "not_found" | "not_awaiting" | "no_budget" | "no_acknowledgement"> {
+export async function confirmCaseRun(db: Database, id: number, { budgetUsd, execution = "standard", retentionAcknowledged = false, name }: { budgetUsd: number; execution?: CaseRunExecution; name?: string; retentionAcknowledged?: boolean }): Promise<"queued" | "not_found" | "not_awaiting" | "no_budget" | "no_acknowledgement"> {
   if (!(budgetUsd > 0)) return "no_budget";
   if (execution === "batch" && !retentionAcknowledged) return "no_acknowledgement";
   return db.transaction(async (tx) => {
@@ -786,6 +786,8 @@ export async function confirmCaseRun(db: Database, id: number, { budgetUsd, exec
     if (!run) return "not_found" as const;
     if (run.status !== "awaiting_confirmation" || run.mode !== "live") return "not_awaiting" as const;
     await tx.update(budgets).set({ limitUsd: budgetUsd }).where(eq(budgets.id, run.budgetId!));
+    // The person's name for the analysis, kept with its settings (no schema change), so they can tell runs apart.
+    if (name) await tx.update(caseRuns).set({ config: sql`${caseRuns.config} || ${JSON.stringify({ name })}::jsonb` }).where(eq(caseRuns.id, id));
     await tx.update(caseRuns).set({ budgetUsd, execution, retentionAcknowledgedAt: execution === "batch" ? new Date() : null, confirmedAt: new Date(), status: "queued", error: null, updatedAt: new Date() }).where(eq(caseRuns.id, id));
     return "queued" as const;
   });
@@ -909,7 +911,7 @@ export async function caseRunReport(db: Database, id: number) {
   return {
     id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, contract: contractOf(run), scope: scopeOf(run) ? { kind: "depositions" as const, depositionIds: scopeOf(run)! } : { kind: "case" as const }, stretch, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
     config: run.config, sourceHash: run.sourceHash, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, updatedAt: run.updatedAt,
-    confirmedAt: run.confirmedAt, cancelRequested: run.cancelRequestedAt !== null,
+    name: (run.config as { name?: string }).name ?? null, confirmedAt: run.confirmedAt, cancelRequested: run.cancelRequestedAt !== null,
     estimate: (run.progress as { estimate?: unknown }).estimate ?? null,
     // Deferred, uncovered and unanswered pairs are unread, never compatible.
     coverageState: state,
