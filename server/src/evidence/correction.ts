@@ -393,6 +393,15 @@ export async function applyCorrection(db: Database, dep: number, opts: Correctio
 async function restore(tx: Database, b: { documentId: number; correction: any; factUnits: unknown[]; facts: unknown[] }) {
   const dep = b.documentId;
   const c = b.correction;
+  // A backup is a file: every row it would write must belong to this document, or nothing is restored.
+  const foreign = [
+    ...(c.exchanges as { depositionId: number }[]), ...(c.exchangeLines as { depositionId: number }[]), ...(c.lineSegments as { depositionId: number }[]),
+  ].filter((r) => r.depositionId !== dep).length
+    + (b.factUnits as { deposition_id: number }[]).filter((r) => r.deposition_id !== dep).length
+    + (b.facts as { deposition_id: number }[]).filter((r) => r.deposition_id !== dep).length
+    + Number((await rows<{ n: number }>(tx, sql`select count(*)::int n from lines where id = any(${arr((c.lines as { id: number }[]).map((l) => l.id))}) and deposition_id <> ${dep}`))[0].n)
+    + Number((await rows<{ n: number }>(tx, sql`select count(*)::int n from candidates where id = any(${arr((c.candidateGroups as { id: number }[]).map((g) => g.id))}) and deposition_a <> ${dep} and deposition_b <> ${dep}`))[0].n);
+  if (c.document?.id !== dep || foreign > 0) throw new Error(`The backup holds ${foreign} rows of another document; nothing was restored.`);
   const keep = (c.exchanges as { id: number }[]).map((e) => e.id);
   const added = (await tx.select({ id: exchanges.id }).from(exchanges).where(and(eq(exchanges.depositionId, dep), notInArray(exchanges.id, keep)))).map((r) => r.id);
   if (added.length) {
@@ -405,15 +414,15 @@ async function restore(tx: Database, b: { documentId: number; correction: any; f
   if (added.length) await tx.delete(exchanges).where(inArray(exchanges.id, added));
   const existing = new Set((await tx.select({ id: exchanges.id }).from(exchanges).where(eq(exchanges.depositionId, dep))).map((r) => r.id));
   const revive = (e: Record<string, any>): Record<string, any> => ({ ...e, ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {}) });
-  for (const e of c.exchanges) { const { id, ...fields } = revive(e); if (existing.has(id)) await tx.update(exchanges).set(fields).where(eq(exchanges.id, id)); else await tx.insert(exchanges).overridingSystemValue().values(revive(e) as unknown as typeof exchanges.$inferInsert); }
+  for (const e of c.exchanges) { const { id, ...fields } = revive(e); if (existing.has(id)) await tx.update(exchanges).set(fields).where(and(eq(exchanges.id, id), eq(exchanges.depositionId, dep))); else await tx.insert(exchanges).overridingSystemValue().values(revive(e) as unknown as typeof exchanges.$inferInsert); }
   await tx.delete(exchangeLines).where(eq(exchangeLines.depositionId, dep));
   for (let i = 0; i < c.exchangeLines.length; i += 2000) await tx.insert(exchangeLines).values(c.exchangeLines.slice(i, i + 2000));
   await tx.delete(lineSegments).where(eq(lineSegments.depositionId, dep));
   if (c.lineSegments.length) await tx.insert(lineSegments).values(c.lineSegments);
-  for (const { id, ...fields } of c.lines) await tx.update(lines).set(fields).where(eq(lines.id, id));
+  for (const { id, ...fields } of c.lines) await tx.update(lines).set(fields).where(and(eq(lines.id, id), eq(lines.depositionId, dep)));
   for (const g of c.candidateGroups) await tx.update(candidates).set({ groupA: g.groupA, groupB: g.groupB }).where(eq(candidates.id, g.id));
   await tx.update(depositions).set({ parserVersion: c.document.parserVersion, validation: c.document.validation }).where(eq(depositions.id, dep));
-  if (b.facts.length) await tx.execute(sql`update facts f set status = o.status, exchange_id = o.exchange_id, warnings = o.warnings from jsonb_populate_recordset(null::facts, ${JSON.stringify(b.facts)}::jsonb) o where f.id = o.id`);
+  if (b.facts.length) await tx.execute(sql`update facts f set status = o.status, exchange_id = o.exchange_id, warnings = o.warnings from jsonb_populate_recordset(null::facts, ${JSON.stringify(b.facts)}::jsonb) o where f.id = o.id and f.deposition_id = ${dep}`);
 }
 
 // Rolls back an applied correction: hold, then the restore and the release in one transaction. Refuses if the

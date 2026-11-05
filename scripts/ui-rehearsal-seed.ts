@@ -26,7 +26,7 @@ async function main() {
   await migrate(db, { migrationsFolder: "drizzle" });
   const [org] = await db.insert(orgs).values({ name: "UI rehearsal" }).returning();
   const password = `Rehearsal-${Math.random().toString(36).slice(2)}!9`;
-  await db.insert(users).values({ orgId: org.id, email: "reviewer@rehearsal.test", name: "Rehearsal Reviewer", passwordHash: await hashPassword(password), emailVerifiedAt: new Date() });
+  await db.insert(users).values({ orgId: org.id, email: "reviewer@rehearsal.test", name: "Rehearsal Reviewer", passwordHash: await hashPassword(password), emailVerifiedAt: new Date(), onboardedAt: new Date() }); // onboarded: no first-run tour over the screens
   const seeded = await seedDemoCase(db, org.id, v.uploads);
   const analysisId = seeded.analyses[0];
   const rows = await db.select({ id: findings.id, dep: candidates.depositionA }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.candidateSet, `analysis-${analysisId}`)).orderBy(findings.id);

@@ -244,6 +244,7 @@ export type FindingDetail = {
   reviewNote: string | null;
   reviewedAt: string | null;
   standing: FindingStanding;
+  evidenceEpochs: Record<string, number>; // the evidence versions this detail was read at; a review is saved only against them
   rubricVersion: string;
   factors: Factor[];
   caps: Cap[];

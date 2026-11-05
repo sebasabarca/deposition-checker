@@ -130,7 +130,7 @@ export function StandingNotice({ standing, compact }: { standing?: FindingStandi
   }
   return (
     <Alert tone="info" title="Needs revalidation: kept for audit, not a current finding">
-      <p>The transcript was re-read with a corrected parser{standing.parser ? ` (${standing.parser})` : ""} on {formatDate(standing.since)}, after this finding was made. {standing.reason}</p>
+      <p>The transcript was re-read with a corrected parser{standing.parser ? ` (${standing.parser})` : ""} on {formatDate(standing.since)}, after this finding was made. Reason: {standing.reason}.</p>
       <p className="mt-1">This finding is kept for audit only and can't be reviewed. {prior}</p>
       {note && <p className="mt-1 whitespace-pre-wrap">Note at the time: {note}</p>}
     </Alert>

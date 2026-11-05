@@ -2,7 +2,7 @@
 // transcript (invented speakers and testimony) in the shape parser revision 9 stored: statement 22 holds an
 // answer and the next question, so the current parser splits one exchange into two and renumbers every group
 // after it. Also the quarantine as the findings API, the report and replay see it. No model call.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import express from "express";
@@ -13,6 +13,7 @@ import { extractFacts } from "../../server/src/claims/facts";
 import { syncUnits } from "../../server/src/claims/facts/store";
 import { analysisFindings, analysisRoutes, analysisView, findingDetail } from "../../server/src/api/analyses";
 import { reportData } from "../../server/src/api/report";
+import { caseSummaries } from "../../server/src/api/cases";
 import type { Database } from "../../server/src/db/client";
 import { analyses, candidates, cases, depositions, evidenceMigrations, exchangeLines, exchanges, factUnits, facts, findings, lines, orgs, screeningEntries, screeningRuns, verdicts, witnesses } from "../../server/src/db/schema";
 import { applyCorrection, captureEpochs, correctInPlace, isEvidenceOnHold, isStaleEvidence, withEvidenceFence, documentHash, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined, type CorrectionOptions, type Step } from "../../server/src/evidence";
@@ -84,7 +85,7 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
   };
   const qa = async () => (await db.select().from(exchanges).where(and(eq(exchanges.depositionId, doc), eq(exchanges.kind, "qa")))).sort((a, b) => a.groupId - b.groupId);
   async function findingOn(x: typeof exchanges.$inferSelect, y: typeof exchanges.$inferSelect, reviewState = "unreviewed", packet: object = {}) {
-    const [c] = await db.insert(candidates).values({ candidateSet: candidateSetOf(analysisId), witnessId, depositionA: doc, groupA: x.groupId, depositionB: doc, groupB: y.groupId, exchangeA: x.id, exchangeB: y.id, sources: ["direct"], rrfScore: 0, mergedRank: 1, evidence: [] }).returning();
+    const [c] = await db.insert(candidates).values({ candidateSet: candidateSetOf(analysisId), jobId: analysisId, witnessId, depositionA: doc, groupA: x.groupId, depositionB: doc, groupB: y.groupId, exchangeA: x.id, exchangeB: y.id, sources: ["direct"], rrfScore: 0, mergedRank: 1, evidence: [] }).returning();
     const [v] = await db.insert(verdicts).values({ candidateId: c.id, model: "fixture", promptVersion: "x", effort: "low", status: "valid", parsed: { explanation: "fixture", sameEvent: "yes" }, packet, origin: "fixture" }).returning();
     const [f] = await db.insert(findings).values({ caseId, candidateId: c.id, verdictId: v.id, type: "direct", evidenceStatus: "verified", attributionA: "clear", attributionB: "clear", score: 80, band: "high", factors: [], caps: [], checks: CHECKS, rubricVersion: "x", priority: "high", reviewState, reviewNote: reviewState === "unreviewed" ? null : "checked by hand", reviewedAt: reviewState === "unreviewed" ? null : new Date("2026-10-01T12:00:00Z") }).returning();
     return { finding: f, verdict: v, candidate: c };
@@ -194,7 +195,7 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
     const app = express().use(express.json()).use("/api", analysisRoutes({ db, pool, boss: undefined as never }));
     const server = await listen(app);
     try {
-      const patch = (id: number) => fetch(`${server.url}/api/findings/${id}/review`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision: "dismissed" }) });
+      const patch = async (id: number) => fetch(`${server.url}/api/findings/${id}/review`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision: "dismissed", epochs: (await findingDetail(db, id))!.evidenceEpochs }) });
       const refused = await patch(confirmed.finding.id);
       expect(refused.status).toBe(409);
       expect((await refused.json()).standing).toMatchObject({ state: "quarantined" });
@@ -389,5 +390,29 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
     const late = withEvidenceFence(db, epochs, (f) => f.insert(facts).values({ factKey: "late", unitKey: "u", extractorVersion: "v", caseId, witnessId, depositionId: doc, exchangeId: null, sourceSpanIds: [], lineIds: [], attributionStatus: "verified", sourceVerification: "verified", status: "rejected", sourceHash: "x", raw: {} }));
     await expect(late).rejects.toSatisfy(isStaleEvidence);
     expect(await db.$count(facts, eq(facts.factKey, "late"))).toBe(0);
+  });
+
+  it("the case list counts only current findings: a quarantined one never waits for a review it can't get", async () => {
+    const all = await qa();
+    const open = await findingOn(all[0], all[1]);
+    await findingOn(all[2], all[3]);
+    const counts = async () => (await caseSummaries(db)).find((c) => c.id === caseId)!;
+    expect(await counts()).toMatchObject({ findings: 2, needsReview: 2 });
+    await quarantineFindings(db, doc, "superseded parse", [open.finding.id]);
+    expect(await counts()).toMatchObject({ findings: 1, needsReview: 1 });
+  });
+
+  it("rollback refuses a backup that names another document's rows, changing nothing", async () => {
+    await db.update(lines).set({ speakerRole: "unknown" }).where(eq(lines.id, (await line(5)).id));
+    const { applied } = await dryThenApply({ expect: { lines: [await ref(5), await ref(22)] } });
+    const after = await documentHash(db, doc);
+    const b = JSON.parse(readFileSync(applied.backup!, "utf8"));
+    const [other] = await db.select().from(lines).where(sql`${lines.depositionId} <> ${doc}`).limit(1);
+    b.correction.lines[0].id = other.id; // edited, or another document's backup
+    writeFileSync(applied.backup!, JSON.stringify(b));
+    await expect(rollbackCorrection(db, applied.migrationId!)).rejects.toThrow("rows of another document");
+    expect(await documentHash(db, doc)).toBe(after);
+    expect((await db.select().from(lines).where(eq(lines.id, other.id)))[0]).toEqual(other);
+    expect((await holdOf()).hold).toBeNull();
   });
 });

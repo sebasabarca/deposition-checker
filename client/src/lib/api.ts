@@ -101,5 +101,6 @@ export const api = {
   cancel: (id: number) => request<{ analysis: AnalysisView }>("POST", `/analyses/${id}/cancel`, {}),
   findings: (analysisId: number) => request<FindingGroups>("GET", `/analyses/${analysisId}/findings`),
   finding: (id: number) => request<{ finding: FindingDetail }>("GET", `/findings/${id}`),
-  review: (id: number, decision: ReviewDecision | null, note?: string) => request<{ review: { reviewState: string; reviewNote: string | null; reviewedAt: string | null } }>("PATCH", `/findings/${id}/review`, { decision, note }),
+  // epochs: the evidence versions the finding was opened at (FindingDetail.evidenceEpochs); a later correction refuses the save (409).
+  review: (id: number, decision: ReviewDecision | null, note: string | undefined, epochs: Record<string, number>) => request<{ review: { reviewState: string; reviewNote: string | null; reviewedAt: string | null } }>("PATCH", `/findings/${id}/review`, { decision, note, epochs }),
 };

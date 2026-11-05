@@ -76,11 +76,18 @@ describe("a 409 from the review endpoint", () => {
 
   it("shows the server's message and locks the controls", async () => {
     reply(409, { error: "This finding needs revalidation: its transcript was re-read.", standing: QUARANTINED });
-    const failure = await api.review(9, "confirmed").then(() => null, reviewFailure);
+    const failure = await api.review(9, "confirmed", undefined, { "4": 0, "5": 0 }).then(() => null, reviewFailure);
     expect(failure).toEqual({ message: "This finding needs revalidation: its transcript was re-read.", locked: true });
+  });
+  it("sends the evidence versions the finding was opened at, and a stale save comes back as a 409 that locks and reloads", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: "This finding's transcript was corrected after you opened it, so your review wasn't saved." }), { status: 409, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const failure = await api.review(9, "dismissed", "note", { "4": 2, "5": 0 }).then(() => null, reviewFailure);
+    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ decision: "dismissed", note: "note", epochs: { "4": 2, "5": 0 } });
+    expect(failure).toEqual({ message: "This finding's transcript was corrected after you opened it, so your review wasn't saved.", locked: true });
   });
   it("leaves the controls open for any other failure", async () => {
     reply(500, { error: "Database unavailable." });
-    expect(await api.review(1, "confirmed").then(() => null, reviewFailure)).toEqual({ message: "Database unavailable.", locked: false });
+    expect(await api.review(1, "confirmed", undefined, { "4": 0, "5": 0 }).then(() => null, reviewFailure)).toEqual({ message: "Database unavailable.", locked: false });
   });
 });

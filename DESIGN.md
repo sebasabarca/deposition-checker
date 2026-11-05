@@ -1083,8 +1083,18 @@ batch.
 - an analysis or case run is marked failed with the reason, and stores nothing more;
 - an extraction stops, and keeps nothing from the reading.
 
-Writes that don't derive from read evidence (a person's review, the correction itself) declare nothing and aren't
-checked.
+**A person's review is checked too.**
+- **Capture:** the finding detail carries the epochs of its two depositions, read before anything else.
+- **Submit:** the review must send them back (HTTP 400 without them, or with another finding's).
+- **Save:** it is saved in a transaction declaring them, and the quarantine is re-checked inside it.
+- **If a correction committed after the reviewer opened the finding,** the save is refused (HTTP 409). The page
+  reloads the finding as it now stands, and the review can be made again.
+
+**What doesn't declare:**
+- The correction itself is the holder.
+- The demo-case seed creates its depositions and everything derived from them in one transaction, so no
+  correction can come between.
+- The synthetic-fixture store declares the epochs of the sessions it reads.
 
 ### The correction hold
 
@@ -1104,8 +1114,9 @@ writers arriving during it wait. It refuses if work older than the hold is still
 **Releasing.** The correction commits with the hold still set, and only then releases it.
 - **A job's write that waited** on the correction's lock is refused either way: by the hold if it re-checks
   before the release (`VE001`), and by its stale epoch after (`VE002`).
-- **A write that declares no epochs** (seed and fixture scripts, a person's review) is guarded only by the hold
-  while it lasts. If it waited on the lock, it can land just after the release. No job writes that way.
+- **A write that declares no epochs** is guarded only by the hold while it lasts. If it waited on the lock, it can
+  land just after the release. Jobs, extractions, reviews and the fixture store all declare; what doesn't is the
+  correction itself and the single-transaction demo seed.
 - **A crash between commit and release** leaves the hold for an explicit `release`, which checks the document is
   exactly as the ledger says it should be.
 
@@ -1167,6 +1178,15 @@ as they were. The quarantine row keeps the review as it was, with the parser it 
 - the guard functions and triggers, on 14 derived tables (insert, update, delete) and on `depositions`.
 
 It changes no existing row.
+
+**What the guard doesn't cover**, since no application path does any of these:
+- `TRUNCATE`;
+- an `UPDATE` that moves a row to another deposition (the guard sees the new one only);
+- the tables nothing derives testimony from: `topics`, `card_topics`, `candidate_topics`, `discovery_runs` and
+  `adjudication_requests`.
+
+**Rollback trusts nothing in the backup file blindly:** every row it would write must belong to the document,
+and every update is scoped to it.
 
 **Removing it** is dropping those triggers, functions, tables and columns.
 

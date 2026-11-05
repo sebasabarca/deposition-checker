@@ -45,7 +45,8 @@ export async function violation(promise: PromiseLike<unknown>): Promise<string> 
 // Starts an Express app on a free port, for tests that call endpoints over HTTP.
 export async function listen(app: Express): Promise<{ url: string; close: () => Promise<void> }> {
   const server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, () => resolve(s));
+    // On the address the tests call: listening on every interface lets 127.0.0.1:port reach another worker's server.
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
   });
   const { port } = server.address() as AddressInfo;
   return { url: `http://127.0.0.1:${port}`, close: () => new Promise((resolve) => server.close(() => resolve())) };

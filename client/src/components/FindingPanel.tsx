@@ -128,7 +128,7 @@ function Decision({ f, analysisId, next, onDecided, onStale }: { f: FindingDetai
     setBusy(true);
     setError(null);
     try {
-      const { review } = await api.review(f.id, decision, note);
+      const { review } = await api.review(f.id, decision, note, f.evidenceEpochs);
       setState(decisionOf(review.reviewState));
       setAt(review.reviewedAt);
       onDecided(f.id, review.reviewState);

@@ -34,7 +34,9 @@ function tool(bin: "pg_dump" | "pg_restore", args: string[], file?: string): Buf
   const inside = file ? `/tmp/${path.basename(file)}` : null;
   if (file) execFileSync("docker", ["cp", file, `${CONTAINER}:${inside}`]);
   try {
-    return execFileSync("docker", ["exec", "-e", `PGUSER=${env.PGUSER}`, "-e", `PGPASSWORD=${env.PGPASSWORD}`, CONTAINER, bin, "-h", "localhost", ...args, ...(inside ? [inside] : [])], { maxBuffer: 2 ** 31 });
+    // "-e NAME" (no value) passes the variable from this process's environment: the password never appears in
+    // a command line (ps), only in the environment of docker and the tool.
+    return execFileSync("docker", ["exec", "-e", "PGUSER", "-e", "PGPASSWORD", CONTAINER, bin, "-h", "localhost", ...args, ...(inside ? [inside] : [])], { env: { ...process.env, PGUSER: env.PGUSER, PGPASSWORD: env.PGPASSWORD }, maxBuffer: 2 ** 31 });
   } finally {
     if (inside) execFileSync("docker", ["exec", CONTAINER, "rm", "-f", inside]);
   }

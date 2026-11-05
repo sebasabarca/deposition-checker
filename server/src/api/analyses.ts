@@ -18,7 +18,8 @@ import { sessionCoverage } from "../verify";
 import { caseDetail, caseSummaries } from "./cases";
 import { estimateCrossDiscovery, estimateDiscovery } from "../adjudicate/estimateDiscovery";
 import { CROSS_DISCOVERY_MODEL, CROSS_DISCOVERY_PROMPT_VERSION, CROSS_FALLBACK_MODEL, crossSidesOf } from "../adjudicate/discoverCross";
-import { isEvidenceOnHold, standingOf } from "../evidence/correction";
+import { isEvidenceOnHold, standingOf, type Standing } from "../evidence/correction";
+import { captureEpochs, fencedTransaction, isStaleEvidence } from "../evidence/epoch";
 import { candidateCoverage, compareFindings, coverageNotes, directSourceLabel, findingGroup, GROUP_LABELS, GROUP_ORDER, modelName, SOURCE_LABELS, UNSCORED_REASONS, type FindingGroup, type VerdictSource } from "./present";
 
 const Id = z.coerce.number().int().positive();
@@ -227,6 +228,9 @@ type PacketSide = { id: string; session: "A" | "B"; depositionId: number; groupI
 // One finding with both passages as stored: every line's page:line and text from the transcript,
 // the lines code found the cited phrase on, and the context shown to the adjudicator.
 export async function findingDetail(db: Database, id: number) {
+  // The evidence versions this detail is read at, taken first: a review is saved only against them.
+  const [sides] = await db.select({ a: candidates.depositionA, b: candidates.depositionB }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(findings.id, id));
+  const evidenceEpochs = sides ? await captureEpochs(db, [sides.a, sides.b]) : {};
   const [row] = await db
     .select({ f: findings, v: verdicts, c: candidates })
     .from(findings)
@@ -310,6 +314,7 @@ export async function findingDetail(db: Database, id: number) {
     group: findingGroup(f, quarantined),
     groupLabel: GROUP_LABELS[findingGroup(f, quarantined)],
     standing,
+    evidenceEpochs,
     classification: f.type,
     priority: f.priority,
     score: f.score,
@@ -514,20 +519,32 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
   // A person's decision on a finding, kept with the case. A null decision clears it.
   router.patch("/findings/:id/review", async (req, res) => {
     const id = Id.safeParse(req.params.id);
-    const body = z.object({ decision: z.enum(["confirmed", "needs_context", "dismissed"]).nullable(), note: z.string().trim().max(5000).optional() }).safeParse(req.body ?? {});
-    if (!id.success || !body.success) return res.status(400).json({ error: "Invalid review decision." });
-    const { decision, note } = body.data;
-    // A quarantined finding's source changed: its earlier review stays as it was, and it can't be reviewed again.
-    const standing = (await standingOf(db, [id.data])).get(id.data)!;
-    if (standing.state === "quarantined") return res.status(409).json({ error: `This finding's transcript was re-read with a corrected parser (${standing.reason}). It is kept for audit and can't be reviewed; revalidate it by analysing the corrected transcript again.`, standing });
+    // epochs: the evidence versions of the finding's depositions when the reviewer opened it (findingDetail).
+    const body = z.object({ decision: z.enum(["confirmed", "needs_context", "dismissed"]).nullable(), note: z.string().trim().max(5000).optional(), epochs: z.record(z.string().regex(/^\d+$/), z.number().int().nonnegative()) }).safeParse(req.body ?? {});
+    if (!id.success || !body.success) return res.status(400).json({ error: "Invalid review decision: it needs the decision and the evidence versions the finding was opened at." });
+    const { decision, note, epochs } = body.data;
+    const [sides] = await db.select({ a: candidates.depositionA, b: candidates.depositionB }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(findings.id, id.data));
+    if (!sides) return res.status(404).json({ error: "Finding not found." });
+    if (Object.keys(epochs).sort().join() !== [...new Set([String(sides.a), String(sides.b)])].sort().join()) return res.status(400).json({ error: "The evidence versions sent are not those of this finding's depositions." });
     const changes = decision === null ? { reviewState: "unreviewed", reviewNote: null, reviewedAt: null } : { reviewState: decision, reviewNote: note || null, reviewedAt: new Date() };
-    const [row] = await db.update(findings).set(changes).where(eq(findings.id, id.data)).returning({ reviewState: findings.reviewState, reviewNote: findings.reviewNote, reviewedAt: findings.reviewedAt }).catch((e) => {
-      if (isEvidenceOnHold(e)) return [{ held: true as const }];
+    type Outcome = { review: { reviewState: string; reviewNote: string | null; reviewedAt: Date | null } } | { refused: number; error: string; standing?: Standing };
+    // Saved only against the versions the reviewer saw: the guard checks them in the same statement (VE002 if a
+    // correction committed since). The quarantine is checked after the write, inside the same transaction, so a
+    // quarantine committed meanwhile can't be missed.
+    const outcome: Outcome = await fencedTransaction(db, epochs, async (tx) => {
+      const [row] = await tx.update(findings).set(changes).where(eq(findings.id, id.data)).returning({ reviewState: findings.reviewState, reviewNote: findings.reviewNote, reviewedAt: findings.reviewedAt });
+      const standing = (await standingOf(tx, [id.data])).get(id.data)!;
+      if (standing.state === "quarantined") throw Object.assign(new Error("quarantined"), { standing });
+      return { review: row };
+    }).catch((e: unknown): Outcome => {
+      const standing = (e as { standing?: Standing }).standing;
+      if (standing && standing.state === "quarantined") return { refused: 409, standing, error: `This finding's transcript was re-read with a corrected parser (${standing.reason}). It is kept for audit and can't be reviewed; revalidate it by analysing the corrected transcript again.` };
+      if (isStaleEvidence(e)) return { refused: 409, error: "This finding's transcript was corrected after you opened it, so your review wasn't saved. It is shown again as it stands now; review it again." };
+      if (isEvidenceOnHold(e)) return { refused: 409, error: "This finding's transcript is being corrected right now, so your review wasn't saved. Try again in a moment." };
       throw e;
     });
-    if (row && "held" in row) return res.status(409).json({ error: "This finding's transcript is being corrected right now. Try again in a moment.", standing });
-    if (!row) return res.status(404).json({ error: "Finding not found." });
-    return res.json({ review: row });
+    if ("refused" in outcome) return res.status(outcome.refused).json({ error: outcome.error, ...(outcome.standing ? { standing: outcome.standing } : {}) });
+    return res.json(outcome);
   });
 
   router.get("/findings/:id", async (req, res) => {

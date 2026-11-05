@@ -3,6 +3,7 @@
 // set, so the adjudication CLI and tests run them like any stored candidate. Re-running returns the
 // stored candidates instead of adding more.
 
+import { captureEpochs, fencedTransaction } from "../evidence/epoch";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "../db/client";
@@ -50,6 +51,7 @@ export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_
   const existing = await db.select({ id: candidates.id, evidence: candidates.evidence }).from(candidates).where(eq(candidates.candidateSet, suite.set));
   if (existing.length > 0) return new Map(existing.map((c) => [(c.evidence as { fixture: string }[])[0].fixture, c.id]));
   const { witnessId, depositionIds } = await storeSessions(db, suite);
+  const epochs = await captureEpochs(db, depositionIds); // before reading the exchanges the candidates name
 
   const find = async (depositionId: number, phrase: string) => {
     const rows = await db.select().from(exchanges).where(eq(exchanges.depositionId, depositionId));
@@ -61,7 +63,7 @@ export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_
   for (const [i, c] of suite.cases.entries()) {
     const a = await find(depositionIds[0], c.questionA);
     const b = await find(depositionIds[1], c.questionB);
-    const [row] = await db
+    const [row] = await fencedTransaction(db, epochs, (tx) => tx
       .insert(candidates)
       .values({
         candidateSet: suite.set,
@@ -77,7 +79,7 @@ export async function storeSynthetic(db: Database, suite: SyntheticSuite = WEBB_
         mergedRank: i + 1,
         evidence: [{ path: "fixture", fixture: c.id }],
       })
-      .returning({ id: candidates.id });
+      .returning({ id: candidates.id }));
     ids.set(c.id, row.id);
   }
   return ids;

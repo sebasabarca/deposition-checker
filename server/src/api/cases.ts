@@ -19,10 +19,13 @@ async function defaultOrg(db: Database): Promise<number> {
   return created.id;
 }
 
+// A current finding: none that an applied evidence migration quarantined (evidence/correction.ts) is counted.
+const CURRENT = sql`not exists (select 1 from evidence_quarantine q join evidence_migrations m on m.id = q.migration_id where q.kind = 'finding' and q.row_id = f.id and m.status = 'applied')`;
+
 // A finding needing a decision: not yet decided, and neither compatible nor unverified. Only each pair's
 // latest report counts, so checking a pair again doesn't count its findings twice.
 const NEEDS_REVIEW = sql`
-  f.review_state = 'unreviewed' and f.type <> 'false_positive' and f.evidence_status not in ('wrong_reference', 'unsupported')
+  f.review_state = 'unreviewed' and ${CURRENT} and f.type <> 'false_positive' and f.evidence_status not in ('wrong_reference', 'unsupported')
   and coalesce(f.unscored_reason, '') <> 'attribution_failed'
   and k.job_id = (select max(b.id) from analyses b where b.deposition_a = a.deposition_a and b.deposition_b = a.deposition_b)`;
 
@@ -36,7 +39,7 @@ export async function caseSummaries(db: Database, orgId?: number) {
       (select count(*)::int from analyses a where a.case_id = c.id) as reports,
       -- Findings of the case's latest analysis: summing every analysis would count a re-run twice.
       (select count(*)::int from findings f join candidates k on k.id = f.candidate_id
-        where k.job_id = (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1)) as findings,
+        where k.job_id = (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1) and ${CURRENT}) as findings,
       (select count(*)::int from findings f join candidates k on k.id = f.candidate_id join analyses a on a.id = k.job_id where a.case_id = c.id and ${NEEDS_REVIEW}) as needs_review,
       (select count(*)::int from analyses a where a.case_id = c.id and a.status in ('queued', 'parsing', 'retrieving', 'adjudicating')) as checking,
       greatest(c.created_at, (select max(a.updated_at) from analyses a where a.case_id = c.id), (select max(d.created_at) from depositions d where d.case_id = c.id)) as last_activity,

@@ -270,14 +270,29 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const open = (await call("GET", `/analyses/${view.id}/findings`)).body.groups.flatMap((g: { findings: { id: number; group: string }[] }) => g.findings).find((f: { group: string }) => f.group === "contradictions");
     const needed = (await call("GET", "/cases")).body.cases[0].needsReview;
     expect(needed).toBeGreaterThan(0);
-    expect((await call("PATCH", `/findings/${open.id}/review`, { decision: "bad" })).status).toBe(400);
-    expect((await call("PATCH", "/findings/999999/review", { decision: "dismissed" })).status).toBe(404);
-    const saved = await call("PATCH", `/findings/${open.id}/review`, { decision: "dismissed", note: "Not material" });
+    // A review is saved only against the evidence versions the finding was opened at.
+    const epochs = (await call("GET", `/findings/${open.id}`)).body.finding.evidenceEpochs as Record<string, number>;
+    expect((await call("PATCH", `/findings/${open.id}/review`, { decision: "bad", epochs })).status).toBe(400);
+    expect((await call("PATCH", `/findings/${open.id}/review`, { decision: "dismissed" })).status).toBe(400); // no versions
+    expect((await call("PATCH", `/findings/${open.id}/review`, { decision: "dismissed", epochs: { "999999": 0 } })).status).toBe(400); // another finding's
+    expect((await call("PATCH", "/findings/999999/review", { decision: "dismissed", epochs: {} })).status).toBe(404);
+    const saved = await call("PATCH", `/findings/${open.id}/review`, { decision: "dismissed", note: "Not material", epochs });
     expect(saved.body.review).toMatchObject({ reviewState: "dismissed", reviewNote: "Not material" });
     expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "dismissed", reviewNote: "Not material" });
     expect((await call("GET", "/cases")).body.cases[0].needsReview).toBe(needed - 1);
-    await call("PATCH", `/findings/${open.id}/review`, { decision: null });
+    await call("PATCH", `/findings/${open.id}/review`, { decision: null, epochs });
     expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "unreviewed", reviewNote: null, reviewedAt: null });
+    // The transcript is corrected after the reviewer opened the finding (a correction moves the epoch): the save
+    // is refused with a 409, nothing changes, and the finding opened again saves normally.
+    const dep = Number(Object.keys(epochs)[0]);
+    await db.update(depositions).set({ evidenceEpoch: epochs[String(dep)] + 1 }).where(eq(depositions.id, dep));
+    const stale = await call("PATCH", `/findings/${open.id}/review`, { decision: "confirmed", note: "late", epochs });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error).toMatch(/corrected after you opened it/);
+    expect((await call("GET", `/findings/${open.id}`)).body.finding).toMatchObject({ reviewState: "unreviewed", reviewNote: null });
+    const fresh = (await call("GET", `/findings/${open.id}`)).body.finding.evidenceEpochs;
+    expect(fresh[String(dep)]).toBe(epochs[String(dep)] + 1);
+    expect((await call("PATCH", `/findings/${open.id}/review`, { decision: "confirmed", epochs: fresh })).status).toBe(200);
   });
 
   it("downloads the kept findings as a PDF, for one analysis or the whole case", async () => {
@@ -288,7 +303,7 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const id = started.body.analysis.id;
     await until(() => call("GET", `/analyses/${id}`), (r) => r.body.analysis.status === "completed");
     const [f] = (await call("GET", `/analyses/${id}/findings`)).body.groups.flatMap((g: { findings: { id: number }[] }) => g.findings);
-    await call("PATCH", `/findings/${f.id}/review`, { decision: "confirmed", note: "Ask about the date" });
+    await call("PATCH", `/findings/${f.id}/review`, { decision: "confirmed", note: "Ask about the date", epochs: (await call("GET", `/findings/${f.id}`)).body.finding.evidenceEpochs });
 
     const data = await reportData(db, caseId, [id], false);
     expect(data).toMatchObject({ kept: 1, entries: [expect.objectContaining({ id: f.id, reviewNote: "Ask about the date" })] });
