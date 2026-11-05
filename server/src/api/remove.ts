@@ -9,7 +9,7 @@ import path from "node:path";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { withTransaction, type Database } from "../db/client";
-import { adjudicationRequests, analyses, candidates, caseRuns, cases, depositions, exchanges, findings, lines, screeningEntries, screeningRuns, witnesses } from "../db/schema";
+import { adjudicationRequests, analyses, candidates, caseRunBatches, caseRuns, cases, depositionSessions, depositions, exchanges, findings, lines, screeningEntries, screeningRuns, witnesses } from "../db/schema";
 import { UPLOADS_DIR } from "../ingest";
 
 const ACTIVE = ["queued", "parsing", "retrieving", "adjudicating"] as const;
@@ -54,6 +54,9 @@ export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analys
   // A witness left with no session and no analysis goes too, so it stops being offered for uploads.
   const witnessIds = [...new Set(rows.map((r) => r.witnessId))];
   if (witnessIds.length) {
+    // Sessions with no file first: a re-read of a file can leave an empty one behind (the database's default-session
+    // trigger fires on an insert that becomes an update), and it would keep its witness from being deleted.
+    await tx.delete(depositionSessions).where(and(inArray(depositionSessions.witnessId, witnessIds), sql`not exists (select 1 from depositions d where d.session_id = ${depositionSessions.id})`));
     await tx.delete(witnesses).where(and(
       inArray(witnesses.id, witnessIds),
       sql`not exists (select 1 from depositions d where d.witness_id = ${witnesses.id})`,
@@ -107,16 +110,19 @@ export async function deleteCase(db: Database, pool: Pool, id: number, uploadsDi
     // Whole-case runs: their ledger, requests and rows (their candidates went with the depositions).
     const runIds = (await tx.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, id))).map((r) => r.id);
     if (runIds.length) {
-      const ledgers = (await tx.select({ id: screeningRuns.id }).from(screeningRuns).where(inArray(screeningRuns.caseRunId, runIds))).map((r) => r.id);
-      if (ledgers.length) {
-        await tx.delete(screeningEntries).where(inArray(screeningEntries.runId, ledgers));
-        await tx.delete(screeningRuns).where(inArray(screeningRuns.id, ledgers));
-      }
       await tx.delete(candidates).where(inArray(candidates.candidateSet, runIds.map((r) => `case-run-${r}`)));
       await tx.delete(adjudicationRequests).where(inArray(adjudicationRequests.candidateSet, runIds.map((r) => `case-run-${r}`)));
-      await tx.delete(caseRuns).where(inArray(caseRuns.id, runIds));
+      await tx.delete(caseRunBatches).where(inArray(caseRunBatches.caseRunId, runIds)); // economy runs' provider batches
     }
+    // Screening ledgers: a case run's, and any other kept for the case.
+    const ledgers = (await tx.select({ id: screeningRuns.id }).from(screeningRuns).where(runIds.length ? or(eq(screeningRuns.caseId, id), inArray(screeningRuns.caseRunId, runIds)) : eq(screeningRuns.caseId, id))).map((r) => r.id);
+    if (ledgers.length) {
+      await tx.delete(screeningEntries).where(inArray(screeningEntries.runId, ledgers));
+      await tx.delete(screeningRuns).where(inArray(screeningRuns.id, ledgers));
+    }
+    if (runIds.length) await tx.delete(caseRuns).where(inArray(caseRuns.id, runIds));
     await tx.delete(findings).where(eq(findings.caseId, id));
+    await tx.delete(depositionSessions).where(eq(depositionSessions.caseId, id)); // its files are all gone by now
     await tx.delete(witnesses).where(eq(witnesses.caseId, id));
     await tx.delete(cases).where(eq(cases.id, id));
     return { kind: "done", depositions: ids.length, ...removed };

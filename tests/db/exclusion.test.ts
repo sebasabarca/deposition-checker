@@ -10,9 +10,9 @@ import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { analysisRoutes } from "../../server/src/api";
-import { deleteDeposition } from "../../server/src/api/remove";
+import { deleteCase, deleteDeposition } from "../../server/src/api/remove";
 import type { Database } from "../../server/src/db/client";
-import { cases, depositions, exchanges, orgs, witnesses } from "../../server/src/db/schema";
+import { cases, depositionSessions, depositions, exchanges, orgs, witnesses } from "../../server/src/db/schema";
 import { evidenceCoverage, excludeDocument, getEvidence, parserAudit, searchEvidence } from "../../server/src/evidence";
 import { readDeposition, saveDeposition } from "../../server/src/ingest";
 import { storeUpload } from "../../server/src/ingest/uploads";
@@ -110,6 +110,18 @@ describe.skipIf(!TEST_DATABASE_URL)("excluded copies (Postgres, synthetic archiv
     expect(await start.json()).toMatchObject({ code: "deposition_excluded", error: expect.stringContaining(`Deposition ${legacy}`) });
     const estimate = await fetch(`${api.url}/api/cases/${caseId}/estimate?a=${active}&b=${legacy}`);
     expect(estimate.status).toBe(409);
+  });
+
+  it("deletes a case whose files were re-read, though a re-read leaves an empty session behind", async () => {
+    const [{ witnessId }] = await db.select({ witnessId: depositions.witnessId }).from(depositions).where(eq(depositions.id, active));
+    await store(statements("harbour crane"), witnessId); // the same file read again: an insert that becomes an update
+    const sessions = await db.select({ id: depositionSessions.id }).from(depositionSessions).where(eq(depositionSessions.caseId, caseId));
+    const used = new Set((await db.select({ s: depositions.sessionId }).from(depositions).where(eq(depositions.caseId, caseId))).map((d) => d.s));
+    expect(sessions.some((x) => !used.has(x.id))).toBe(true); // the leftover the delete used to trip on
+    expect(await deleteCase(db, pool, caseId, uploads)).toMatchObject({ outcome: "deleted", depositions: 3 });
+    expect(await db.$count(cases, eq(cases.id, caseId))).toBe(0);
+    expect(await db.$count(depositionSessions, eq(depositionSessions.caseId, caseId))).toBe(0);
+    expect(await db.$count(witnesses, eq(witnesses.caseId, caseId))).toBe(0);
   });
 
   it("makes the duplicate the copy that counts when the active copy is deleted", async () => {
