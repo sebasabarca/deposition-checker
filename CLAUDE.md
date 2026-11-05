@@ -89,7 +89,7 @@ Read both `SKILL.md` files before writing frontend code, and follow them. They l
 - Validate external data with zod at every boundary.
 - Prefer clear, maintainable code over unnecessary abstractions.
 - Don't add dependencies without explaining why they are needed.
-- `client/src/types.ts` hand-duplicates the server's response types, so update both when the API shape changes. Client tests (`tests/client/`) run under vitest but are excluded from the root typecheck; `npm run build --prefix client` checks them.
+- `client/src/types.ts` hand-duplicates the server's response types, so update both when the API shape changes. Client tests (`tests/client/`) run under vitest and `npm run typecheck` checks them too (`tests/client/tsconfig.json`, the client's compiler settings).
 - Keep the scoring constants in `README.md` in sync with the code.
 
 ## Agents (Claude Code only)

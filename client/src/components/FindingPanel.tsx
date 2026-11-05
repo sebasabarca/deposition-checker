@@ -13,7 +13,8 @@ import { StandingNotice } from "./FindingRegister";
 import { href } from "../lib/router";
 import type { FindingDetail, ReviewDecision } from "../types";
 
-export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; analysisId: number; next?: number; onDecided: (id: number, state: string) => void }) {
+// onStale: the server refused a review because the finding changed under it (HTTP 409); the page reloads it.
+export function FindingPanel({ id, analysisId, next, onDecided, onStale }: { id: number; analysisId: number; next?: number; onDecided: (id: number, state: string) => void; onStale?: (message: string) => void }) {
   const [f, setF] = useState<FindingDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -64,7 +65,7 @@ export function FindingPanel({ id, analysisId, next, onDecided }: { id: number; 
           <ModelAssessment f={f} />
           {f.direct && <p className="px-1 text-xs text-faint">{modelCalledIt(f.source.modelName, f.direct.modelClassification)} {f.group !== "compatible" && evidenceStrength(f)}.</p>}
         </div>
-        <Decision key={f.id} f={f} analysisId={analysisId} next={next} onDecided={onDecided} />
+        <Decision key={f.id} f={f} analysisId={analysisId} next={next} onDecided={onDecided} onStale={onStale} />
       </div>
 
       <details className="group rounded-lg border border-line bg-sheet">
@@ -115,7 +116,7 @@ const OPTIONS: { d: ReviewDecision; label: string; icon: typeof X; on: string }[
   { d: "dismissed", label: "Dismiss", icon: X, on: "bg-muted text-white ring-muted" },
 ];
 
-function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analysisId: number; next?: number; onDecided: (id: number, state: string) => void }) {
+function Decision({ f, analysisId, next, onDecided, onStale }: { f: FindingDetail; analysisId: number; next?: number; onDecided: (id: number, state: string) => void; onStale?: (message: string) => void }) {
   const [state, setState] = useState(decisionOf(f.reviewState));
   const [at, setAt] = useState(f.reviewedAt);
   const [note, setNote] = useState(reviewLock(f) ? "" : (f.reviewNote ?? "")); // a set-aside finding's old note is in its notice
@@ -134,7 +135,10 @@ function Decision({ f, analysisId, next, onDecided }: { f: FindingDetail; analys
     } catch (e) {
       const failure = reviewFailure(e);
       setError(failure.message);
-      if (failure.locked) setLock("This finding can no longer be reviewed. Reload the analysis to see where it stands.");
+      if (failure.locked) {
+        setLock("This finding can no longer be reviewed as it was. Showing where it stands now.");
+        onStale?.(failure.message);
+      }
     } finally {
       setBusy(false);
     }

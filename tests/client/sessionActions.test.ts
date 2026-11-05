@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { analysesOf, dateAction, moveTargets } from "../../client/src/components/sessionActions";
 
-const found = (date: string) => ({ date, ref: "1:5" });
+const found = (date: string) => ({ date, ref: "1:5", text: `Taken on ${date}` });
 
 describe("dateAction", () => {
   it("asks for a missing date, with or without one in the transcript", () => {

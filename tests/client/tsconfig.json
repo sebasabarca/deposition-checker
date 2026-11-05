@@ -1,0 +1,13 @@
+{
+  // The client tests, typechecked as the client is (bundler resolution, DOM, JSX): `npm run typecheck` runs it.
+  // They import client/src, and a few the server's pure modules they keep in step with.
+  "extends": "../../client/tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": null,
+    "types": ["vite/client", "node"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "erasableSyntaxOnly": false // server modules some tests import use parameter properties; the root typecheck covers them
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "../../client/src"]
+}

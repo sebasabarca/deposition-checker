@@ -999,57 +999,180 @@ The packet contract (`server/src/adjudicate/packetSchema.ts`, `packetPrompt.ts`)
 
 ## Implementation note: safe evidence correction (November 5, on `feature/safe-evidence-correction`, needs approval)
 
-Not merged. It changes what the model sees and adds a schema migration, so it needs approval before it is merged
-or run on working data. Procedure: `docs/evidence-correction.md`.
+Not merged. It changes what the model sees and adds migration 0039, so it needs approval before it is merged or
+run on working data. Operator procedure: `docs/evidence-correction.md`.
 
-**Parser revision 12 (segments-v2).**
-- **The rule:** a bare "Q" after a sentence's end inside an archive statement starts the examiner's turn
-  ("A: Cocaine, no. Q You've never…").
-- **What it fixes:** the question no longer stays inside the previous answer's exchange, and the next answer no
-  longer attaches to the wrong question.
-- **What it doesn't split:** a bare "A", because "A" is an English word.
-- **Measured effect:** across the stored corpus it changes exactly 11 statements, in Simpson day 2, Simpson
-  day 9 and Resnick day 9 (`tests/fixtures/segments-v2-confirmed.json`). PDF reads are byte-identical.
+### Parser revision 12 (segments-v2)
 
-**Packet rendering spans-v1 (model input).**
-- A statement shared by two exchanges is shown to each exchange as only the turns it owns: a slice of the
-  stored text, marked "(part 2 of 2)" on its page:line.
-- No wording of the prompt changed, and the prompt versions stand. Each verdict's packet record says `render:
-  "spans-v1"`, so it is known which rendering a verdict saw.
+**The rule.** Archive exports sometimes run two turns into one numbered statement. Revision 9 already split
+labelled turns ("Q:", "A.", "MR. BAKER:"). Revision 12 adds one rule in `server/src/ingest/segments.ts`: a bare
+"Q" starts the examiner's turn when it:
+- follows a sentence's end;
+- sits outside quotes and parentheses;
+- is followed by a capitalized word.
 
-**Correction (`server/src/evidence/correction.ts`).** Correcting a stored document wraps the existing in-place
-correction. It adds:
-- integrity checks before and after: fact units, facts, screening entries, candidate group numbers;
-- a gate that only the expected lines change;
-- facts on a replaced exchange kept, detached and stale, instead of deleted by the foreign key;
-- screening entries on a replaced exchange block the correction;
-- fact units re-keyed by verified source identity: `syncUnits` now updates group numbers when a unit's source is
-  unchanged;
-- a dry run that is the whole correction rolled back, and execution only with its plan hash;
-- a ledger (`evidence_migrations`), a backup, and an exact rollback.
+Example: "A: Cocaine, no. Q You've never…".
 
-**Quarantine (`evidence_quarantine`).**
-- **What is quarantined:** findings, verdicts and candidates whose evidence a correction changed, or that sit on a
-  superseded source (`scripts/evidence.ts quarantine`).
-- **What is kept:** the rows and a person's review are never changed; the quarantine keeps the review as it was.
-- **What a quarantined finding is:**
-  - It sits in its own "Needs revalidation" group, out of every review queue, count of decisions, report and
-    replay.
-  - Its earlier review is shown in the past tense.
-  - It can't be reviewed again (HTTP 409).
-- **Revalidation** is a new analysis of the corrected transcript.
+**What isn't split.** A bare "A" never splits, because it is also an English word ("Yes. A man came in"). Those
+statements stay one turn.
 
-**Worker coordination (migration 0039).**
-- **The hold:** while a correction holds a deposition (`depositions.evidence_hold`), the database refuses every
-  write to its lines, exchanges and derived rows, and to the deposition row itself, except the holder's
-  (SQLSTATE VE001).
-- **Lock order:** the guard takes the same key-share lock as a foreign-key check, so a correction waits for
-  writers already running, and writers that arrive during it wait and are then refused.
-- **When a hold is allowed:** only while no analysis or case run of the case is unfinished.
-- **Workers during a hold:**
-  - analysis and case-run jobs wait;
-  - ingestion retries;
-  - fact extraction refuses;
-  - an extraction reading whose source changed while the model read it is not saved.
-- **Releasing:** the hold is released only after the correction commits; a crash leaves it for an explicit
-  `release`.
+**Measured effect.** Checked statement by statement against revision 11:
+- exactly 11 statements change, in Simpson day 2, Simpson day 9 and Resnick day 9
+  (`tests/fixtures/segments-v2-confirmed.json`);
+- every other archive transcript, and every PDF, reads byte-identically apart from the version.
+
+**What doesn't change.** Text is never edited. A segment is a character range of the stored statement, so its
+page:line, offsets and order are the source's. Exchanges are built from segments, so the question is now the
+next exchange's question and its answer is attached to it.
+
+### Packet rendering spans-v1 (model input)
+
+**What changed.** A statement shared by two exchanges is shown to each exchange as only the turns it owns.
+- `exchange_lines.segment_from`/`segment_to` say which turns an exchange owns.
+- The shown text is a slice of the stored text, marked on its page:line ("1:360 (part 2 of 2)").
+- A lawyer's question is therefore never shown inside the witness's answer.
+- Context lines are still whole stored lines.
+
+**Recording.** The prompts' wording is unchanged. Each verdict's packet record says `render: "spans-v1"` and the
+evidence epochs it was read at.
+
+**Limit: PDFs.** They hold no turn offsets: a PDF line is one physical line, so a statement with two turns only
+exists in archive text.
+
+### Citations, attribution and the contradiction assessment
+
+Three things are kept apart, as before:
+1. **Source citations.** The model cites lines it was shown. Code checks every quotation against the stored
+   line's text (`verify/`), never against model output.
+2. **Attribution.** Who said the cited words comes from the stored speaker of the line or segment, and from the
+   exchange's member roles (question, answer, context). Code computes the attribution levels.
+3. **The contradiction assessment.** The model's classification of the pair, scored by the rubric only on
+   verified citations.
+
+**What a parser correction changes:** attribution and exchange boundaries, never text. So:
+- A citation by line ID stays a valid quotation after a correction.
+- The attribution it was scored with, and the assessment the model made from a packet that showed the old
+  boundaries, may no longer hold.
+
+That is why a correction quarantines the verdicts and findings built on changed evidence rather than re-pointing
+them: re-pointing would silently keep an assessment made from a different reading of the testimony.
+
+### Evidence versions (`depositions.evidence_epoch`)
+
+**The counter.** `evidence_epoch` counts the committed corrections and rollbacks of a document's evidence.
+
+**How jobs use it.** A job that derives results records the epochs of the depositions it reads, before it first
+reads them:
+- an analysis or a case run keeps them in `source_epochs` across deliveries, resumes and polls;
+- a fact or card extraction keeps them for its run;
+- a packet records them when it is loaded.
+
+Every result is written through a connection that declares them (`evidence.read_epochs`, `server/src/evidence/
+epoch.ts`).
+
+**How the database checks them.** Migration 0039's guard checks the declaration in the same statement as the
+write, under the same key-share lock a correction must wait for. A write is refused (SQLSTATE `VE002`, "stale
+evidence") when:
+- a declared epoch is no longer current;
+- or the job writes for a deposition it didn't read.
+
+This holds whenever the write arrives: during the hold, after the hold is released, or days later from a polled
+batch.
+
+**What the job does then.** It stops:
+- an analysis or case run is marked failed with the reason, and stores nothing more;
+- an extraction stops, and keeps nothing from the reading.
+
+Writes that don't derive from read evidence (a person's review, the correction itself) declare nothing and aren't
+checked.
+
+### The correction hold
+
+**Holding.** Executing a correction first holds the document (`depositions.evidence_hold`), in its own
+transaction. It is refused while any analysis or case run of the case is unfinished, or the document isn't ready.
+
+**While held**, the database refuses every write to the document's lines, segments, exchanges and derived rows,
+and to the deposition row itself (no delete, no re-read), except the holder's (SQLSTATE `VE001`, HTTP 409 in the
+API). Meanwhile:
+- analysis and case-run jobs wait instead of reading;
+- ingestion retries;
+- fact extraction refuses.
+
+**The correction transaction** takes the document row `FOR UPDATE`. So it waits for writers already running, and
+writers arriving during it wait. It refuses if work older than the hold is still unfinished.
+
+**Releasing.** The correction commits with the hold still set, so a writer that waited wakes to the hold and is
+refused. Only then is the hold released. A crash in between leaves the hold for an explicit `release`, which
+checks the document is exactly as the ledger says it should be.
+
+### Derived-data invalidation (`server/src/evidence/correction.ts`)
+
+**How it runs.** The correction wraps `correctInPlace` (which keeps line and exchange IDs) in one transaction:
+- **Dry run:** the whole correction, rolled back. Executing needs its plan hash and the expected changed lines,
+  and refuses anything else.
+- **Integrity before and after:** fact-unit exchange IDs and group numbers, fact exchanges, screening entries,
+  candidate group numbers. Any broken reference, before or after, means nothing is written.
+
+**What happens to each kind of derived row:**
+- **Facts** on a replaced exchange are detached and marked `stale`, never deleted by the foreign key.
+- **Fact units** follow the corrected exchanges. `syncUnits` resets units whose source hash changed (their facts
+  become stale), removes units that no longer exist, and now also updates the group number, window and exchange
+  IDs of units whose source is unchanged. Their key and source hash prove that.
+- **Screening entries** that name a replaced exchange block the correction: they record model calls and are
+  never rewritten.
+- **Candidates, verdicts and findings** on an affected exchange are quarantined. An exchange is affected when it
+  is replaced, added, changed, or holds a statement whose speaker or exchange changed. A verdict is also
+  quarantined when its packet showed such a statement as context.
+- **Replay** never copies a quarantined verdict.
+
+**Backup and rollback.** A backup is written before commit. `rollbackCorrection` restores it and must end with
+the document hash recorded before the correction, or it changes nothing.
+
+### Quarantine and review history
+
+**Where it lives.** `evidence_quarantine` rows point at findings, verdicts and candidates. They are active while
+their migration in `evidence_migrations` is `applied`.
+
+**What is never changed.** A quarantined finding's row, and a person's review of it (state, note, time), are kept
+as they were. The quarantine row keeps the review as it was, with the parser it was made on.
+
+**How a quarantined finding is presented:**
+- **API:** standing `quarantined`, group "Needs revalidation".
+- **Counts:** never among current findings, decisions, review queues, the report or replay.
+- **Review:** an ordinary review is refused (HTTP 409).
+- **UI:** a notice says the transcript was re-read, gives the reason, and gives the earlier review in the past
+  tense ("Previously kept on …"), with its note and its testimony still shown.
+- **Recovery:** after a 409 the page reloads the finding and the list itself.
+
+**How a quarantine ends:**
+- **Revalidation** is a new analysis of the corrected transcript, and a quarantined finding is never promoted
+  back.
+- **Rolling back the correction** ends its quarantine.
+
+**Other policies**, applied with `scripts/evidence.ts quarantine`:
+- superseded parses (`legacy_parse`), sources whose text a re-read changes, and documents whose referenced
+  exchanges a correction must replace: quarantine every finding;
+- documents whose stored file is gone: can't be re-read, so they are labelled and kept.
+
+### Migration and rollback
+
+**Migration 0039 adds:**
+- `depositions.evidence_hold` and `evidence_epoch`;
+- `analyses.source_epochs` and `case_runs.source_epochs`;
+- the `evidence_migrations` and `evidence_quarantine` tables;
+- the guard functions and triggers, on 14 derived tables (insert, update, delete) and on `depositions`.
+
+It changes no existing row.
+
+**Removing it** is dropping those triggers, functions, tables and columns.
+
+**Cost** (`scripts/evidence-bench.ts`):
+- batch writes within ±3%;
+- single-row writes about 10–20% slower;
+- no lock waits measured.
+
+**Correcting, rolling back and recovering** a document follows `docs/evidence-correction.md`:
+1. a full-database snapshot (`scripts/db-snapshot.ts`);
+2. a rehearsal on a disposable copy (`scripts/evidence-rehearsal.ts`);
+3. per document: the dry run, its review, the execution, the integrity check;
+4. `rollback` or `release` when needed.

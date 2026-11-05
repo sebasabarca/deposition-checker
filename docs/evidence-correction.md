@@ -15,6 +15,9 @@ against data you may read.
 - `evidence_hold` (text): the correction or rollback that holds the document's evidence;
 - `evidence_epoch` (integer, default 0): the count of committed corrections and rollbacks.
 
+**On `analyses` and `case_runs`:** `source_epochs` (jsonb): the epoch of each deposition the job read, recorded
+before it first read them.
+
 **New tables:**
 - **`evidence_migrations`:** one row per correction, rollback or quarantine.
   - `status`: holding, applied, rolled_back or abandoned.
@@ -33,13 +36,37 @@ against data you may read.
 
 While a document is held, they refuse every write except the holder's, with SQLSTATE `VE001`. The API answers 409.
 
+A write from a job that declared the epochs it read (`evidence.read_epochs`) is refused with `VE002` once any of
+them is no longer current, at any time. That stops a result computed from evidence corrected since from being
+stored.
+
 **Rollback of the migration itself:** drop the triggers, the functions, the two tables and the two columns. No
 existing row is changed by 0039.
 
 ## Before starting
 
-1. **Take a database snapshot** (`pg_dump`). The correction's backup covers one document. The snapshot covers
-   everything.
+1. **Take a database snapshot.** The correction's backup covers one document; the snapshot covers everything.
+
+   ```
+   npx tsx scripts/db-snapshot.ts dump --db <db> --out data/raw/snapshots/<db>-<date>.dump
+   ```
+
+   - The dump is in custom format, and its SHA-256 is written beside it.
+   - `pg_dump` is used from your PATH, or else inside the Postgres container named by `PG_DOCKER_CONTAINER`.
+   - **Test the snapshot before relying on it**, by restoring it into a new disposable database. `restore` refuses
+     any database that already exists, and checks the SHA-256 first:
+
+     ```
+     npx tsx scripts/db-snapshot.ts restore --file <dump> --into <db>_rehearsal_restore
+     npx tsx scripts/db-snapshot.ts verify --a <db> --b <db>_rehearsal_restore
+     ```
+
+     `verify` must report:
+     - no table differing;
+     - the guard triggers present;
+     - every constraint valid;
+     - the same ledger, epochs, quarantine and reviews;
+     - no broken reference.
 2. **Stop analyses and case runs on the case, or let them finish.** A hold is refused while any is unfinished.
    - Fact extraction is a command-line tool: don't run it on the case meanwhile.
    - It refuses held documents anyway, and discards a reading whose source changed while the model read it.
@@ -94,7 +121,24 @@ npx tsx scripts/evidence.ts rollback --migration <correction id>
 - **Known difference:** identity sequences stay advanced, so a later re-correction gives the added exchanges new
   row IDs. The content is identical.
 
-## Recovering from a crash
+## Recovering from an interruption
+
+Where the interruption happens decides the recovery.
+
+- **Before the hold** (during the dry run, or while taking the hold): nothing was written. Run the dry run again.
+- **During the correction transaction:** Postgres rolls the whole transaction back. The tool then releases the
+  hold itself, after checking the document is exactly as before, and the ledger marks the hold `abandoned`. If
+  the process died instead, the hold remains: see below.
+- **After the commit, before the release** (the process died between them): the correction is complete and in the
+  ledger as `applied`; only the hold remains. `release` checks the document is exactly what the correction left,
+  then releases it.
+- **After the release:** nothing to recover. Jobs that read the old evidence are refused when they write (`VE002`)
+  and stop with the reason; start them again.
+- **Database lost or damaged:** restore the snapshot into a new database, verify it, and point the app at it. Never
+  restore over the working database. Jobs recorded in the snapshot resume from their rows. Those that read
+  evidence a later correction changed are refused when they write, as above.
+
+### A hold left by a crash
 
 If the process stops between holding and committing, the document stays held. Workers wait, and writes are
 refused with `VE001`. Release it:

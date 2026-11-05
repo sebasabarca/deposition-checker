@@ -17,7 +17,7 @@
     "test:fast": "vitest run --project unit --changed --passWithNoTests",
     "test:integration": "vitest run --project integration --changed --passWithNoTests",
     "test:full": "vitest run",
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tests/client",
     "db:up": "docker compose up -d --wait db",
     "db:down": "docker compose down",
     "db:generate": "drizzle-kit generate",

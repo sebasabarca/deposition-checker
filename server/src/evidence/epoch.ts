@@ -36,9 +36,9 @@ export async function captureEpochs(db: Database, ids: readonly number[]): Promi
 export async function withEvidenceFence<T>(db: Database, epochs: Epochs, fn: (fenced: Database) => Promise<T>): Promise<T> {
   const base = (db as unknown as { $client: pg.Pool }).$client;
   if (!(base instanceof pg.Pool)) throw new Error("withEvidenceFence needs a pool-backed database, not a transaction.");
-  const pool = new pg.Pool({ ...base.options, max: 4 });
-  const declared = JSON.stringify(epochs);
-  pool.on("connect", (client) => { client.query("select set_config('evidence.read_epochs', $1, false)", [declared]).catch(() => undefined); });
+  // Set at connection start (a startup parameter), so no query on these connections ever runs without it.
+  // JSON.stringify of IDs and integers has no whitespace, which the -c option would need escaped.
+  const pool = new pg.Pool({ ...base.options, max: 4, options: `-c evidence.read_epochs=${JSON.stringify(epochs)}` });
   try {
     return await fn(drizzle(pool, { schema }) as unknown as Database);
   } finally {

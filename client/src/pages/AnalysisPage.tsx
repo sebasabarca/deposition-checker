@@ -33,10 +33,18 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   usePoll(active, 3000, load);
   const total = analysis?.findings.total;
   const caseId = analysis?.caseId;
+  // Bumped when a review was refused because a finding changed under it (409): the list and the open finding reload.
+  const [version, setVersion] = useState(0);
+  const [staleNote, setStaleNote] = useState<string | null>(null);
   useEffect(() => {
     if (total === undefined) return;
     api.findings(id).then(setGroups).catch((e: Error) => setError(e.message));
-  }, [id, total]);
+  }, [id, total, version]);
+  const onStale = useCallback((message: string) => {
+    setStaleNote(message);
+    load();
+    setVersion((v) => v + 1);
+  }, [load]);
   useEffect(() => {
     if (caseId === undefined) return;
     api.case(caseId).then(setCaseDetail).catch(() => undefined);
@@ -48,6 +56,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   const group = open?.group ?? chosenGroup ?? GROUPS.find((g) => findings.some((f) => f.group === g)) ?? "contradictions";
   const inGroup = findings.filter((f) => f.group === group);
   const shownId = open?.id ?? (findingId === null ? (inGroup[0]?.id ?? null) : findingId);
+  useEffect(() => setStaleNote(null), [shownId]); // the note is about the finding it was refused on
   const next = inGroup[inGroup.findIndex((f) => f.id === shownId) + 1]?.id;
   const chooseGroup = (g: FindingGroup) => {
     setChosenGroup(g);
@@ -119,7 +128,10 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
         <div>
           <FindingBar findings={findings} analysisId={id} selected={shownId} group={group} onGroup={chooseGroup} onHelp={() => setGuiding(true)} />
           {shownId !== null ? (
-            <FindingPanel key={shownId} id={shownId} analysisId={id} next={next} onDecided={onDecided} />
+            <>
+              {staleNote && <p role="status" className="mb-3 rounded-lg border border-line bg-sheet px-4 py-3 text-sm text-muted">{staleNote}</p>}
+              <FindingPanel key={`${shownId}-${version}`} id={shownId} analysisId={id} next={next} onDecided={onDecided} onStale={onStale} />
+            </>
           ) : (
             <p className="rounded-lg border border-dashed border-control px-6 py-16 text-center text-sm text-muted">{GROUP_LABEL[group]}: {EMPTY[group]}</p>
           )}
