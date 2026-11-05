@@ -2,7 +2,7 @@
 // reviewed, the spending limit a person must type, and when a new run may start.
 
 import { describe, expect, it } from "vitest";
-import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate } from "../../client/src/lib/caseRuns";
+import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS } from "../../client/src/lib/caseRuns";
 import { MAX_CASE_RUN_BUDGET_USD as SERVER_MAX } from "../../server/src/api/caseRuns";
 import { findingGroup } from "../../server/src/api/present";
 import type { CaseRun, CaseRunEstimate } from "../../client/src/types";
@@ -59,6 +59,12 @@ describe("starting a whole-case run", () => {
     expect(canStartRun(null, 2)).toBeNull();
     for (const s of ["queued", "retrieving", "awaiting_confirmation", "adjudicating"] as const) expect(canStartRun(run(s), 4)).toMatch(/still running/);
     for (const s of ["completed", "incomplete", "blocked_budget", "cancelled", "failed"] as const) expect(canStartRun(run(s), 4)).toBeNull();
+  });
+  it("an economy run settling its costs after a correction doesn't block a new run, can't be resumed, and keeps refreshing", () => {
+    expect(canStartRun(run("reconciling"), 4)).toBeNull();
+    expect(RESUMABLE_RUN).not.toContain("reconciling");
+    expect(MOVING_RUN).toContain("reconciling");
+    expect(RUN_STATUS.reconciling.label).toMatch(/corrected/);
   });
 });
 

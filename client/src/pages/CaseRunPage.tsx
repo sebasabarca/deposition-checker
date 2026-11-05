@@ -81,7 +81,7 @@ export function CaseRunPage({ id }: { id: number }) {
         </div>
         {list.length === 0 ? (
           <p className="px-5 py-6 text-sm text-muted">
-            {findings.length === 0 ? (MOVING_RUN.includes(run.status) ? "No findings yet. This page updates as packets are read." : "This run has no findings.") : "No findings in this lane."}
+            {findings.length === 0 ? (MOVING_RUN.includes(run.status) && run.status !== "reconciling" ? "No findings yet. This page updates as packets are read." : "This run has no findings.") : "No findings in this lane."}
           </p>
         ) : (
           <div className="divide-y divide-rule">

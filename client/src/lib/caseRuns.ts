@@ -11,7 +11,8 @@ export const MAX_CASE_RUN_BUDGET_USD = 250;
 export const ACTIVE_RUN: CaseRunStatus[] = ["queued", "retrieving", "awaiting_confirmation", "adjudicating"];
 export const RESUMABLE_RUN: CaseRunStatus[] = ["incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted"];
 // Statuses during which the run changes on its own: the page polls these.
-export const MOVING_RUN: CaseRunStatus[] = ["queued", "retrieving", "adjudicating"];
+// Statuses that change without anyone acting, so the page refreshes: `reconciling` ends in `failed` by itself.
+export const MOVING_RUN: CaseRunStatus[] = ["queued", "retrieving", "adjudicating", "reconciling"];
 
 export const RUN_STATUS: Record<CaseRunStatus, { label: string; tone: Tone }> = {
   queued: { label: "Queued", tone: "active" },
