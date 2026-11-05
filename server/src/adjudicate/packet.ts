@@ -6,6 +6,7 @@
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { candidates, depositions, exchangeLines, exchanges, lines, lineSegments, witnesses } from "../db/schema";
+import { captureEpochs, type Epochs } from "../evidence/epoch";
 import type { EvidenceExchange, EvidenceLine } from "../verify";
 
 export const CONTEXT_LINES = 5;
@@ -32,7 +33,9 @@ export type PacketExchange = {
   gapBefore: boolean;
   gapAfter: boolean;
 };
-export type Packet = { candidateId: number; witnessId: number; witnessName: string; a: PacketExchange; b: PacketExchange };
+// epochs: each deposition's evidence_epoch when the packet was read (evidence/epoch.ts); a verdict on it is stored
+// only while they are current.
+export type Packet = { candidateId: number; witnessId: number; witnessName: string; a: PacketExchange; b: PacketExchange; epochs?: Epochs };
 
 export const exchangeIdOf = (firstPartId: number) => `E${firstPartId}`;
 
@@ -69,6 +72,7 @@ export const packetRecord = (p: Packet) => ({
   witnessId: p.witnessId,
   contextLines: CONTEXT_LINES,
   render: PACKET_RENDER,
+  ...(p.epochs ? { epochs: p.epochs } : {}),
   sides: [p.a, p.b].map((x) => ({
     id: x.id,
     session: x.session,
@@ -169,6 +173,7 @@ export async function loadPacket(db: Database, candidateId: number): Promise<Pac
   const [c] = await db.select().from(candidates).where(eq(candidates.id, candidateId));
   if (!c) throw new Error(`No candidate ${candidateId}.`);
   const [w] = await db.select({ name: witnesses.name }).from(witnesses).where(eq(witnesses.id, c.witnessId));
+  const epochs = await captureEpochs(db, [c.depositionA, c.depositionB]); // before reading the lines
   const [a, b] = await Promise.all([loadSide(db, c.depositionA, c.groupA, "A"), loadSide(db, c.depositionB, c.groupB, "B")]);
-  return { candidateId, witnessId: c.witnessId, witnessName: w.name, a, b };
+  return { candidateId, witnessId: c.witnessId, witnessName: w.name, a, b, epochs };
 }

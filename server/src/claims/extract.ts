@@ -7,6 +7,7 @@
 // deposition costs nothing and an interrupted one continues. A chunk cut off at the token limit is
 // split in two and sent again. Failure never blocks Path B, which doesn't read cards.
 
+import { captureEpochs, fencedTransaction } from "../evidence/epoch";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
@@ -88,6 +89,7 @@ export async function extractCards(db: Database, depositionId: number, model: Cl
   if (!deposition) throw new Error(`Deposition ${depositionId} doesn't exist.`);
   if (deposition.status !== "ready") throw new Error(`Deposition ${depositionId} is ${deposition.status}; only ready depositions get statement cards.`);
 
+  const epochs = await captureEpochs(db, [depositionId]); // before reading the evidence: cards are stored only while it is current
   const { eligible, procedural } = await eligibleParts(db, depositionId);
   for (let i = 0; i < eligible.length; i += 500) {
     await db.insert(cardCoverage).values(eligible.slice(i, i + 500).map((e) => ({ exchangeId: e.id, extractorVersion: CARD_EXTRACTOR_VERSION, depositionId, status: "not_processed" as const }))).onConflictDoNothing();
@@ -118,7 +120,7 @@ export async function extractCards(db: Database, depositionId: number, model: Cl
     inOrder(async () => {
       const reading = read();
       const merged = mergeCoverage(reading.coverage.map((c) => c.exchangeId), [{ coverage: reading.coverage.map((c) => coverage.get(c.exchangeId)!) }, reading]);
-      await db.transaction(async (tx) => {
+      await fencedTransaction(db, epochs, async (tx) => {
         if (reading.cards.length > 0) {
           await tx
             .insert(statementCards)

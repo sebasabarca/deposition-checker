@@ -13,6 +13,7 @@ import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, recordCal
 import type { Database } from "../../db/client";
 import { factUnits, facts } from "../../db/schema";
 import { heldDocuments } from "../../evidence/correction";
+import { captureEpochs, withEvidenceFence } from "../../evidence/epoch";
 import type { ClaimModel } from "../model";
 import { FACT_EXTRACTOR_VERSION, factsJsonSchema, MAX_UNITS_PER_BATCH } from "./contracts";
 import type { Unit } from "./context";
@@ -43,9 +44,15 @@ export async function planFacts(db: Database, documentId: number, only?: Readonl
   return { units: units.length, due: due.length, staleUnits, estimate: estimateFacts(batchUnits(due)) };
 }
 
-export async function extractFacts(db: Database, documentId: number, model: ClaimModel, { budgetId, jobId = null, concurrency = FACT_CONCURRENCY, maxBatches, only, unitsPerBatch = MAX_UNITS_PER_BATCH, shouldStop }: FactExtractOptions = {}): Promise<FactExtractResult> {
+// Every unit outcome and fact is written through a connection declaring the evidence epoch read at the start
+// (evidence/epoch.ts): if the transcript is corrected meanwhile, the database refuses the rest (stale_evidence).
+export async function extractFacts(db: Database, documentId: number, model: ClaimModel, options: FactExtractOptions = {}): Promise<FactExtractResult> {
   const [held] = await heldDocuments(db, [documentId]);
   if (held) throw new Error(`Document ${documentId}'s evidence is held by ${held.hold}; extract after the correction.`);
+  return withEvidenceFence(db, await captureEpochs(db, [documentId]), (fenced) => extractFenced(fenced, documentId, model, options));
+}
+
+async function extractFenced(db: Database, documentId: number, model: ClaimModel, { budgetId, jobId = null, concurrency = FACT_CONCURRENCY, maxBatches, only, unitsPerBatch = MAX_UNITS_PER_BATCH, shouldStop }: FactExtractOptions): Promise<FactExtractResult> {
   const { units, status, staleUnits } = await syncUnits(db, documentId);
   const due = units.filter((u) => DUE.includes(status.get(u.unitKey)!) && (!only || only.has(u.unitKey)));
   const batches = batchUnits(due, MAX_BATCH_CHARS, unitsPerBatch).slice(0, maxBatches);

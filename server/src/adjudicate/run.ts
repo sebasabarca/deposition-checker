@@ -6,6 +6,7 @@
 // A finding is stored for every valid verdict, scored or not: an unverified citation is a finding
 // with evidence status wrong_reference or unsupported and no score, never dropped.
 
+import { fencedTransaction } from "../evidence/epoch";
 import { and, eq, inArray } from "drizzle-orm";
 import { closeFailed, inputTokenBound, maxRequestCost, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
@@ -134,7 +135,8 @@ export async function storeVerdict(
   const claimsOnPacket = read.parsed ? { a: [], b: [] } : null;
   const assessed = read.parsed && claimsOnPacket ? timedSync("adjudicate.assess", () => assess(packet, read.parsed!, claimsOnPacket)) : null;
 
-  return timed("adjudicate.persist_finding", () => db.transaction(async (tx) => {
+  // Stored only while the packet's evidence is what it was read from (the database checks the epochs).
+  return timed("adjudicate.persist_finding", () => fencedTransaction(db, packet.epochs, async (tx) => {
     const [verdict] = await tx
       .insert(verdicts)
       .values({

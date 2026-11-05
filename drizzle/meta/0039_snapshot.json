@@ -1,5 +1,5 @@
 {
-  "id": "c423c250-ee97-48bd-bbb8-0e2a68a0aa16",
+  "id": "c03f6904-9350-4e50-81b1-383e8b2c0bcf",
   "prevId": "0cde2145-e52d-449c-979d-a11a6b492a9d",
   "version": "7",
   "dialect": "postgresql",
@@ -517,6 +517,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "source_epochs": {
+          "name": "source_epochs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "error": {
           "name": "error",
@@ -1864,6 +1870,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "source_epochs": {
+          "name": "source_epochs",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "error": {
           "name": "error",

@@ -41,6 +41,7 @@ import type { AdjudicatorReply } from "../adjudicate/model";
 import { BudgetExceeded, closeFailed, inputTokenBound, maxRequestCost, reconcileStale, recordCall, reserve, settle } from "../costs";
 import type { Database } from "../db/client";
 import { standingOf } from "../evidence/correction";
+import { isStaleEvidence, jobEpochs, withEvidenceFence } from "../evidence/epoch";
 import { adjudicationRequests, budgets, candidates, caseRuns, depositions, findings, llmCalls, screeningEntries, screeningRuns, verdicts, witnesses } from "../db/schema";
 import { mockPacketReply } from "../eval/mockPacketModel";
 import { buildCasePool, CASE_POOL_VERSION, type CaseItem } from "../retrieve/casePool";
@@ -185,6 +186,21 @@ export async function runCaseRun(db: Database, pool: Pool, id: number, deps: Cas
 async function runClaimed(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus | "polling"> {
   // A case whose evidence is being corrected is not read until the correction ends (evidence/correction.ts).
   if ((await db.select({ id: depositions.id }).from(depositions).where(and(eq(depositions.caseId, run.caseId), sql`${depositions.evidenceHold} is not null`))).length) return "polling";
+  // Every result is written through a connection declaring the evidence epochs this run first read
+  // (evidence/epoch.ts): a result from a transcript corrected since is refused by the database, never stored.
+  const ids = (await db.select({ id: depositions.id }).from(depositions).where(eq(depositions.caseId, run.caseId))).map((d) => d.id);
+  const epochs = await jobEpochs(db, "case_runs", run.id, run.sourceEpochs, ids);
+  try {
+    return await withEvidenceFence(db, epochs, (fenced) => runFenced(fenced, pool, run, deps));
+  } catch (e) {
+    if (!isStaleEvidence(e)) throw e;
+    await update(db, run.id, { status: "failed", error: STALE_CASE_RUN, finishedAt: new Date() });
+    return "failed";
+  }
+}
+export const STALE_CASE_RUN = "A transcript in this case was corrected after this run read it, so its remaining results were not saved. Start a new run on the corrected transcripts.";
+
+async function runFenced(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps): Promise<CaseRunStatus | "polling"> {
   let ledger = await ledgerOf(db, run.id);
   if (!ledger) {
     await update(db, run.id, { status: "retrieving", startedAt: run.startedAt ?? new Date(), finishedAt: null, error: null });

@@ -15,7 +15,7 @@ import { analysisFindings, analysisRoutes, analysisView, findingDetail } from ".
 import { reportData } from "../../server/src/api/report";
 import type { Database } from "../../server/src/db/client";
 import { analyses, candidates, cases, depositions, evidenceMigrations, exchangeLines, exchanges, factUnits, facts, findings, lines, orgs, screeningEntries, screeningRuns, verdicts, witnesses } from "../../server/src/db/schema";
-import { applyCorrection, correctInPlace, documentHash, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined, type CorrectionOptions, type Step } from "../../server/src/evidence";
+import { applyCorrection, captureEpochs, correctInPlace, isStaleEvidence, withEvidenceFence, documentHash, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined, type CorrectionOptions, type Step } from "../../server/src/evidence";
 import { readDeposition, saveDeposition } from "../../server/src/ingest";
 import { buildExchangeParts } from "../../server/src/ingest/exchanges";
 import { speakerSegments } from "../../server/src/ingest/segments";
@@ -376,5 +376,16 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
     const again = await extractFacts(db, doc, model(), { maxBatches: 1 });
     expect(again.sourceChangedUnits).toBe(0);
     expect(await attempts()).toBeGreaterThan(0);
+  });
+
+  it("a job that read before a real correction has its delayed write refused after the hold is released", async () => {
+    const o = { expect: { lines: [await ref(22)] } };
+    const epochs = await captureEpochs(db, [doc]); // the job reads
+    const dry = await planCorrection(db, doc, opts(o));
+    expect(await applyCorrection(db, doc, opts({ ...o, planHash: dry.planHash }))).toMatchObject({ outcome: "applied" });
+    expect((await holdOf()).hold).toBeNull(); // released
+    const late = withEvidenceFence(db, epochs, (f) => f.insert(facts).values({ factKey: "late", unitKey: "u", extractorVersion: "v", caseId, witnessId, depositionId: doc, exchangeId: null, sourceSpanIds: [], lineIds: [], attributionStatus: "verified", sourceVerification: "verified", status: "rejected", sourceHash: "x", raw: {} }));
+    await expect(late).rejects.toSatisfy(isStaleEvidence);
+    expect(await db.$count(facts, eq(facts.factKey, "late"))).toBe(0);
   });
 });

@@ -930,6 +930,9 @@ export const analyses = pgTable(
     // Counts as the stages finish: { candidates: { selected, deferred }, adjudicated, replayed,
     // fixture, withoutVerdict, failed, findings }. Never a percentage.
     progress: jsonb("progress").notNull().default(sql`'{}'::jsonb`),
+    // The evidence_epoch of each deposition when this job first read it (evidence/epoch.ts): every result it writes is
+    // checked against them, so a result from evidence corrected since is refused, however late it arrives.
+    sourceEpochs: jsonb("source_epochs"),
     error: text("error"),
     createdAt: createdAt(),
     startedAt: timestamp("started_at", { withTimezone: true }),
@@ -1214,6 +1217,9 @@ export const caseRuns = pgTable(
     config: jsonb("config").notNull(), // retrieval, triage and grouping settings, verifier and rubric versions
     sourceHash: text("source_hash"), // the case's evidence when retrieval ran
     progress: jsonb("progress").notNull().default(sql`'{}'::jsonb`), // counts, never a percentage
+    // The evidence_epoch of each deposition when this job first read it (evidence/epoch.ts): every result it writes is
+    // checked against them, so a result from evidence corrected since is refused, however late it arrives.
+    sourceEpochs: jsonb("source_epochs"),
     error: text("error"),
     runnerId: text("runner_id"),
     runnerSeenAt: timestamp("runner_seen_at", { withTimezone: true }),

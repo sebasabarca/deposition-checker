@@ -21,6 +21,7 @@ import { budgetStatus, reconcileStale } from "../costs";
 import type { Database } from "../db/client";
 import { analyses, candidates, depositions, findings, verdicts } from "../db/schema";
 import { heldDocuments } from "../evidence/correction";
+import { isStaleEvidence, jobEpochs, withEvidenceFence } from "../evidence/epoch";
 import { findPathB, findTopicPairs, hybridRetrievalVersion, unionCandidates, type Pool } from "../retrieve";
 import { timed, timedSync } from "../timing";
 
@@ -228,6 +229,20 @@ async function runClaimed(db: Database, a: Analysis, runnerId: string, deps: Ana
     return "failed";
   }
 
+  // Every result is written through a connection declaring the evidence epochs this analysis first read
+  // (evidence/epoch.ts): a result from a transcript corrected since is refused by the database, never stored.
+  const epochs = await jobEpochs(db, "analyses", a.id, a.sourceEpochs, [a.depositionA, a.depositionB]);
+  try {
+    return await withEvidenceFence(db, epochs, (fenced) => runFenced(fenced, a, runnerId, deps, progress));
+  } catch (e) {
+    if (!isStaleEvidence(e)) throw e;
+    await update(db, a.id, { status: "failed", error: STALE_ANALYSIS, finishedAt: new Date() });
+    return "failed";
+  }
+}
+export const STALE_ANALYSIS = "The transcript was corrected after this analysis read it, so its results were not saved. Start a new analysis of the corrected transcript.";
+
+async function runFenced(db: Database, a: Analysis, runnerId: string, deps: AnalysisDeps, progress: AnalysisProgress): Promise<RunOutcome> {
   if (a.retrieval === DIRECT_FABLE) return runDirect(db, a, deps);
 
   await update(db, a.id, { status: "retrieving", startedAt: a.startedAt ?? new Date(), error: null });

@@ -30,6 +30,8 @@ CREATE TABLE "evidence_quarantine" (
 	CONSTRAINT "evidence_quarantine_kind_check" CHECK ("evidence_quarantine"."kind" in ('finding', 'verdict', 'candidate'))
 );
 --> statement-breakpoint
+ALTER TABLE "analyses" ADD COLUMN "source_epochs" jsonb;--> statement-breakpoint
+ALTER TABLE "case_runs" ADD COLUMN "source_epochs" jsonb;--> statement-breakpoint
 ALTER TABLE "depositions" ADD COLUMN "evidence_hold" text;--> statement-breakpoint
 ALTER TABLE "depositions" ADD COLUMN "evidence_epoch" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "evidence_migrations" ADD CONSTRAINT "evidence_migrations_deposition_id_depositions_id_fk" FOREIGN KEY ("deposition_id") REFERENCES "public"."depositions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -42,14 +44,29 @@ CREATE INDEX "evidence_quarantine_row_idx" ON "evidence_quarantine" USING btree 
 -- exchanges or anything derived from them fails with SQLSTATE VE001, unless the writing transaction is the
 -- holder (SET LOCAL evidence.migration = '<id>'). Each check takes FOR KEY SHARE on the deposition row, as a
 -- foreign key check does: a correction's FOR UPDATE therefore waits for writers already running, and writers
--- that start during it wait, then see the hold and fail. Workers need no lock of their own to be safe.
+-- that start during it wait, then see the hold and fail. A job that declares the evidence epochs it read
+-- (SET evidence.read_epochs, evidence/epoch.ts) is also refused (VE002) once any of them has changed.
 CREATE FUNCTION evidence_guard(ids bigint[]) RETURNS void LANGUAGE plpgsql AS $$
-DECLARE held record;
+DECLARE
+  held record;
+  mine text := current_setting('evidence.migration', true);
+  declared jsonb := nullif(current_setting('evidence.read_epochs', true), '')::jsonb;
+  read text;
 BEGIN
   IF ids IS NULL OR cardinality(ids) = 0 THEN RETURN; END IF;
-  FOR held IN SELECT id, evidence_hold FROM depositions WHERE id = ANY(ids) ORDER BY id FOR KEY SHARE LOOP
-    IF held.evidence_hold IS NOT NULL AND held.evidence_hold IS DISTINCT FROM current_setting('evidence.migration', true) THEN
+  FOR held IN SELECT id, evidence_hold, evidence_epoch FROM depositions WHERE id = ANY(ids) ORDER BY id FOR KEY SHARE LOOP
+    IF held.evidence_hold IS NOT NULL AND held.evidence_hold IS DISTINCT FROM mine THEN
       RAISE EXCEPTION 'evidence_on_hold: deposition % is held by evidence migration %', held.id, held.evidence_hold USING ERRCODE = 'VE001';
+    END IF;
+    -- A job that declared the epochs it read (evidence/epoch.ts) may only write results for those depositions,
+    -- and only while their evidence is still what it read. The holder (the correction itself) is exempt.
+    IF declared IS NOT NULL AND held.evidence_hold IS NULL THEN
+      read := declared ->> held.id::text;
+      IF read IS NULL THEN
+        RAISE EXCEPTION 'stale_evidence: deposition % was not read by this job', held.id USING ERRCODE = 'VE002';
+      ELSIF read::int <> held.evidence_epoch THEN
+        RAISE EXCEPTION 'stale_evidence: deposition % was corrected after this job read it (epoch % read, % now)', held.id, read, held.evidence_epoch USING ERRCODE = 'VE002';
+      END IF;
     END IF;
   END LOOP;
 END $$;

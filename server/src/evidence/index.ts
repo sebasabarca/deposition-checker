@@ -7,3 +7,4 @@ export { answerGroup, createSession, evidenceCoverage, excludeDocument, getEvide
 export { attributionReport, correctInPlace, parserAudit, reprocessDocument, reprocessImpact, storedAttribution, type AttributionCause, type AttributionReport } from "./audit";
 export { classifyGroups, ELIGIBLE_CLASSES, EVIDENCE_CLASSES, type Eligibility, type EligibilitySpan, type EvidenceClass } from "./eligibility";
 export { ANALYSIS_DONE, applyCorrection, CASE_RUN_DONE, CORRECTION_VERSION, documentHash, EVIDENCE_ON_HOLD, heldDocuments, integrity, isEvidenceOnHold, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, unfinishedWork, verdictNotQuarantined, type CorrectionOptions, type CorrectionPlan, type CorrectionResult, type Integrity, type Standing, type Step } from "./correction";
+export { captureEpochs, fencedTransaction, isStaleEvidence, jobEpochs, STALE_EVIDENCE, withEvidenceFence, type Epochs } from "./epoch";
