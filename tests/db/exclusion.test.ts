@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { analysisRoutes, depositionRoutes } from "../../server/src/api";
+import { caseRunRoutes, depositionRoutes } from "../../server/src/api";
 import { deleteCase, deleteDeposition } from "../../server/src/api/remove";
 import type { Database } from "../../server/src/db/client";
 import { cases, depositionSessions, depositions, exchanges, orgs, witnesses } from "../../server/src/db/schema";
@@ -35,7 +35,7 @@ describe.skipIf(!TEST_DATABASE_URL)("excluded copies (Postgres, synthetic archiv
     uploads = mkdtempSync(path.join(tmpdir(), "exclusion-"));
     const app = express();
     app.use(express.json());
-    app.use("/api", analysisRoutes({ db, pool, boss: {} as PgBoss })); // refused before any job is queued
+    app.use("/api", caseRunRoutes({ db, boss: {} as PgBoss, env: {} })); // refused before any job is queued
     app.use("/api", depositionRoutes({ db, pool, boss: {} as PgBoss })); // only the date edit is used
     api = await listen(app);
   });
@@ -104,13 +104,11 @@ describe.skipIf(!TEST_DATABASE_URL)("excluded copies (Postgres, synthetic archiv
     expect(await db.$count(exchanges, eq(exchanges.depositionId, legacy))).toBeGreaterThan(0);
   });
 
-  it("refuses to start or estimate a new analysis on an excluded copy", async () => {
+  it("refuses to start an analysis that selects an excluded copy", async () => {
     await excludeDocument(db, legacy, { reason: "legacy_parse" });
-    const start = await fetch(`${api.url}/api/cases/${caseId}/analyses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ depositionA: active, depositionB: legacy }) });
-    expect(start.status).toBe(409);
-    expect(await start.json()).toMatchObject({ code: "deposition_excluded", error: expect.stringContaining(`Deposition ${legacy}`) });
-    const estimate = await fetch(`${api.url}/api/cases/${caseId}/estimate?a=${active}&b=${legacy}`);
-    expect(estimate.status).toBe(409);
+    const start = await fetch(`${api.url}/api/cases/${caseId}/case-runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "live", depositionIds: [active, legacy] }) });
+    expect(start.status).toBe(400);
+    expect(await start.json()).toMatchObject({ code: "scope_not_ready" });
   });
 
   it("records a saved date as confirmed on a read file, and forgets it when the date is cleared", async () => {

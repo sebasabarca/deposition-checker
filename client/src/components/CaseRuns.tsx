@@ -8,12 +8,11 @@ import { ArrowRight, ArrowUpRight, Check, CircleAlert, CircleCheck, FileUp, Info
 import { api } from "../lib/api";
 import { ACTIVE_RUN, timeLeft, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, reuseAdjusted, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
-import { formatDate, formatUsd } from "../lib/labels";
+import { formatDate, formatUsd, NO_ACCESS } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import { useUser } from "../lib/session";
 import type { CaseRun, CaseRunEstimate, CaseRunExecution, RunningAnalysis } from "../types";
-import { NO_ACCESS } from "./CheckAgain";
-import { useNow } from "./CheckProgress";
+import { useNow } from "../lib/useNow";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputClass, Loading, type Tone } from "./ui";
 
 export function useCaseRuns(caseId: number) {

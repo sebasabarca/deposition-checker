@@ -34,7 +34,7 @@ import { FakeBatchProvider } from "../server/src/eval/mockPacketBatch";
 import { batchSettings, economyAllowed } from "../server/src/jobs/caseRunBatch";
 import { connect } from "../server/src/db/client";
 import { COST_ASSUMPTIONS, projectCost } from "../server/src/eval/screeningBenchmark";
-import { paidCallsAllowed } from "../server/src/jobs/analysis";
+import { paidCallsAllowed } from "../server/src/jobs/paid";
 import { caseRunReport, contractOf, createCaseRun, fromPacketAdjudicator, resumeCaseRun, runCaseRun, stretchAllowed, type CaseRunDeps } from "../server/src/jobs/caseRun";
 import { caseRunSettings, ProviderLimiter } from "../server/src/jobs/limiter";
 import { buildCasePool } from "../server/src/retrieve/casePool";

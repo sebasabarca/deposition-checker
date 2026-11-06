@@ -1,7 +1,7 @@
 // Plain-language labels for the lawyer. Internal terms (stance, packet, cap rule names) are
 // translated here, in one place, so every screen says the same thing.
 
-import type { AnalysisStatus, DepositionStatus, FindingSummary } from "../types";
+import type { DepositionStatus, FindingSummary } from "../types";
 
 export const CLASSIFICATION: Record<FindingSummary["classification"], string> = {
   direct: "Direct contradiction",
@@ -18,74 +18,12 @@ export const PRIORITY: Record<FindingSummary["priority"], string> = {
   unverified: "Unverified",
 };
 
-export const ANALYSIS_STATUS: Record<AnalysisStatus, { label: string; tone: "neutral" | "active" | "good" | "warn" | "bad" }> = {
-  queued: { label: "Queued", tone: "neutral" },
-  parsing: { label: "Waiting for depositions to be read", tone: "active" },
-  retrieving: { label: "Finding candidate passages", tone: "active" },
-  adjudicating: { label: "Assessing candidate pairs", tone: "active" },
-  completed: { label: "Complete", tone: "good" },
-  failed: { label: "Failed", tone: "bad" },
-  blocked_budget: { label: "Stopped: budget reached", tone: "warn" },
-  blocked_credentials: { label: "Stopped: paid analysis not set up", tone: "warn" },
-  cancelled: { label: "Cancelled", tone: "warn" },
-  interrupted: { label: "Stopped: interrupted", tone: "warn" },
-};
-
 export const DEPOSITION_STATUS: Record<DepositionStatus, { label: string; tone: "neutral" | "active" | "good" | "warn" | "bad" }> = {
   processing: { label: "Reading…", tone: "active" },
   ready: { label: "Ready", tone: "good" },
   needs_review: { label: "Needs review", tone: "warn" },
   unsupported: { label: "Unsupported format", tone: "bad" },
   failed: { label: "Failed to read", tone: "bad" },
-};
-
-export const ATTRIBUTION_LEVEL: Record<string, string> = {
-  clear: "Clear statement by the witness",
-  qualified: "Qualified (“I think”, “maybe”…)",
-  uncertain: "Not a clear yes or no",
-  not_adopted: "Not the witness's own statement",
-  no_recall: "Witness doesn't recall",
-};
-
-export const LOCATION: Record<string, string> = {
-  answer: "in the witness's answer",
-  question_affirmed: "in the question, which the witness answered “yes”",
-  question_denied: "in the question, which the witness answered “no”",
-  question_other: "in the question; the answer isn't a plain yes or no",
-  attorney_or_colloquy: "only in an attorney's words",
-  witness: "in the witness's own words",
-  adopted: "in the attorney's words, plainly adopted or denied by the witness",
-  attorney_only: "only in an attorney's words",
-  mixed: "in attorney and witness lines together",
-  unknown: "on a line with no identified speaker",
-  none: "on lines with no spoken testimony",
-};
-
-export const VERIFICATION: Record<string, string> = {
-  exact: "Quoted phrase found exactly in this passage",
-  verified: "Quoted phrase found exactly in this passage",
-  approximate: "Quoted phrase found, with small wording differences",
-  wrong_reference: "Quoted phrase is not in the cited passage",
-  unsupported: "Quoted phrase not found in the transcript",
-};
-
-export const SAME_EVENT: Record<string, string> = { yes: "Same event", no: "Different events", uncertain: "Unclear whether the same event" };
-
-export const DISAGREEMENT: Record<string, string> = {
-  claude_overstates: "The analysis read this as more certain than the transcript supports; the transcript's reading is used.",
-  claude_understates: "The analysis read this as less certain than the witness's plain answer; the transcript's reading is used.",
-  claude_differs: "The analysis and the transcript check describe this differently; the transcript's reading is used.",
-  stance_conflict: "Veridict's model misread the witness's yes or no; the side is treated as not the witness's statement.",
-};
-
-export const ORIGIN: Record<string, string> = { code: "Transcript check", claude: "Analysis", "code+claude": "Both" };
-
-export const COMPONENT: Record<string, string> = {
-  A: "Attribution and source quality",
-  C: "Context",
-  S: "Semantic support",
-  K: "Independent corroboration",
-  U: "Uncertainty allowance",
 };
 
 export const formatDate = (iso: string | null) =>
@@ -108,36 +46,6 @@ export const GROUP_LABEL: Record<FindingSummary["group"], string> = {
   quarantined: "Needs revalidation",
 };
 
-export const GROUP_HELP: Record<FindingSummary["group"], string> = {
-  contradictions: "Source-verified statements that may conflict. Worth your review, not proof of a contradiction.",
-  needs_context: "They may conflict, but the evidence is incomplete or qualified. Not a contradiction as it stands.",
-  compatible: "Not established as conflicting. Shown so nothing is hidden.",
-  unverified: "A citation, quotation or speaker check failed. Don't rely on these without reading the source.",
-  quarantined: "The transcript was re-read with a corrected parser after these were made. Kept for audit; not current findings.",
-};
-
-const MODEL_CLASSIFICATION: Record<string, string> = {
-  direct_contradiction: "a direct contradiction",
-  inferential_contradiction: "an inferential contradiction",
-  compatible: "compatible",
-  insufficient_evidence: "not enough evidence to judge",
-  uncertain_needs_context: "dependent on context it didn't have",
-  direct_conflict: "a direct conflict between the witnesses",
-  possible_conflict_needs_context: "a possible conflict that depends on context",
-  recollection_or_knowledge_difference: "a difference in what each recalls or knew",
-};
-
-// How a witness knows what they said, as the model read it. Model interpretation, so always shown as such.
-export const KNOWLEDGE_BASIS: Record<string, string> = {
-  personal_observation: "saw or heard it themselves",
-  told_by_someone: "was told by someone else",
-  belief_or_inference: "believes or infers it",
-  unclear: "unclear how they know",
-};
-
-// An analysis's name: one witness, or the two witnesses a cross-witness check compares.
-export const analysisTitle = (a: { kind: string; witnesses: { a: { name: string }; b: { name: string } | null } }) => (a.kind === "cross_witness" && a.witnesses.b ? `${a.witnesses.a.name} and ${a.witnesses.b.name}` : a.witnesses.a.name);
-
 // The headline follows code's lane, never the model's label alone: a finding the checks hold back
 // must not read as a contradiction.
 export function findingHeadline(f: Pick<FindingSummary, "group" | "classification"> & { cross?: unknown }) {
@@ -149,11 +57,6 @@ export function findingHeadline(f: Pick<FindingSummary, "group" | "classificatio
   return CLASSIFICATION[f.classification];
 }
 
-export const modelCalledIt = (modelName: string, classification: string) => `${modelName} called this ${MODEL_CLASSIFICATION[classification] ?? classification.replaceAll("_", " ")}.`;
-
-export const evidenceStrength = (f: { score: number | null }) => (f.score === null ? "Evidence strength: not scored" : `Evidence strength: ${f.score}/100`);
-export const EVIDENCE_STRENGTH_NOTE = "Evidence strength measures how well the cited testimony supports review under a fixed checklist. It is not a probability that the testimony conflicts.";
-
 export const SPEAKER: Record<string, string> = {
   witness: "the witness's own words",
   adopted: "the attorney's words, plainly adopted or denied by the witness",
@@ -163,22 +66,12 @@ export const SPEAKER: Record<string, string> = {
   none: "no spoken testimony at the cited lines",
 };
 
-export const DISCOVERY_ATTEMPT: Record<string, string> = {
-  submitting: "Sending",
-  submitted: "Reading both sessions",
-  succeeded: "Finished",
-  refused: "Declined by Veridict's model",
-  invalid_output: "Answer wasn't valid",
-  incomplete: "Stopped before finishing",
-  provider_failed: "Provider failure",
-  expired: "Expired before running",
-  cancelled: "Cancelled",
-  submission_unknown: "Unknown: may have started",
-};
-
 export const EVIDENCE_STATUS: Record<FindingSummary["evidenceStatus"], string> = {
   verified: "Citations verified",
   approximate: "Citations verified (approximate)",
   wrong_reference: "Citation not verified",
   unsupported: "Citation not verified",
 };
+
+// Why a paid analysis can't start for this account.
+export const NO_ACCESS = "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.";

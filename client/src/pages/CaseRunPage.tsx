@@ -4,17 +4,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import { OPTIONS } from "../components/FindingPanel";
-import { StandingNotice } from "../components/FindingRegister";
-import { TranscriptRows } from "../components/FindingView";
+import { OPTIONS, StandingNotice } from "../components/FindingParts";
+import { TranscriptRows } from "../components/Transcript";
 import { canResume, ResumeControl } from "../components/CaseRuns";
-import { NO_ACCESS } from "../components/CheckAgain";
 import { useUser } from "../lib/session";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, cx, fieldClass, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { COVERAGE, isTestRun, laneOf, LANES, MOVING_RUN, RUN_STATUS, type Lane } from "../lib/caseRuns";
 import { displayRef } from "../lib/insights";
-import { CLASSIFICATION, formatDate, formatUsd, PRIORITY } from "../lib/labels";
+import { CLASSIFICATION, formatDate, formatUsd, NO_ACCESS, PRIORITY } from "../lib/labels";
 import { decisionOf, REVIEW_LABEL, reviewFailure, reviewLock, shownDecision, type ShownDecision } from "../lib/review";
 import { href, usePoll } from "../lib/router";
 import type { CaseRun, CaseRunFinding, CaseRunSide, ReviewDecision } from "../types";

@@ -10,7 +10,7 @@ import { analyses, budgets, candidates, caseRuns, depositions, evidenceMigration
 import { WEBB_SUITE } from "../../server/src/eval/synthetic";
 import { storeSynthetic } from "../../server/src/eval/syntheticStore";
 import { ANALYSIS_DONE, applyCorrection, CASE_RUN_DONE, isEvidenceOnHold } from "../../server/src/evidence";
-import { CASE_RUN_TERMINAL, createCaseRun, runAnalysis, runCaseRun, TERMINAL } from "../../server/src/jobs";
+import { CASE_RUN_TERMINAL, createCaseRun, runCaseRun } from "../../server/src/jobs";
 import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 describe.skipIf(!TEST_DATABASE_URL)("evidence holds and workers (Postgres, synthetic Webb)", () => {
@@ -44,7 +44,6 @@ describe.skipIf(!TEST_DATABASE_URL)("evidence holds and workers (Postgres, synth
   const neverCalled = { liveAdjudicator: () => { throw new Error("a demo analysis asked for a model"); } };
 
   it("the finished-state lists the correction checks are the jobs' own", () => {
-    expect(ANALYSIS_DONE).toEqual(TERMINAL);
     expect(CASE_RUN_DONE).toEqual(CASE_RUN_TERMINAL);
   });
 
@@ -68,15 +67,6 @@ describe.skipIf(!TEST_DATABASE_URL)("evidence holds and workers (Postgres, synth
     }))).toBe("accepted");
     await hold(depA, null);
     expect(await refusal(db.update(findings).set({ reviewNote: "now" }).where(eq(findings.id, onA)))).toBe("accepted");
-  });
-
-  it("an analysis waits while a deposition it compares is held, reading and writing nothing, then runs", async () => {
-    const id = await analysis();
-    await hold(depB, "correction-test");
-    expect(await runAnalysis(db, id, neverCalled)).toBe("waiting");
-    expect(await db.$count(candidates, eq(candidates.candidateSet, `analysis-${id}`))).toBe(0);
-    await hold(depB, null);
-    expect(await runAnalysis(db, id, neverCalled)).toBe("completed");
   });
 
   it("a case run waits while any deposition of its case is held, then runs", async () => {

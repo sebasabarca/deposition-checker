@@ -1,12 +1,11 @@
-// Case endpoints: create and list cases, view one with its witnesses, deposition sessions and
-// analyses, and add a witness. Requests only read and write rows; nothing here parses or adjudicates.
+// Case endpoints: create and list cases, view one with its witnesses and deposition sessions, and add a witness.
+// A case's analyses are its whole-case runs (api/caseRuns.ts). Requests only read and write rows.
 
 import { Router } from "express";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "../db/client";
-import { analyses, candidates, cases, depositions, findings, orgs, witnesses } from "../db/schema";
-import { caseAnalysisView } from "./caseAnalysis";
+import { caseRuns, cases, depositions, orgs, witnesses } from "../db/schema";
 
 const Id = z.coerce.number().int().positive();
 const Name = z.string().trim().min(1).max(200);
@@ -22,12 +21,17 @@ async function defaultOrg(db: Database): Promise<number> {
 // A current finding: none that an applied evidence migration quarantined (evidence/correction.ts) is counted.
 const CURRENT = sql`not exists (select 1 from evidence_quarantine q join evidence_migrations m on m.id = q.migration_id where q.kind = 'finding' and q.row_id = f.id and m.status = 'applied')`;
 
-// A finding needing a decision: not yet decided, and neither compatible nor unverified. Only each pair's
-// latest report counts, so checking a pair again doesn't count its findings twice.
+// A case's latest analysis: its newest whole-case run that ran (confirmed, or a test-model run), never an estimate.
+// Only its findings count, so analyzing a case again doesn't count them twice. Used with the case as `c`.
+export const LATEST_ANALYSIS_RUN = sql`(select r.id from case_runs r where r.case_id = c.id and (r.confirmed_at is not null or r.mode = 'mock') order by r.id desc limit 1)`;
+const OF_LATEST = sql`k.candidate_set = 'case-run-' || ${LATEST_ANALYSIS_RUN}`;
+// A finding waiting for a decision: undecided, current, and in the Potential contradictions or Needs context lane
+// (present.ts findingGroup: not unverified, not compatible).
 const NEEDS_REVIEW = sql`
-  f.review_state = 'unreviewed' and ${CURRENT} and f.type <> 'false_positive' and f.evidence_status not in ('wrong_reference', 'unsupported')
-  and coalesce(f.unscored_reason, '') <> 'attribution_failed'
-  and k.job_id = (select max(b.id) from analyses b where b.deposition_a = a.deposition_a and b.deposition_b = a.deposition_b)`;
+  f.review_state = 'unreviewed' and ${CURRENT}
+  and f.evidence_status not in ('wrong_reference', 'unsupported') and coalesce(f.unscored_reason, '') <> 'attribution_failed'
+  and (f.type <> 'false_positive' or f.score is null or f.priority = 'needs_context' or coalesce(f.unscored_reason, '') = 'insufficient_evidence')`;
+const MOVING = sql`r.status in ('queued', 'retrieving', 'adjudicating', 'reconciling') and (r.confirmed_at is not null or r.mode = 'mock')`;
 
 // orgId limits the list to one organization: always set behind sign-in (server/src/auth.ts).
 export async function caseSummaries(db: Database, orgId?: number) {
@@ -36,15 +40,13 @@ export async function caseSummaries(db: Database, orgId?: number) {
       (select count(*)::int from depositions d where d.case_id = c.id) as depositions,
       (select count(*)::int from witnesses w where w.case_id = c.id) as witnesses,
       (select coalesce(array_agg(w.name order by w.name), '{}') from witnesses w where w.case_id = c.id) as witness_names,
-      (select count(*)::int from analyses a where a.case_id = c.id) as reports,
-      -- Findings of the case's latest analysis: summing every analysis would count a re-run twice.
-      (select count(*)::int from findings f join candidates k on k.id = f.candidate_id
-        where k.job_id = (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1) and ${CURRENT}) as findings,
-      (select count(*)::int from findings f join candidates k on k.id = f.candidate_id join analyses a on a.id = k.job_id where a.case_id = c.id and ${NEEDS_REVIEW}) as needs_review,
-      (select count(*)::int from analyses a where a.case_id = c.id and a.status in ('queued', 'parsing', 'retrieving', 'adjudicating')) as checking,
-      greatest(c.created_at, (select max(a.updated_at) from analyses a where a.case_id = c.id), (select max(d.created_at) from depositions d where d.case_id = c.id)) as last_activity,
-      (select a.status::text from analyses a where a.case_id = c.id order by a.id desc limit 1) as last_status,
-      (select a.id from analyses a where a.case_id = c.id order by a.id desc limit 1) as last_analysis
+      (select count(*)::int from case_runs r where r.case_id = c.id and (r.confirmed_at is not null or r.mode = 'mock')) as reports,
+      (select count(*)::int from findings f join candidates k on k.id = f.candidate_id where ${OF_LATEST} and ${CURRENT}) as findings,
+      (select count(*)::int from findings f join candidates k on k.id = f.candidate_id where ${OF_LATEST} and ${NEEDS_REVIEW}) as needs_review,
+      (select count(*)::int from case_runs r where r.case_id = c.id and ${MOVING}) as checking,
+      greatest(c.created_at, (select max(r.updated_at) from case_runs r where r.case_id = c.id), (select max(d.created_at) from depositions d where d.case_id = c.id)) as last_activity,
+      (select r.status from case_runs r where r.id = ${LATEST_ANALYSIS_RUN}) as last_status,
+      ${LATEST_ANALYSIS_RUN} as last_analysis
     from cases c ${orgId === undefined ? sql`` : sql`where c.org_id = ${orgId}`} order by last_activity desc
   `);
   return rows.rows.map((r) => ({
@@ -59,6 +61,7 @@ export async function caseSummaries(db: Database, orgId?: number) {
     needsReview: r.needs_review,
     checking: r.checking > 0,
     lastActivity: r.last_activity,
+    // The latest whole-case analysis (a case run's id and status).
     lastAnalysis: r.last_analysis === null ? null : { id: Number(r.last_analysis), status: r.last_status },
   }));
 }
@@ -86,17 +89,18 @@ export async function caseDetail(db: Database, id: number) {
     .from(depositions)
     .where(eq(depositions.caseId, id))
     .orderBy(depositions.takenOn, depositions.id);
-  const as = await db.select().from(analyses).where(eq(analyses.caseId, id)).orderBy(desc(analyses.id));
+  // The case's whole-case analyses (runs that ran: confirmed or test-model, never an unconfirmed estimate), newest
+  // first, for the screens that list what happened (Overview activity, the running pill). The full report is
+  // GET /cases/:id/case-runs.
+  const runs = await db.select({ id: caseRuns.id, status: caseRuns.status, config: caseRuns.config, mode: caseRuns.mode, createdAt: caseRuns.createdAt, finishedAt: caseRuns.finishedAt }).from(caseRuns)
+    .where(sql`${caseRuns.caseId} = ${id} and (${caseRuns.confirmedAt} is not null or ${caseRuns.mode} = 'mock')`).orderBy(desc(caseRuns.id));
   // Findings of the latest analysis (summing every analysis would count a re-run twice).
-  const latest = await db.select({ id: analyses.id }).from(analyses).where(eq(analyses.caseId, id)).orderBy(desc(analyses.id)).limit(1);
-  const [counts] = latest.length
-    ? await db.select({ n: sql<number>`count(*)::int` }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.jobId, latest[0].id))
-    : [{ n: 0 }];
+  const [counts] = (await db.execute<{ n: number }>(sql`select count(*)::int as n from findings f join candidates k on k.id = f.candidate_id, cases c where c.id = ${id} and ${OF_LATEST}`)).rows;
   return {
     case: { id: kase.id, name: kase.name, createdAt: kase.createdAt, findings: counts.n },
     witnesses: ws.map((w) => ({ id: w.id, name: w.name, depositions: ds.filter((d) => d.witnessId === w.id).map((d) => d.id) })),
     depositions: ds.map((d) => ({ ...d, fileSha256: d.fileSha256.slice(0, 12) })),
-    analyses: as.map((a) => ({ id: a.id, kind: a.kind, witnessId: a.witnessId, witnessBId: a.witnessBId, depositionA: a.depositionA, depositionB: a.depositionB, mode: a.mode, status: a.status, progress: a.progress, error: a.error, createdAt: a.createdAt, finishedAt: a.finishedAt })),
+    runs: runs.map((r) => ({ id: r.id, name: (r.config as { name?: string }).name ?? null, status: r.status, mode: r.mode, createdAt: r.createdAt, finishedAt: r.finishedAt })),
   };
 }
 
@@ -122,13 +126,6 @@ export function caseRoutes({ db }: { db: Database }): Router {
     const detail = await caseDetail(db, id.data);
     if (!detail) return res.status(404).json({ error: "Case not found." });
     return res.json(detail);
-  });
-
-  // The case's stored whole-case analysis, resolved to stored transcript lines; null when it has none.
-  router.get("/cases/:id/case-analysis", async (req, res) => {
-    const id = Id.safeParse(req.params.id);
-    if (!id.success) return res.status(400).json({ error: "The case ID must be a positive number." });
-    return res.json({ analysis: await caseAnalysisView(db, id.data) });
   });
 
   router.post("/cases/:id/witnesses", async (req, res) => {

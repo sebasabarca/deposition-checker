@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { proceduralReason } from "../../server/src/retrieve";
+import { proceduralReason } from "../../server/src/retrieve/procedural";
 
 describe("proceduralReason", () => {
   it("skips objection-only, exhibit-marking and colloquy exchanges", () => {

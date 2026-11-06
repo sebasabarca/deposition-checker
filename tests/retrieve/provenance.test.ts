@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countsToward, provenanceOf } from "../../server/src/retrieve";
+import { countsToward, provenanceOf } from "../../server/src/retrieve/provenance";
 
 describe("candidate provenance", () => {
   it.each([[["topics"], "path_a"], [["claims"], "path_a"], [["fulltext"], "path_b"], [["topics", "fulltext"], "both"], [["claims", "fulltext"], "both"], [["fixture"], "other"]])("reads %j as %s", (sources, expected) => {

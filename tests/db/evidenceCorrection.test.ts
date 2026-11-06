@@ -11,18 +11,18 @@ import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { extractFacts } from "../../server/src/claims/facts";
 import { syncUnits } from "../../server/src/claims/facts/store";
-import { analysisFindings, analysisRoutes, analysisView, findingDetail } from "../../server/src/api/analyses";
-import { reportData } from "../../server/src/api/report";
+import { findingDetail, findingRoutes } from "../../server/src/api/findings";
+import { caseRunReportData } from "../../server/src/api/report";
 import { caseSummaries } from "../../server/src/api/cases";
 import type { Database } from "../../server/src/db/client";
-import { analyses, candidates, cases, depositions, evidenceMigrations, exchangeLines, exchanges, factUnits, facts, findings, lines, orgs, screeningEntries, screeningRuns, verdicts, witnesses } from "../../server/src/db/schema";
+import { candidates, caseRuns, cases, depositions, evidenceMigrations, exchangeLines, exchanges, factUnits, facts, findings, lines, orgs, screeningEntries, screeningRuns, verdicts, witnesses } from "../../server/src/db/schema";
 import { applyCorrection, captureEpochs, correctInPlace, isEvidenceOnHold, isStaleEvidence, withEvidenceFence, documentHash, integrity, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined, type CorrectionOptions, type Step } from "../../server/src/evidence";
 import { readDeposition, saveDeposition } from "../../server/src/ingest";
 import { buildExchangeParts } from "../../server/src/ingest/exchanges";
 import { speakerSegments } from "../../server/src/ingest/segments";
 import { TEXT_ARCHIVE_V1 } from "../../server/src/ingest/text";
 import { storeUpload } from "../../server/src/ingest/uploads";
-import { candidateSetOf } from "../../server/src/jobs";
+import { caseRunSetOf } from "../../server/src/jobs/caseRun";
 import { emptyTables, listen, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 const run = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `${from + i} ${i % 2 ? "A" : "Q"}: synthetic statement ${from + i} about the harbour crane.`);
@@ -39,7 +39,7 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
   let caseId: number;
   let witnessId: number;
   let doc: number;
-  let analysisId: number;
+  let runId: number;
   const opts = (o: Partial<CorrectionOptions> = {}): CorrectionOptions => ({ uploadsDir: uploads, backupDir, ...o });
 
   beforeAll(async () => {
@@ -69,12 +69,13 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
     if (!("depositionId" in saved)) throw new Error("not saved");
     doc = saved.depositionId;
     await syncUnits(db, doc); // pending fact units, as Stage 2 keeps them (no model call)
-    // A finished analysis the findings belong to (its second session is another synthetic file).
+    // A second session of the witness (another synthetic file), so the case has two to compare.
     const other = new TextEncoder().encode(["ARCHIVE-DERIVED TRANSCRIPT EXPORT (SYNTHETIC, OTHER SESSION)", ...run(1, 6)].join("\n"));
     const stored = await storeUpload(other, uploads);
     const second = await saveDeposition(db, { caseId, witnessId, takenOn: "2024-06-02", ...stored, read: await readDeposition(other, undefined, undefined, "Iris Calloway") });
     if (!("depositionId" in second)) throw new Error("not saved");
-    [{ id: analysisId }] = await db.insert(analyses).values({ caseId, witnessId, depositionA: doc, depositionB: second.depositionId, mode: "demo", status: "completed", promptVersion: "adjudicate-v1", effort: "medium", maxCandidates: 10, budgetUsd: 1 }).returning();
+    // A finished whole-case analysis of the case (a test-model run) the findings belong to.
+    [{ id: runId }] = await db.insert(caseRuns).values({ caseId, mode: "mock", status: "completed", promptVersion: "packet-c3", model: "mock", effort: "mock", budgetUsd: 0, config: {} }).returning({ id: caseRuns.id });
   });
 
   const line = async (n: number) => (await db.select().from(lines).where(and(eq(lines.depositionId, doc), eq(lines.lineNo, n))))[0];
@@ -85,7 +86,7 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
   };
   const qa = async () => (await db.select().from(exchanges).where(and(eq(exchanges.depositionId, doc), eq(exchanges.kind, "qa")))).sort((a, b) => a.groupId - b.groupId);
   async function findingOn(x: typeof exchanges.$inferSelect, y: typeof exchanges.$inferSelect, reviewState = "unreviewed", packet: object = {}) {
-    const [c] = await db.insert(candidates).values({ candidateSet: candidateSetOf(analysisId), jobId: analysisId, witnessId, depositionA: doc, groupA: x.groupId, depositionB: doc, groupB: y.groupId, exchangeA: x.id, exchangeB: y.id, sources: ["direct"], rrfScore: 0, mergedRank: 1, evidence: [] }).returning();
+    const [c] = await db.insert(candidates).values({ candidateSet: caseRunSetOf(runId), witnessId, depositionA: doc, groupA: x.groupId, depositionB: doc, groupB: y.groupId, exchangeA: x.id, exchangeB: y.id, sources: ["direct"], rrfScore: 0, mergedRank: 1, evidence: [] }).returning();
     const [v] = await db.insert(verdicts).values({ candidateId: c.id, model: "fixture", promptVersion: "x", effort: "low", status: "valid", parsed: { explanation: "fixture", sameEvent: "yes" }, packet, origin: "fixture" }).returning();
     const [f] = await db.insert(findings).values({ caseId, candidateId: c.id, verdictId: v.id, type: "direct", evidenceStatus: "verified", attributionA: "clear", attributionB: "clear", score: 80, band: "high", factors: [], caps: [], checks: CHECKS, rubricVersion: "x", priority: "high", reviewState, reviewNote: reviewState === "unreviewed" ? null : "checked by hand", reviewedAt: reviewState === "unreviewed" ? null : new Date("2026-10-01T12:00:00Z") }).returning();
     return { finding: f, verdict: v, candidate: c };
@@ -181,18 +182,13 @@ describe.skipIf(!TEST_DATABASE_URL)("safe evidence correction (Postgres, synthet
     const replayable = (await db.select({ id: verdicts.id }).from(verdicts).where(verdictNotQuarantined(verdicts.id))).map((r) => r.id);
     expect(replayable).toEqual([untouched.verdict.id]);
 
-    // The findings API: its own group, never counted as decided; detail and list carry the standing.
-    const list = await analysisFindings(db, analysisId);
-    expect(list.groups.find((g) => g.group === "quarantined")!.findings.map((f) => f.id).sort()).toEqual(ids([confirmed.finding.id, ctx.finding.id]));
-    expect(list.groups.filter((g) => g.group !== "quarantined").flatMap((g) => g.findings.map((f) => f.id))).toEqual([untouched.finding.id]);
-    const view = (await analysisView(db, analysisId))!;
-    expect(view.findings).toMatchObject({ total: 3, decided: 1, groups: { quarantined: 2 } });
+    // The finding detail carries the standing and its own group.
     expect(await findingDetail(db, confirmed.finding.id)).toMatchObject({ group: "quarantined", groupLabel: "Needs revalidation", standing: { state: "quarantined" }, reviewState: "confirmed" });
     // The report keeps only the current confirmed finding.
-    const report = (await reportData(db, caseId, [analysisId], true))!;
+    const report = (await caseRunReportData(db, runId, true))!;
     expect(report).toMatchObject({ kept: 1, entries: [{ id: untouched.finding.id }] });
     // An ordinary review of a quarantined finding is refused, changing nothing.
-    const app = express().use(express.json()).use("/api", analysisRoutes({ db, pool, boss: undefined as never }));
+    const app = express().use(express.json()).use("/api", findingRoutes({ db }));
     const server = await listen(app);
     try {
       const patch = async (id: number) => fetch(`${server.url}/api/findings/${id}/review`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ decision: "dismissed", epochs: (await findingDetail(db, id))!.evidenceEpochs }) });

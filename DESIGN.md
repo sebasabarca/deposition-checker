@@ -1405,3 +1405,20 @@ prompt are part of the fingerprint, so packet-c3 and packet-v1 never share a res
 was created with (`case_runs.prompt_version`), so a packet-v1 run resumes, replays and reviews as packet-v1.
 `contract: "packet-v1"` on `POST /cases/:id/case-runs` is the rollback. No migration and no UI change.
 
+
+## Implementation note: the two-session check removed (November 6, 2026, developer-approved)
+
+The two-session check (hybrid retrieval and adjudication, demo replay, direct and cross-witness discovery) is removed
+from the product. Whole-case analysis (case runs) is the only analysis. Decided by the developer:
+
+- **Earlier checks are hidden, not deleted.** Their rows (`analyses`, their candidates, verdicts, findings and
+  decisions, `discovery_runs`) stay in the database untouched: no migration, nothing dropped. No screen shows them.
+  Deleting a deposition or a case still removes them with it, and still waits while one is marked running.
+- **Findings and Overview show whole-case findings:** each case's latest analysis (its newest confirmed or test-model
+  run). `GET /workspace` returns them with their lane (`present.ts` `findingGroup`); the case list's counts
+  (`findings`, `needsReview`, `checking`, `lastAnalysis`) and each case's `runs` come from case runs.
+- **The hand-written example analysis and the sample demo case are removed** (`#/cases/:id/analysis`, the demo seed).
+
+Kept because whole-case runs use them: finding detail and decisions (`api/findings.ts`), the whole-case report, the
+account gates and organization scoping, evidence correction (which still guards earlier checks' rows), and
+`assess()` with the scoring rubric tests. The code is in the git history before this change.

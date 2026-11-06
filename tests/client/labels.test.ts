@@ -2,7 +2,7 @@
 // say what it supports and never read as a probability or a percentage.
 
 import { describe, expect, it } from "vitest";
-import { ANALYSIS_STATUS, CLASSIFICATION, findingHeadline, scoreLabel } from "../../client/src/lib/labels";
+import { CLASSIFICATION, findingHeadline, scoreLabel } from "../../client/src/lib/labels";
 import { href, parseRoute } from "../../client/src/lib/router";
 
 describe("client routes", () => {
@@ -20,8 +20,8 @@ describe("client routes", () => {
     expect(parseRoute(href.deposition(9, { page: 0 }))).toEqual({ name: "deposition", id: 9, page: 0, q: "", mark: "" });
     expect(parseRoute(href.findings())).toEqual({ name: "findings" });
     expect(parseRoute(href.analyses())).toEqual({ name: "analyses" });
-    expect(parseRoute(href.analysis(3))).toEqual({ name: "analysis", id: 3, findingId: null });
-    expect(parseRoute(href.analysis(3, 41))).toEqual({ name: "analysis", id: 3, findingId: 41 });
+    expect(parseRoute(href.caseRun(38))).toEqual({ name: "case_run", id: 38 });
+    expect(parseRoute("#/analyses/3")).toEqual({ name: "not_found" }); // an earlier two-session check's link
     expect(parseRoute("#/cases/abc")).toEqual({ name: "not_found" });
   });
 });
@@ -36,11 +36,6 @@ describe("score wording", () => {
     }
   });
 
-  it("names every analysis status", () => {
-    for (const s of ["queued", "parsing", "retrieving", "adjudicating", "completed", "failed", "blocked_budget", "blocked_credentials"] as const) {
-      expect(ANALYSIS_STATUS[s].label.length).toBeGreaterThan(0);
-    }
-  });
 });
 
 describe("direct findings in the interface", () => {

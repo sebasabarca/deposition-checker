@@ -1,12 +1,10 @@
 // Hash routes, so the app needs no router library and works behind any static host:
 //   #/                          overview: what needs the reviewer now
-//   #/cases, #/cases/:id        cases, and one case; #/cases/:id/report its kept findings, to print
-//   #/cases/:id/analysis        the case's stored whole-case analysis (the hand-written example)
-//   #/case-runs/:id             one whole-case run: its coverage and findings
+//   #/cases, #/cases/:id        cases, and one case
+//   #/case-runs/:id             one whole-case analysis: its coverage and findings, and its report
 //   #/depositions[?case=]       every deposition, filtered by case; #/depositions/:id[?page=&q=&mark=] one, readable (mark: a cited page:line range to highlight)
-//   #/findings                  every finding across cases
-//   #/analyses, #/analyses/:id  every analysis; one, with its findings beside the selected one
-//   #/analyses/:id/findings/:f  the same analysis with finding f open
+//   #/findings                  every finding of each case's latest analysis
+//   #/analyses                  every analysis
 //   #/help                      how to use Veridict
 
 import { useEffect, useState } from "react";
@@ -15,14 +13,11 @@ export type Route =
   | { name: "overview" }
   | { name: "cases" }
   | { name: "case"; id: number }
-  | { name: "report"; id: number }
-  | { name: "case_analysis"; id: number }
   | { name: "case_run"; id: number }
   | { name: "depositions"; caseId: number | null }
   | { name: "deposition"; id: number; page: number | null; q: string; mark: string }
   | { name: "findings" }
   | { name: "analyses" }
-  | { name: "analysis"; id: number; findingId: number | null }
   | { name: "help" }
   | { name: "profile" }
   | { name: "signin" }
@@ -55,21 +50,15 @@ export function parseRoute(hash: string): Route {
   if (path === "/reset" || path === "/verify") return { name: path.slice(1) as "reset" | "verify", token: q.get("token") ?? "" };
   let m = path.match(/^\/cases\/(\d+)$/);
   if (m) return { name: "case", id: Number(m[1]) };
-  m = path.match(/^\/cases\/(\d+)\/report$/);
-  if (m) return { name: "report", id: Number(m[1]) };
-  m = path.match(/^\/cases\/(\d+)\/analysis$/);
-  if (m) return { name: "case_analysis", id: Number(m[1]) };
   m = path.match(/^\/case-runs\/(\d+)$/);
   if (m) return { name: "case_run", id: Number(m[1]) };
   m = path.match(/^\/depositions\/(\d+)$/);
   if (m) return { name: "deposition", id: Number(m[1]), page: num("page"), q: q.get("q") ?? "", mark: q.get("mark") ?? "" };
-  m = path.match(/^\/analyses\/(\d+)(?:\/findings\/(\d+))?$/);
-  if (m) return { name: "analysis", id: Number(m[1]), findingId: m[2] ? Number(m[2]) : null };
   return { name: "not_found" };
 }
 
 export const sectionOf = (r: Route): Section | null =>
-  ({ overview: "overview", cases: "cases", case: "cases", report: "cases", case_analysis: "cases", case_run: "cases", depositions: "depositions", deposition: "depositions", findings: "findings", analyses: "analyses", analysis: "analyses", help: "help", profile: null, signin: null, register: null, forgot: null, reset: null, verify: null, not_found: null } as const)[r.name];
+  ({ overview: "overview", cases: "cases", case: "cases", case_run: "cases", depositions: "depositions", deposition: "depositions", findings: "findings", analyses: "analyses", help: "help", profile: null, signin: null, register: null, forgot: null, reset: null, verify: null, not_found: null } as const)[r.name];
 
 const withQuery = (path: string, q: Record<string, string | number | null | undefined>) => {
   const s = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => [k, String(v)])).toString();
@@ -80,14 +69,11 @@ export const href = {
   overview: () => "#/",
   cases: () => "#/cases",
   case: (id: number) => `#/cases/${id}`,
-  report: (caseId: number) => `#/cases/${caseId}/report`,
-  caseAnalysis: (caseId: number) => `#/cases/${caseId}/analysis`,
   caseRun: (id: number) => `#/case-runs/${id}`,
   depositions: (caseId?: number | null) => withQuery("#/depositions", { case: caseId }),
   deposition: (id: number, at?: { page?: number | null; q?: string; mark?: string }) => withQuery(`#/depositions/${id}`, { page: at?.page, q: at?.q, mark: at?.mark }),
   findings: () => "#/findings",
   analyses: () => "#/analyses",
-  analysis: (id: number, findingId?: number) => (findingId ? `#/analyses/${id}/findings/${findingId}` : `#/analyses/${id}`),
   help: () => "#/help",
   profile: () => "#/profile",
   signin: () => "#/signin",
@@ -101,10 +87,8 @@ export function useRoute(): Route {
     const onChange = () => {
       const next = parseRoute(window.location.hash);
       setRoute((prev) => {
-        // Moving between findings of one analysis keeps the list where it was.
-        const sameAnalysis = prev.name === "analysis" && next.name === "analysis" && prev.id === next.id;
         const samePage = prev.name === next.name && (prev.name === "deposition" || prev.name === "depositions");
-        if (!sameAnalysis && !samePage) window.scrollTo(0, 0);
+        if (!samePage) window.scrollTo(0, 0);
         return next;
       });
     };

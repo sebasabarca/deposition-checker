@@ -6,13 +6,15 @@ import type { ReactNode } from "react";
 import { ArrowLeftRight, ArrowRight, Check, CircleCheck, FileText, FileUp, Highlighter, ListChecks, Download } from "lucide-react";
 import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, buttonClass, Card, CardHeader, cx, Loading, rowClass, Strength, tdClass, thClass } from "../components/ui";
-import { shortRef } from "../components/FindingRegister";
-import { isActive, nextStep, recentActivity, relativeTime, type NextStep } from "../lib/insights";
-import { analysisTitle, DEPOSITION_STATUS, findingHeadline, formatDate } from "../lib/labels";
-import { shownDecision } from "../lib/review";
+import { shortRef } from "../components/FindingParts";
+import { nextStep, recentActivity, relativeTime, type NextStep } from "../lib/insights";
+import { DEPOSITION_STATUS, formatDate } from "../lib/labels";
+import { decisionShown } from "../lib/findingFilters";
+import { headline } from "./FindingsPage";
 import { href } from "../lib/router";
 import { useUser } from "../lib/session";
-import { useWorkspace, useWorkspaceFindings, type Workspace, type WorkspaceFinding } from "../lib/workspace";
+import { useWorkspace, type Workspace } from "../lib/workspace";
+import type { WorkspaceFinding } from "../types";
 import { runTitle } from "../components/CaseRuns";
 import { EXECUTION, MOVING_RUN, RUN_STATUS } from "../lib/caseRuns";
 
@@ -25,26 +27,23 @@ const greeting = () => {
 
 export function OverviewPage() {
   const { data, error } = useWorkspace();
-  const { findings } = useWorkspaceFindings(data);
+  const findings = data?.findings ?? null;
   const user = useUser();
   const first = user?.name.trim().split(/\s+/)[0] ?? "";
 
   if (error) return <Alert title="The overview couldn't be loaded">{error}</Alert>;
   if (!data || findings === null) return <><Welcome first={first} line="Getting your cases ready…" /><Loading inline label="Loading your cases" /></>;
 
-  const waiting = findings.filter((f) => (f.group === "contradictions" || f.group === "needs_context") && shownDecision(f) === "unreviewed").sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.rank - b.rank);
+  // In each analysis's own (retrieval) order, highest priority first.
+  const waiting = findings.filter((f) => (f.lane === "contradictions" || f.lane === "needs_context") && decisionShown(f) === "unreviewed").sort((a, b) => (RANK[a.priority as keyof typeof RANK] ?? 9) - (RANK[b.priority as keyof typeof RANK] ?? 9));
   // A finding that needs revalidation has no current decision, whatever was decided before.
-  const kept = findings.filter((f) => shownDecision(f) === "confirmed");
-  const decided = findings.filter((f) => !["unreviewed", "quarantined"].includes(shownDecision(f)));
-  const running = data.analyses.filter((a) => isActive(a.status));
+  const kept = findings.filter((f) => decisionShown(f) === "confirmed");
+  const decided = findings.filter((f) => !["unreviewed", "quarantined"].includes(decisionShown(f)));
   const work = workInProgress(data);
-  const analysesRunning = running.length + (data.caseRuns ?? []).length;
+  const analysesRunning = data.caseRuns.filter((r) => MOVING_RUN.includes(r.status)).length;
   const depositions = data.details.flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness" })));
   const failed = depositions.filter((d) => d.status === "failed" || d.status === "unsupported" || d.status === "needs_review");
-  const computed = nextStep(data.details, running, waiting.map((f) => ({ id: f.id, analysisId: f.analysis.id })), kept.map((f) => ({ caseId: f.analysis.caseId })));
-  // A whole-case analysis at work: one runs at a time, so the next step is to follow it, unless findings or reading wait.
-  const runningCase = work.find((w) => w.kind === "analysis");
-  const step: NextStep = runningCase && !["decide", "reading", "running", "first_deposition"].includes(computed.kind) ? { kind: "case_running", caseId: runningCase.caseId, caseName: runningCase.caseName } : computed;
+  const step = nextStep(data.details, waiting, kept);
 
   // Where things stand, in one sentence.
   const line = depositions.length === 0
@@ -58,7 +57,7 @@ export function OverviewPage() {
   const checklist = [
     { label: "Add a deposition", done: depositions.length > 0 },
     { label: "Add a second session of the same witness", done: data.details.some((d) => d.witnesses.some((w) => d.depositions.filter((x) => x.witnessId === w.id).length >= 2)) },
-    { label: "Run a check of the two sessions", done: data.analyses.length > 0 },
+    { label: "Analyze the case", done: data.details.some((d) => d.runs.length > 0) },
     { label: "Decide on a finding", done: decided.length > 0 },
   ];
   const starting = checklist.some((c) => !c.done);
@@ -129,13 +128,12 @@ function NextStepCard({ step }: { step: NextStep }) {
   const content: { title: string; text: string; action: ReactNode; icon: ReactNode } = (() => {
     switch (step.kind) {
       case "first_deposition": return { icon: <FileUp className="size-5" />, title: "Add your first deposition", text: "A PDF, a text file, or pasted text. Start with one session of a witness.", action: upload("Add deposition") };
-      case "second_session": return { icon: <FileUp className="size-5" />, title: `Add another session of ${step.witness}`, text: "A check compares two sessions of the same witness.", action: upload("Add deposition", step.caseId) };
+      case "second_session": return { icon: <FileUp className="size-5" />, title: `Add another session of ${step.witness}`, text: "An analysis compares testimony across sessions.", action: upload("Add deposition", step.caseId) };
       case "reading": return { icon: <FileText className="size-5" />, title: `Reading ${plural(step.count, "deposition")}`, text: "Veridict is turning them into page and line references. Scans take a few minutes.", action: go(href.deposition(step.depositionId), "See progress") };
-      case "check": return { icon: <ListChecks className="size-5" />, title: `Check ${step.witness}'s sessions`, text: "Two sessions are ready to compare. You'll see the estimated cost before anything starts.", action: go(href.case(step.caseId), "Open the case") };
+      case "check": return { icon: <ListChecks className="size-5" />, title: `Analyze ${step.caseName}`, text: "Its sessions are ready to compare. You'll see the estimated cost before anything starts.", action: go(href.case(step.caseId), "Open the case") };
       case "case_running": return { icon: <ListChecks className="size-5" />, title: `${step.caseName} is being analyzed`, text: "Veridict runs one analysis at a time. Its findings appear as it reads; you can keep working.", action: go(href.case(step.caseId), "View progress") };
-      case "running": return { icon: <ListChecks className="size-5" />, title: "A check is running", text: "It usually takes 4 to 10 minutes. You can keep working.", action: go(href.analysis(step.analysisId), "View progress") };
-      case "decide": return { icon: <Highlighter className="size-5" />, title: `Review ${plural(step.count, "finding")}`, text: "Read both passages side by side and decide: Keep, Needs context or Dismiss.", action: go(href.analysis(step.analysisId, step.findingId), "Start reviewing") };
-      case "export": return { icon: <Download className="size-5" />, title: `Export the ${step.caseName} report`, text: "Every finding you kept, with citations and your notes, ready to download as a PDF.", action: go(href.report(step.caseId), "Open the report") };
+      case "decide": return { icon: <Highlighter className="size-5" />, title: `Review ${plural(step.count, "finding")}`, text: "Read both passages side by side and decide: Keep, Needs context or Dismiss.", action: go(href.caseRun(step.runId), "Start reviewing") };
+      case "export": return { icon: <Download className="size-5" />, title: `Export the ${step.caseName} report`, text: "Every finding you kept, with citations and your notes, ready to download as a PDF.", action: go(href.caseRun(step.runId), "Open the analysis") };
       case "more": return { icon: <FileUp className="size-5" />, title: "Add more testimony", text: "Add another session or witness to keep checking.", action: upload("Add deposition") };
     }
   })();
@@ -186,7 +184,7 @@ function Waiting({ waiting, kept }: { waiting: WorkspaceFinding[]; kept: number 
         <div className="flex flex-col items-center px-6 py-10 text-center">
           <span aria-hidden className="flex size-12 items-center justify-center rounded-full bg-ok-bg text-ok"><CircleCheck className="size-6" strokeWidth={1.75} /></span>
           <p className="mt-3 text-md font-semibold">You're all caught up</p>
-          <p className="mt-1 max-w-sm text-sm text-muted">{kept > 0 ? `You've kept ${plural(kept, "finding")} for follow-up. New checks will add their findings here.` : "New checks will add their findings here."}</p>
+          <p className="mt-1 max-w-sm text-sm text-muted">{kept > 0 ? `You've kept ${plural(kept, "finding")} for follow-up. New analyses will add their findings here.` : "New analyses will add their findings here."}</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <a href={href.findings()} className={buttonClass("secondary")}>Review past findings</a>
             <a href={href.cases()} className={buttonClass("ghost")}>Go to cases</a>
@@ -203,18 +201,18 @@ function Waiting({ waiting, kept }: { waiting: WorkspaceFinding[]; kept: number 
 function WaitingRow({ f }: { f: WorkspaceFinding }) {
   return (
     <li className="border-t border-rule first:border-t-0">
-      <a href={href.analysis(f.analysis.id, f.id)} className="group grid grid-cols-1 items-start gap-x-4 gap-y-1.5 px-5 py-3.5 hover:bg-hover sm:grid-cols-[1fr_auto]">
-        <span className="line-clamp-2 min-w-0 font-medium leading-5 group-hover:underline">{f.subject ?? f.explanation}</span>
+      <a href={href.caseRun(f.runId)} className="group grid grid-cols-1 items-start gap-x-4 gap-y-1.5 px-5 py-3.5 hover:bg-hover sm:grid-cols-[1fr_auto]">
+        <span className="line-clamp-2 min-w-0 font-medium leading-5 group-hover:underline">{f.explanation ?? headline(f)}</span>
         <span className="flex items-center gap-2">
-          {f.group !== "compatible" && <Strength score={f.score} />}
-          <Badge tone={f.group === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : "warn"}>{f.group === "contradictions" ? (f.priority === "high" ? "High priority" : findingHeadline(f)) : "Needs context"}</Badge>
+          {f.lane !== "compatible" && <Strength score={f.score} />}
+          <Badge tone={f.lane === "contradictions" ? (f.priority === "high" ? "contradiction" : "neutral") : "warn"}>{f.lane === "contradictions" ? (f.priority === "high" ? "High priority" : headline(f)) : "Needs context"}</Badge>
         </span>
         <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted sm:col-span-2">
-          <span>{analysisTitle(f.analysis)}</span>
+          <span>{f.runName ?? "Whole-case analysis"}</span>
           <span aria-hidden>·</span>
           <span className="truncate">{f.caseName}</span>
           <span aria-hidden>·</span>
-          <span className="flex items-center gap-1.5 font-mono text-[12px]">{shortRef(f.a.ref)}<ArrowLeftRight aria-hidden className="size-3 text-faint" />{shortRef(f.b.ref)}</span>
+          <span className="flex items-center gap-1.5 font-mono text-[12px]">{shortRef(f.a.range)}<ArrowLeftRight aria-hidden className="size-3 text-faint" />{shortRef(f.b.range)}</span>
         </span>
       </a>
     </li>
@@ -222,16 +220,16 @@ function WaitingRow({ f }: { f: WorkspaceFinding }) {
 }
 
 function Activity({ details }: { details: Parameters<typeof recentActivity>[0] }) {
-  const items = recentActivity(details, { case: href.case, analysis: href.analysis }, 7);
+  const items = recentActivity(details, { case: href.case, caseRun: href.caseRun }, 7);
   const now = Date.now();
   return (
     <Card>
       <CardHeader title="Recent activity" />
       {items.length === 0 ? (
         <div className="px-5 py-4 text-sm">
-          <p className="text-muted">Your cases, uploads and checks will appear here. Until then, how a review works:</p>
+          <p className="text-muted">Your cases, uploads and analyses will appear here. Until then, how a review works:</p>
           <ol className="mt-3 space-y-3">
-            {[["Add", "two sessions of one witness, as PDF or text."], ["Check", "them against each other. You see the cost first."], ["Review", "each finding side by side, and decide."], ["Export", "what you kept, with citations and notes."]].map(([verb, rest]) => (
+            {[["Add", "every session of the case, as PDF or text."], ["Analyze", "the case. You see the cost first."], ["Review", "each finding side by side, and decide."], ["Export", "what you kept, with citations and notes."]].map(([verb, rest]) => (
               <li key={verb} className="flex gap-2.5"><span aria-hidden className="mt-1.5 size-1.5 flex-none rounded-full bg-slate" /><span><strong className="font-semibold">{verb}</strong> {rest}</span></li>
             ))}
           </ol>
@@ -284,7 +282,7 @@ function CasesTable({ cases, work }: { cases: { id: number; name: string; witnes
 
 // What is being processed right now, case by case: an analysis reading the testimony (with how far it has got), or
 // depositions still being read. Computed from the workspace's own rows.
-type Work = { key: string; caseId: number; caseName: string; kind: "analysis" | "check" | "reading"; title: string; status: string; detail: string; pct: number | null; link: string };
+type Work = { key: string; caseId: number; caseName: string; kind: "analysis" | "reading"; title: string; status: string; detail: string; pct: number | null; link: string };
 function workInProgress(data: Workspace): Work[] {
   const name = new Map(data.cases.map((c) => [c.id, c.name]));
   const runs: Work[] = (data.caseRuns ?? []).filter((r) => MOVING_RUN.includes(r.status)).map((r) => ({
@@ -292,14 +290,11 @@ function workInProgress(data: Workspace): Work[] {
     detail: `${EXECUTION[r.execution].label} · ${r.packets.adjudicated.toLocaleString()} of ${r.packets.total.toLocaleString()} evidence packets read`,
     pct: r.status === "adjudicating" && r.packets.total ? Math.min(100, Math.floor((r.packets.adjudicated / r.packets.total) * 100)) : null, link: href.case(r.caseId),
   }));
-  const checks: Work[] = data.analyses.filter((a) => isActive(a.status)).map((a) => ({
-    key: `check-${a.id}`, caseId: a.caseId, caseName: name.get(a.caseId) ?? "Case", kind: "check", title: analysisTitle(a), status: "Checking", detail: "Two-session check", pct: null, link: href.analysis(a.id),
-  }));
   const reading: Work[] = data.details.flatMap((d) => {
     const n = d.depositions.filter((x) => x.status === "processing").length;
     return n ? [{ key: `reading-${d.case.id}`, caseId: d.case.id, caseName: d.case.name, kind: "reading" as const, title: `Reading ${plural(n, "deposition")}`, status: "Reading", detail: "Turning each page into page and line references", pct: null, link: href.case(d.case.id) }] : [];
   });
-  return [...runs, ...checks, ...reading];
+  return [...runs, ...reading];
 }
 
 function InProgress({ work }: { work: Work[] }) {

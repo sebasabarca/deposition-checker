@@ -69,36 +69,8 @@ export async function enqueueIngest(boss: PgBoss, client: PoolClient, job: Inges
   await boss.send(INGEST_QUEUE, job, { db: { executeSql: (text, values) => client.query(text, values) } });
 }
 
-// Analyses: one job per analysis (singletonKey), so a duplicate request never runs it twice at once.
-// A job that throws is a system failure (database, bug): retried twice, then the analysis is marked
-// failed by its dead-letter worker. Model call failures don't throw; runAnalysis records them.
-export const ANALYSIS_QUEUE = "run-analysis";
-export const ANALYSIS_FAILED_QUEUE = "run-analysis-failed";
-export const ANALYSIS_QUEUE_OPTIONS: QueueOptions = { retryLimit: 2, retryDelay: 10, retryBackoff: true, heartbeatSeconds: 30, expireInSeconds: 60 * 60 };
-export const PARSING_RECHECK_SECONDS = 5;
-export const DISCOVERY_POLL_SECONDS = 30; // a batch takes minutes, and checking it is free
-
-const AnalysisJobData = z.object({ analysisId: z.number().int().positive() });
-export type AnalysisJob = z.infer<typeof AnalysisJobData>;
-export const parseAnalysisJob = (data: unknown): AnalysisJob => AnalysisJobData.parse(data);
-
-export async function createAnalysisQueues(boss: PgBoss, overrides: QueueOptions = {}): Promise<void> {
-  const ensure = async (name: string, options: QueueOptions & { deadLetter?: string }) => {
-    if (await boss.getQueue(name)) await boss.updateQueue(name, options);
-    else await boss.createQueue(name, options);
-  };
-  await ensure(ANALYSIS_FAILED_QUEUE, { ...INGEST_FAILED_QUEUE_OPTIONS, ...overrides });
-  await ensure(ANALYSIS_QUEUE, { ...ANALYSIS_QUEUE_OPTIONS, ...overrides, deadLetter: ANALYSIS_FAILED_QUEUE });
-}
-
-// Queues an analysis, inside the caller's transaction when `client` is given, or on its own.
-export async function enqueueAnalysis(boss: PgBoss, job: AnalysisJob, { client, startAfterSeconds }: { client?: PoolClient; startAfterSeconds?: number } = {}): Promise<void> {
-  await boss.send(ANALYSIS_QUEUE, job, {
-    singletonKey: `analysis-${job.analysisId}`,
-    ...(startAfterSeconds ? { startAfter: startAfterSeconds } : {}),
-    ...(client ? { db: { executeSql: (text, values) => client.query(text, values) } } : {}),
-  });
-}
+// Retries for a job that throws (a system failure: database, bug): twice, then its dead-letter worker records it.
+const RUN_QUEUE_OPTIONS: QueueOptions = { retryLimit: 2, retryDelay: 10, retryBackoff: true, heartbeatSeconds: 30, expireInSeconds: 60 * 60 };
 
 // Whole-case runs (jobs/caseRun.ts): one job per run (singletonKey). A job that throws is a system failure:
 // retried twice, then the run is marked failed by its dead-letter worker. Model failures don't throw.
@@ -114,7 +86,7 @@ export async function createCaseRunQueues(boss: PgBoss, overrides: QueueOptions 
     else await boss.createQueue(name, options);
   };
   await ensure(CASE_RUN_FAILED_QUEUE, { ...INGEST_FAILED_QUEUE_OPTIONS, ...overrides });
-  await ensure(CASE_RUN_QUEUE, { ...ANALYSIS_QUEUE_OPTIONS, expireInSeconds: 6 * 60 * 60, ...overrides, deadLetter: CASE_RUN_FAILED_QUEUE });
+  await ensure(CASE_RUN_QUEUE, { ...RUN_QUEUE_OPTIONS, expireInSeconds: 6 * 60 * 60, ...overrides, deadLetter: CASE_RUN_FAILED_QUEUE });
 }
 
 // startAfterSeconds: an economy run's next check of its open batches.

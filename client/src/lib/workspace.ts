@@ -1,15 +1,13 @@
 // Cross-case views (overview, depositions, findings, analyses), from one GET /workspace response.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
-import { isActive } from "./insights";
 import { usePoll } from "./router";
-import type { AnalysisView, CaseDetail, CaseRun, CaseSummary, FindingSummary } from "../types";
+import type { CaseDetail, CaseRun, CaseSummary, WorkspaceFinding } from "../types";
 import { MOVING_RUN } from "./caseRuns";
 
-// caseRuns: the whole-case analyses running now (not estimates); absent from a server that predates them.
-export type Workspace = { cases: CaseSummary[]; details: CaseDetail[]; analyses: AnalysisView[]; findings: (FindingSummary & { analysisId: number; caseName: string })[]; caseRuns?: CaseRun[] };
-export type WorkspaceFinding = FindingSummary & { analysis: AnalysisView; caseName: string };
+// caseRuns: the whole-case analyses running now (not estimates). findings: each case's latest analysis's findings.
+export type Workspace = { cases: CaseSummary[]; details: CaseDetail[]; caseRuns: CaseRun[]; findings: WorkspaceFinding[] };
 
 export function useWorkspace() {
   const [data, setData] = useState<Workspace | null>(null);
@@ -21,16 +19,6 @@ export function useWorkspace() {
     }).catch((e: Error) => setError(e.message));
   }, []);
   useEffect(load, [load]);
-  usePoll(!!data && (data.analyses.some((a) => isActive(a.status)) || !!data.caseRuns?.some((r) => MOVING_RUN.includes(r.status)) || data.details.some((d) => d.depositions.some((x) => x.status === "processing"))), 3000, load);
+  usePoll(!!data && (data.caseRuns.some((r) => MOVING_RUN.includes(r.status)) || data.details.some((d) => d.depositions.some((x) => x.status === "processing"))), 3000, load);
   return { data, error };
-}
-
-// Each finding with its analysis attached, for the lists that show the witness and sessions.
-export function useWorkspaceFindings(w: Workspace | null) {
-  const findings = useMemo(() => {
-    if (!w) return null;
-    const byId = new Map(w.analyses.map((a) => [a.id, a]));
-    return w.findings.flatMap((f) => (byId.has(f.analysisId) ? [{ ...f, analysis: byId.get(f.analysisId)! }] : []));
-  }, [w]);
-  return { findings, error: null as string | null };
 }

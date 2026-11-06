@@ -2,27 +2,23 @@
 // The sessions by witness are the first step's content; earlier two-session checks are listed below it.
 
 import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
-import { ArrowRightLeft, FileText, GripVertical, Pencil } from "lucide-react";
-import { CaseAnalysisAction, CaseAnalysisSummary, useCaseAnalysis } from "../components/CaseAnalysis";
-import { CaseFindings } from "../components/CaseFindings";
+import { ArrowRightLeft, GripVertical, Pencil } from "lucide-react";
 import { CaseRunPanel, useCaseRuns } from "../components/CaseRuns";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
-import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
+import { Alert, Badge, Breadcrumbs, Button, buttonClass, cx, Dialog, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
-import { analysesOf, dateAction, moveTargets } from "../components/sessionActions";
+import { dateAction, moveTargets } from "../components/sessionActions";
 import { api, DEPOSITION_ADDED } from "../lib/api";
 import { MOVING_RUN } from "../lib/caseRuns";
-import { isActive } from "../lib/insights";
-import { analysisTitle, ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
+import { DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, CaseAnalysisView, CaseDetail, DepositionRow } from "../types";
+import type { CaseDetail, DepositionRow } from "../types";
 
 export const sourceOf = (d: Pick<DepositionRow, "scanned" | "originalFilename">) => (/\.txt$/i.test(d.originalFilename ?? "") ? "Text" : d.scanned ? "Scanned PDF" : "PDF");
 
 export function CasePage({ id }: { id: number }) {
   const [detail, setDetail] = useState<CaseDetail | null>(null);
-  const [analyses, setAnalyses] = useState<AnalysisView[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Dragging a session onto another witness's card: the row being dragged, the card under it, and the
   // move waiting for confirmation (also opened from the row's Move button).
@@ -30,14 +26,10 @@ export function CasePage({ id }: { id: number }) {
   const [over, setOver] = useState<number | null>(null);
   const [move, setMove] = useState<{ d: DepositionRow; to: number | null } | null>(null);
   const add = useAddDeposition();
-  const caseAnalysis = useCaseAnalysis(id);
   const runs = useCaseRuns(id);
   const load = useCallback(() => {
     api.case(id)
-      .then(async (d) => {
-        setDetail(d);
-        setAnalyses((await Promise.all(d.analyses.map((a) => api.analysis(a.id)))).map((r) => r.analysis).sort((a, b) => b.id - a.id));
-      })
+      .then(setDetail)
       .catch((e: Error) => setError(e.message));
   }, [id]);
   useEffect(load, [load]);
@@ -48,18 +40,16 @@ export function CasePage({ id }: { id: number }) {
     window.addEventListener(DEPOSITION_ADDED, added);
     return () => window.removeEventListener(DEPOSITION_ADDED, added);
   }, [id, load]);
-  const busy = !!detail && (detail.depositions.some((d) => d.status === "processing") || detail.analyses.some((a) => isActive(a.status)));
+  const busy = !!detail && detail.depositions.some((d) => d.status === "processing");
   usePoll(busy, 3000, load);
 
   if (error) return <Alert title="This case couldn't be loaded">{error}</Alert>;
   if (!detail) return <Loading label="Loading the case" />;
-  // Nothing in the case may be deleted from under work in progress: an analysis (preparing or reading), a two-session
-  // check, or a deposition still being read. The server refuses a running analysis too.
+  // Nothing in the case may be deleted from under work in progress: an analysis (preparing or reading), or a
+  // deposition still being read. The server refuses a running analysis too.
   const working = (runs.runs ?? []).some((r) => MOVING_RUN.includes(r.status)) ? "an analysis is running"
-    : detail.analyses.some((a) => isActive(a.status)) ? "a check is running"
     : detail.depositions.some((d) => d.status === "processing") ? "a deposition is still being read" : null;
   const deleteBlocked = !runs.runs && !runs.error ? "Checking whether this case is being processed…" : working ? `This case can't be deleted while ${working}. Wait for it to finish, or cancel it, then delete the case.` : null;
-  // The report covers finished analyses only (api/report.ts), so it is offered once one exists.
   const witnessName = (w: number) => detail.witnesses.find((x) => x.id === w)?.name ?? "Unknown witness";
   const workflowSessions = [...detail.depositions]
     .sort((a, b) => witnessName(a.witnessId).localeCompare(witnessName(b.witnessId)) || (a.takenOn ?? "").localeCompare(b.takenOn ?? ""))
@@ -124,8 +114,9 @@ export function CasePage({ id }: { id: number }) {
     </div>
   );
 
-  const toDecide = Math.max(analyses.reduce((n, r) => n + r.findings.groups.contradictions + r.findings.groups.needs_context - r.findings.decided, 0), 0);
-  const summary = [`${detail.witnesses.length} ${detail.witnesses.length === 1 ? "witness" : "witnesses"}`, `${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"}`, ...(analyses.length > 0 ? [`${analyses.length} earlier ${analyses.length === 1 ? "check" : "checks"}`] : []), ...(toDecide > 0 ? [`${toDecide} ${toDecide === 1 ? "finding" : "findings"} to decide`] : [])].join(" · ");
+  const analyzed = detail.runs.length;
+  const found = detail.case.findings; // the latest analysis's findings
+  const summary = [`${detail.witnesses.length} ${detail.witnesses.length === 1 ? "witness" : "witnesses"}`, `${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"}`, ...(analyzed > 0 ? [`${analyzed} ${analyzed === 1 ? "analysis" : "analyses"}`] : []), ...(found > 0 ? [`${found.toLocaleString()} ${found === 1 ? "finding" : "findings"} in the latest`] : [])].join(" · ");
 
   return (
     <>
@@ -133,28 +124,16 @@ export function CasePage({ id }: { id: number }) {
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
         title={detail.case.name}
         description={summary}
-        actions={<>{caseAnalysis && <CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} />}{detail.analyses.some((a) => a.status === "completed") && <a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a>}</>}
       />
 
       <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} state={runs} />
-
-      <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
-
-      <CaseFindings analyses={analyses} />
-
-      {(analyses.length > 0 || caseAnalysis) && (
-        <Card className="overflow-hidden">
-          <CardHeader title="Earlier two-session checks" count={analyses.length + (caseAnalysis ? 1 : 0)} description="Checks of two sessions made before the guided analysis. They stay available here." />
-          <AnalysesTable analyses={analyses} caseRows={caseAnalysis ? [{ caseId: id, analysis: caseAnalysis }] : []} />
-        </Card>
-      )}
 
       <DangerZone
         what="case"
         name={detail.case.name}
         typeToConfirm
         blocked={deleteBlocked}
-        consequence={`Deletes the case, its ${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"} and ${analyses.length} ${analyses.length === 1 ? "analysis" : "analyses"}, with every finding, decision and note. Cost records are kept.`}
+        consequence={`Deletes the case, its ${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"} and ${analyzed} ${analyzed === 1 ? "analysis" : "analyses"}, with every finding, decision and note. Cost records are kept.`}
         onDelete={async () => {
           await api.deleteCase(id);
           window.location.hash = href.cases();
@@ -167,7 +146,6 @@ export function CasePage({ id }: { id: number }) {
           initial={move.to}
           caseId={id}
           targets={moveTargets(detail.witnesses, move.d.witnessId)}
-          analyses={analysesOf(detail.analyses, move.d.id)}
           onClose={() => setMove(null)}
           onMoved={() => { setMove(null); load(); }}
         />
@@ -306,9 +284,9 @@ function DatesBanner({ depositions, witnesses, onKeep }: { depositions: Depositi
 }
 
 // Files a session under another witness of the case, after saying what that costs: the file is read again
-// there, and the analyses that compared it are deleted. Opened by a drop on a witness's card (target
+// there. Opened by a drop on a witness's card (target
 // chosen) or by the row's Move button (target picked here).
-function MoveDialog({ d, initial, caseId, targets, analyses, onClose, onMoved }: { d: DepositionRow; initial: number | null; caseId: number; targets: CaseDetail["witnesses"]; analyses: number; onClose: () => void; onMoved: () => void }) {
+function MoveDialog({ d, initial, caseId, targets, onClose, onMoved }: { d: DepositionRow; initial: number | null; caseId: number; targets: CaseDetail["witnesses"]; onClose: () => void; onMoved: () => void }) {
   const [to, setTo] = useState(initial ?? targets[0]?.id);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -335,9 +313,8 @@ function MoveDialog({ d, initial, caseId, targets, analyses, onClose, onMoved }:
           </select>
         </Field>
         {witness && (
-          <Alert tone={analyses > 0 ? "warn" : "info"}>
+          <Alert tone="info">
             The deposition will be filed under {witness.name} and read again from its stored file; its date is kept.
-            {analyses > 0 && ` ${analyses} ${analyses === 1 ? "analysis" : "analyses"} that compared it will be deleted, with their findings and decisions.`}
           </Alert>
         )}
         {problem && <Alert title="This deposition couldn't be moved">{problem}</Alert>}
@@ -347,72 +324,5 @@ function MoveDialog({ d, initial, caseId, targets, analyses, onClose, onMoved }:
         </div>
       </form>
     </Dialog>
-  );
-}
-
-// The selection's next step, docked at the bottom of the window so it stays in reach.
-// A case's stored whole-case analysis, listed with the pair analyses (hand-authored example; no model run).
-export type CaseAnalysisRow = { caseId: number; analysis: CaseAnalysisView };
-
-export function AnalysesTable({ analyses, caseNames, caseRows = [] }: { analyses: AnalysisView[]; caseNames?: Map<number, string>; caseRows?: CaseAnalysisRow[] }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[52rem] text-sm">
-        <thead>
-          <tr>
-            <th className={thClass}>Compared</th>
-            {caseNames && <th className={thClass}>Case</th>}
-            <th className={thClass}>Status</th>
-            <th className={cx(thClass, "text-right")}>Contradictions</th>
-            <th className={cx(thClass, "text-right")}>Need context</th>
-            <th className={cx(thClass, "text-right")}>Decided</th>
-            <th className={cx(thClass, "text-right")}>Cost</th>
-            <th className={cx(thClass, "text-right")}>Checked</th>
-          </tr>
-        </thead>
-        <tbody>
-          {caseRows.map(({ caseId, analysis: c }) => (
-            <tr key={`case-${caseId}`} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.caseAnalysis(caseId))}>
-              <td className={tdClass}>
-                <a href={href.caseAnalysis(caseId)} className="font-semibold hover:underline">Whole case</a>
-                <span className="block text-xs text-muted tabular-nums">{c.coverage.sessions_total} sessions, {c.coverage.witnesses_total} witnesses · {c.coverage.pairs_complete} of {c.coverage.unique_pairs_total} pairs</span>
-              </td>
-              {caseNames && <td className={cx(tdClass, "text-muted")}>{caseNames.get(caseId) ?? "–"}</td>}
-              <td className={tdClass}><span className="flex items-center gap-1.5"><Badge tone="good" dot>Complete</Badge><Badge tone="accent">Example</Badge></span></td>
-              <td className={cx(tdClass, "text-right tabular-nums font-semibold")}>{c.coverage.findings_by_classification.incompatible ?? 0}</td>
-              <td className={cx(tdClass, "text-right tabular-nums")}>{c.coverage.findings_by_classification.uncertain ?? 0}</td>
-              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>–</td>
-              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>{formatUsd(c.execution.cost_usd)}</td>
-              <td className={cx(tdClass, "text-right tabular-nums text-muted")}>–</td>
-            </tr>
-          ))}
-          {analyses.map((r) => {
-            const s = ANALYSIS_STATUS[r.status];
-            const [a, b] = r.depositions;
-            const done = r.status === "completed";
-            return (
-              <tr key={r.id} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.analysis(r.id))}>
-                <td className={tdClass}>
-                  <a href={href.analysis(r.id)} className="font-semibold hover:underline">{analysisTitle(r)}</a>
-                  <span className="block text-xs text-muted tabular-nums">{formatDate(a.takenOn)} and {formatDate(b.takenOn)}</span>
-                </td>
-                {caseNames && <td className={cx(tdClass, "text-muted")}>{caseNames.get(r.caseId) ?? "–"}</td>}
-                <td className={tdClass}>
-                  <span className="flex items-center gap-1.5">
-                    <Badge tone={done ? "good" : s.tone} dot>{isActive(r.status) ? "Checking" : s.label}</Badge>
-                    {r.mode === "demo" && <Badge tone="accent">Example</Badge>}
-                  </span>
-                </td>
-                <td className={cx(tdClass, "text-right tabular-nums", done && r.findings.groups.contradictions > 0 && "font-semibold")}>{done ? r.findings.groups.contradictions : "–"}</td>
-                <td className={cx(tdClass, "text-right tabular-nums")}>{done ? r.findings.groups.needs_context : "–"}</td>
-                <td className={cx(tdClass, "text-right tabular-nums text-muted")}>{done ? `${Math.min(r.findings.decided, r.findings.total)} of ${r.findings.total}` : "–"}</td>
-                <td className={cx(tdClass, "text-right tabular-nums text-muted")}>{formatUsd(r.cost.actualUsd)}</td>
-                <td className={cx(tdClass, "text-right tabular-nums text-muted whitespace-nowrap")}>{formatDate(r.finishedAt ?? r.createdAt)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
   );
 }

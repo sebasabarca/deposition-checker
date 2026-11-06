@@ -20,17 +20,6 @@ export const TOUR: TourStep[] = [
   { target: "account", title: "Your account", text: "Your profile, password and sign-out." },
 ];
 
-// The first time someone opens a finished analysis: how to move through its findings and decide.
-export const ANALYSIS_TOUR: TourStep[] = [
-  { title: "Reviewing an analysis", text: "Each finding is a pair of passages from the two sessions that may conflict. Here's how to move through them and decide." },
-  { target: "finding-tabs", title: "Four categories", text: "Findings are sorted into Potential contradictions, Needs context, Compatible or dismissed, and Unverified. The number is how many each holds. Start with the first." },
-  { target: "finding-chips", title: "Every finding in the category", text: "Each number is one finding, and the outlined one is open. Its colour shows your decision: white not decided, green Kept, amber Needs context, grey Dismissed. Click a number to jump to it." },
-  { target: "finding-steps", title: "Previous and Next", text: "Go through them one at a time, or press j and k. After the last finding of a category, Next takes you to the next category." },
-  { target: "finding-passages", title: "Both passages, side by side", text: "The testimony from each session, word for word, at its page and line. The lines the finding cites are highlighted." },
-  { target: "finding-decision", title: "Your decision", text: "Keep it for follow-up, mark it Needs context, or Dismiss it, and add a note if you like. It saves at once, and the number above changes colour." },
-  { target: "finding-export", title: "Download the report", text: "A PDF of the findings you kept in this analysis, with citations and your notes. Replay this guide from “How to review” in the bar." },
-];
-
 const PAD = 6;
 
 export function Tour({ steps, onDone }: { steps: TourStep[]; onDone: () => void }) {

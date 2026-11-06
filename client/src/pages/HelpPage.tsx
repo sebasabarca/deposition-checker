@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Compass } from "lucide-react";
-import { TranscriptRows } from "../components/FindingView";
+import { TranscriptRows } from "../components/Transcript";
 import { useTour } from "../components/Shell";
 import { Button, HumanMark, ModelMark, OcrMark, PageHeader, TestimonyMark, VerifiedMark } from "../components/ui";
 

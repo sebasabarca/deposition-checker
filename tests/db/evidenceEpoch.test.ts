@@ -5,7 +5,6 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { loadPacket, storeVerdict } from "../../server/src/adjudicate";
 import { extractFacts } from "../../server/src/claims/facts";
 import { syncUnits } from "../../server/src/claims/facts/store";
 import type { Database } from "../../server/src/db/client";
@@ -13,8 +12,7 @@ import { analyses, budgets, candidates, caseRuns, depositions, factUnits, findin
 import { WEBB_SUITE } from "../../server/src/eval/synthetic";
 import { storeSynthetic } from "../../server/src/eval/syntheticStore";
 import { captureEpochs, isStaleEvidence, jobEpochs, withEvidenceFence } from "../../server/src/evidence";
-import { createCaseRun, runAnalysis, runCaseRun } from "../../server/src/jobs";
-import { STALE_ANALYSIS } from "../../server/src/jobs/analysis";
+import { createCaseRun, runCaseRun } from "../../server/src/jobs";
 import { STALE_CASE_RUN } from "../../server/src/jobs/caseRun";
 import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
@@ -69,18 +67,6 @@ describe.skipIf(!TEST_DATABASE_URL)("evidence versions on derived writes (Postgr
     expect(await outcome(withEvidenceFence(db, now, (f) => candidateRow(f)))).toBe("stored");
   });
 
-  it("an analysis keeps the versions it first read: a delivery after a correction stores nothing and fails with the reason", async () => {
-    const id = await analysis();
-    const [a] = await db.select().from(analyses).where(eq(analyses.id, id));
-    await jobEpochs(db, "analyses", id, a.sourceEpochs, [depA, depB]); // the first delivery read them
-    await corrected(depB); // then the transcript was corrected, hold taken and released
-    expect(await runAnalysis(db, id, neverCalled)).toBe("failed");
-    expect((await db.select().from(analyses).where(eq(analyses.id, id)))[0]).toMatchObject({ status: "failed", error: STALE_ANALYSIS });
-    expect(await db.$count(candidates, eq(candidates.candidateSet, `analysis-${id}`))).toBe(0);
-    // A new analysis reads the corrected versions and completes.
-    expect(await runAnalysis(db, await analysis(), neverCalled)).toBe("completed");
-  });
-
   it("a case run keeps the versions it first read: its delayed results are refused after a correction", async () => {
     const run = await createCaseRun(db, caseId, { mode: "mock", budgetUsd: 0 });
     const ids = (await db.select({ id: depositions.id }).from(depositions).where(eq(depositions.caseId, caseId))).map((d) => d.id);
@@ -90,18 +76,6 @@ describe.skipIf(!TEST_DATABASE_URL)("evidence versions on derived writes (Postgr
     expect(await runCaseRun(db, pool, run.id, deps)).toBe("failed");
     expect((await db.select().from(caseRuns).where(eq(caseRuns.id, run.id)))[0]).toMatchObject({ status: "failed", error: STALE_CASE_RUN });
     expect(await db.$count(screeningEntries)).toBe(0);
-  });
-
-  it("a verdict is stored only while its packet's evidence is the version the packet was read from", async () => {
-    const packet = await loadPacket(db, cho.id);
-    expect(packet.epochs).toEqual(await captureEpochs(db, [depA, depB]));
-    await corrected(depA); // corrected while the model read the packet
-    const store = () => storeVerdict(db, { candidateId: cho.id, packet, read: { status: "schema_invalid", parsed: null, error: "fixture" }, raw: null, model: "fixture", promptVersion: "x", effort: "low", origin: "fixture" });
-    expect(await outcome(store())).toBe("VE002");
-    expect(await db.$count(verdicts, eq(verdicts.candidateId, cho.id))).toBe(0);
-    const fresh = await loadPacket(db, cho.id);
-    expect(await outcome(storeVerdict(db, { candidateId: cho.id, packet: fresh, read: { status: "schema_invalid", parsed: null, error: "fixture" }, raw: null, model: "fixture", promptVersion: "x", effort: "low", origin: "fixture" }))).toBe("stored");
-    expect((await db.select().from(verdicts).where(eq(verdicts.candidateId, cho.id)))[0].packet).toMatchObject({ render: "spans-v1", epochs: fresh.epochs });
   });
 
   it("fact extraction: a reading finished after a correction is refused, and nothing from it is saved", async () => {

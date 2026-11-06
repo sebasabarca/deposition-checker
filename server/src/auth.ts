@@ -104,7 +104,6 @@ export function sameOrigin(req: Request, res: Response, next: NextFunction) {
 const OWNERS: [RegExp, (db: Database, id: number) => Promise<number | undefined>][] = [
   [/^\/cases\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(cases).where(eq(cases.id, id)))[0]?.org],
   [/^\/depositions\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(depositions).innerJoin(cases, eq(cases.id, depositions.caseId)).where(eq(depositions.id, id)))[0]?.org],
-  [/^\/analyses\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(analyses).innerJoin(cases, eq(cases.id, analyses.caseId)).where(eq(analyses.id, id)))[0]?.org],
   [/^\/case-runs\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(caseRuns).innerJoin(cases, eq(cases.id, caseRuns.caseId)).where(eq(caseRuns.id, id)))[0]?.org],
   [/^\/findings\/(\d+)(?:\/|$)/, async (db, id) => (await db.select({ org: cases.orgId }).from(findings).innerJoin(cases, eq(cases.id, findings.caseId)).where(eq(findings.id, id)))[0]?.org],
 ];
@@ -126,16 +125,12 @@ export function scopeToOrg(db: Database): RequestHandler {
 // upload a deposition or start or resume a check. A live (paid) check also needs analysis access.
 const NEEDS_VERIFIED: [string, RegExp][] = [
   ["POST", /^\/cases\/\d+\/depositions$/],
-  ["POST", /^\/cases\/\d+\/analyses$/],
-  ["POST", /^\/analyses\/\d+\/resume$/],
   ["POST", /^\/cases\/\d+\/case-runs$/],
   ["POST", /^\/case-runs\/\d+\/(?:resume|confirm)$/],
   ["POST", /^\/depositions\/\d+\/retry$/],
   ["POST", /^\/depositions\/\d+\/move$/],
 ];
 const PAID: [string, RegExp][] = [
-  ["POST", /^\/cases\/\d+\/analyses$/],
-  ["POST", /^\/analyses\/\d+\/resume$/],
   ["POST", /^\/cases\/\d+\/case-runs$/],
   ["POST", /^\/case-runs\/\d+\/confirm$/], // only live runs await confirmation
   // Resuming a case run is paid only for a live run, which needs the stored run's mode: checked in the route
@@ -147,10 +142,9 @@ export function accountGates(): RequestHandler {
   return (req, res, next) => {
     const user = res.locals.user as SessionUser;
     if (!user.emailVerified && matches(req, NEEDS_VERIFIED)) return res.status(403).json({ error: "Verify your email address first. Check your inbox for the link, or send a new one from the banner.", code: "email_unverified" });
-    // A demo analysis replays stored results and costs nothing; anything else is a paid check.
-    // A mock case run uses the deterministic mock and is never billed.
+    // A mock case run uses the deterministic mock and is never billed; anything else is a paid check.
     const mode = (req.body as { mode?: string } | undefined)?.mode;
-    const paid = matches(req, PAID) && !(req.path.endsWith("/analyses") && mode === "demo") && !(req.path.endsWith("/case-runs") && mode === "mock");
+    const paid = matches(req, PAID) && !(req.path.endsWith("/case-runs") && mode === "mock");
     if (paid && !user.analysisAccess) return res.status(403).json({ error: "Paid checks aren't enabled for this account yet. Veridict is in early access; contact us to turn them on.", code: "no_analysis_access" });
     return next();
   };

@@ -13,7 +13,7 @@ import "dotenv/config";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
-import { findingDetail } from "../server/src/api/analyses";
+import { findingDetail } from "../server/src/api/findings";
 import { connect, type Database } from "../server/src/db/client";
 import { candidates, cases, findings, verdicts, witnesses } from "../server/src/db/schema";
 import { applySheet, HUMAN_CLASSIFICATIONS, ReviewSet, type ReviewPair } from "../server/src/eval/reviewSet";

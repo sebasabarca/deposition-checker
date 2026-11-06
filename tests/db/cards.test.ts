@@ -8,7 +8,7 @@ import type { Database } from "../../server/src/db/client";
 import { candidates, candidateTopics, cardCoverage, cardTopics, exchanges, llmCalls, statementCards, topics } from "../../server/src/db/schema";
 import { WEBB_SUITE } from "../../server/src/eval/synthetic";
 import { storeSynthetic } from "../../server/src/eval/syntheticStore";
-import { provenanceOf } from "../../server/src/retrieve";
+import { provenanceOf } from "../../server/src/retrieve/provenance";
 import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 describe.skipIf(!TEST_DATABASE_URL)("statement cards, topics and provenance (Postgres)", () => {

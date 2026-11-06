@@ -17,7 +17,7 @@ export function DepositionsPage({ caseId }: { caseId: number | null }) {
     const term = q.trim().toLowerCase();
     return (data?.details ?? [])
       .filter((d) => caseId === null || d.case.id === caseId)
-      .flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, caseId: d.case.id, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness", analyses: d.analyses.filter((a) => a.depositionA === x.id || a.depositionB === x.id).length })))
+      .flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, caseId: d.case.id, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness" })))
       .filter((r) => !term || [r.witness, r.caseName, r.originalFilename ?? ""].some((s) => s.toLowerCase().includes(term)))
       .sort((a, b) => a.caseName.localeCompare(b.caseName) || a.witness.localeCompare(b.witness) || (a.takenOn ?? "").localeCompare(b.takenOn ?? ""));
   }, [data, caseId, q]);
@@ -51,7 +51,6 @@ export function DepositionsPage({ caseId }: { caseId: number | null }) {
                     <th className={thClass}>File</th>
                     <th className={thClass}>Source</th>
                     <th className={cx(thClass, "text-right")}>Pages</th>
-                    <th className={cx(thClass, "text-right")}>Analyses</th>
                     <th className={thClass}>Status</th>
                   </tr>
                 </thead>
@@ -64,7 +63,6 @@ export function DepositionsPage({ caseId }: { caseId: number | null }) {
                       <td className={cx(tdClass, "max-w-72 truncate text-muted")} title={d.originalFilename ?? undefined}>{d.originalFilename ?? `Deposition #${d.id}`}</td>
                       <td className={cx(tdClass, "text-muted whitespace-nowrap")}>{sourceOf(d)}</td>
                       <td className={cx(tdClass, "text-right tabular-nums")}>{d.pageCount ?? "–"}</td>
-                      <td className={cx(tdClass, "text-right tabular-nums")}>{d.analyses}</td>
                       <td className={tdClass}><Badge tone={DEPOSITION_STATUS[d.status].tone} dot>{DEPOSITION_STATUS[d.status].label}</Badge></td>
                     </tr>
                   ))}

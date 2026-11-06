@@ -88,26 +88,19 @@ The repository includes invented, synthetic transcripts you can upload: `data/ev
 
 PDF, text (`.txt`, `.asc`), RTF and Word (`.docx`) are accepted, up to 50 MB each.
 
-### 3. Compare two depositions
+### 3. Analyze the case
 
-There are two ways to compare two depositions.
-
-- **Free, with the test model.** On the case page, under **Whole-case analysis**, choose **Run with the test model (free)**. On a case holding two depositions, this compares exactly those two through the real pipeline: retrieval, evidence packets, citation checks and scoring. A deterministic stand-in replaces the model.
-  - Its results are labelled **Test model results** on every finding.
-  - They show how the app works; they are not an analysis of the testimony.
-- **Paid, with Claude.** Tick two sessions on the case page: two of one witness, or one each of two witnesses. A bar at the bottom shows the estimated cost and a **Check these sessions** or **Compare these witnesses** button.
-  - This needs paid access for your account and a configured API key (see step 5).
-  - Paid two-session checks were not exercised in the verification above.
+On the case page, follow **Analyze this case**: choose the whole case or selected depositions, review the cost estimate, and authorize a spending limit (see step 5). Testimony is compared within each witness's sessions and across witnesses. Veridict runs one analysis at a time across your workspace.
 
 ### 4. Review contradictions
 
-When a run shows **Finished**, choose **View findings**. Findings are grouped into lanes: potential contradictions, needs context, unverified, and compatible or dismissed. Each finding shows:
+When an analysis finishes, the case page shows **Analysis complete**; choose **Review findings**. Findings are grouped into lanes: potential contradictions, needs context, unverified, and compatible or dismissed. Each finding shows:
 
 - **The two passages:** the stored transcript lines, side by side at page:line, with the cited lines highlighted;
 - **The checks:** whether code verified each citation against the stored text;
 - **The model's reading:** the model's explanation, labelled as the model's (or as test model output).
 
-**Read in full** opens the deposition at the cited page. Everything is stored: reload the page or come back later, and the run and its findings are still there. The case page shows the latest whole-case run, with **Earlier runs** below it; two-session checks are listed under **Analyses**.
+**Read in full** opens the deposition at the cited page. Everything is stored: reload the page or come back later, and the run and its findings are still there. The case page opens on its latest analysis, with **Previous analyses** below it. **Findings** lists every finding of each case's latest analysis.
 
 ### 5. Analyze an entire case, with a cost estimate first
 
@@ -169,24 +162,7 @@ Without an API key, the review step says paid analysis isn't set up and can't be
 | --- | --- |
 | No label (model name shown) | Output from a real Claude call, recorded with its token use and cost. |
 | **Test model results / Test model output** | The free deterministic stand-in. It exercises the pipeline only and says nothing about the testimony. |
-| **Example** (and "No model was called for it") | Hand-written example assessments in the sample case below. No model produced them. |
 | **Verbatim testimony** | Always the stored transcript lines, never text a model wrote. |
-
-## Sample case (prepared demo)
-
-A self-contained case that needs no other data and no model: two invented witnesses (Elena Marsh and Owen Calder), two sessions each, about a fire at an invented warehouse. Run it once your account exists, with `npm run dev` running:
-
-```bash
-npx tsx scripts/demo-case.ts --email you@example.com
-```
-
-Open **"Sample case: Harbor Street warehouse fire"**. It holds two example analyses with eight hand-written findings, and an example whole-case analysis (**Open case analysis**).
-
-- **Invented testimony:** each session's original text says so.
-- **Real checks:** every finding still goes through the real checks. Citations are matched to the stored lines, the speaker is checked, and code calculates the score.
-- **Page and line numbers:** these come from laying the text out at 25 lines per page. They are not a real transcript's pagination.
-
-Running the command again changes nothing; delete the case from its page to remove it.
 
 ## Tests
 
@@ -231,8 +207,9 @@ On a fresh clone with the Docker database: **1,308 passed, 59 skipped**. The ski
 
 ## Known limitations
 
-- **Paid analyses haven't been re-verified here.** The paid two-session check and a paid whole-case run need a funded API key. They were not run in the November 4 verification; only their confirmations and safeguards were.
-- **Free mode on fresh uploads.** The free test model exercises the pipeline but doesn't judge testimony. The older "demo" mode of two-session checks only replays stored assessments, so it finds nothing on new uploads, and the app doesn't offer it.
+- **Paid analyses haven't been re-verified here.** A paid whole-case run needs a funded API key. They were not run in the November 4 verification; only their confirmations and safeguards were.
+- **Free mode on fresh uploads.** The free test model exercises the pipeline but doesn't judge testimony.
+- **Earlier two-session checks are no longer shown** (removed November 6, 2026). Their rows stay in the database, untouched.
 - **Session date suggestions** can pick a date from the testimony instead of the cover. Always confirm the date.
 - **Whole-case limits are per worker process:** with several workers, divide the `PROVIDER_*` limits between them.
 

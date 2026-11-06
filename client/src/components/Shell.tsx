@@ -67,17 +67,17 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
     </nav>
   );
 
-  // A running check follows the user to every page: "Checking" while it runs, then "Findings ready"
-  // until it's opened. Polled from the case list, which says which case is checking.
+  // A running analysis follows the user to every page: "Analyzing" while it runs, then "Findings ready"
+  // until it's opened. Polled from the case list, which says which case is being analyzed.
   const checks = useRunningChecks(section);
   const checkPill = (rail: boolean) =>
     checks.state === "idle" ? null : (
       <div className="px-3 pb-2">
-        <a href={href.analysis(checks.analysisId)} onClick={checks.seen} className={cx("flex h-9 items-center gap-3 overflow-hidden rounded-md px-[13px] text-[13px] font-medium", checks.state === "running" ? "bg-navy-2 text-white" : "bg-ok text-white")} title={checks.state === "running" ? "A check is running" : "A check has finished"}>
+        <a href={href.caseRun(checks.analysisId)} onClick={checks.seen} className={cx("flex h-9 items-center gap-3 overflow-hidden rounded-md px-[13px] text-[13px] font-medium", checks.state === "running" ? "bg-navy-2 text-white" : "bg-ok text-white")} title={checks.state === "running" ? "An analysis is running" : "An analysis has finished"}>
           <span aria-hidden className="flex size-[18px] flex-none items-center justify-center">
             {checks.state === "running" ? <span className="size-2.5 animate-pulse rounded-full bg-[#8ea3c0]" /> : <Check className="size-4" strokeWidth={2.5} />}
           </span>
-          <span className={label(rail)}>{checks.state === "running" ? "Checking…" : "Findings ready"}</span>
+          <span className={label(rail)}>{checks.state === "running" ? "Analyzing…" : "Findings ready"}</span>
         </a>
       </div>
     );

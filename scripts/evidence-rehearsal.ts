@@ -20,7 +20,7 @@ import { parseArgs } from "node:util";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pg from "pg";
-import { analysisFindings } from "../server/src/api/analyses";
+import { findingDetail } from "../server/src/api/findings";
 import { connect, type Database } from "../server/src/db/client";
 import { verdicts } from "../server/src/db/schema";
 import { applyCorrection, captureEpochs, documentHash, isStaleEvidence, withEvidenceFence, heldDocuments, integrity, isEvidenceOnHold, parserAudit, planCorrection, quarantineFindings, releaseHold, rollbackCorrection, standingOf, verdictNotQuarantined } from "../server/src/evidence";
@@ -178,7 +178,7 @@ async function findings(db: Database, c: pg.Client, uploadsDir: string, backupDi
     if (p.startsWith("quarantine all")) applied.push({ dep: r.dep, policy: p, ...(await quarantineFindings(db, r.dep, p.replace(/^quarantine all: /, ""))) });
   }
   // What the policies did: every quarantined finding keeps its review, its verdict is never replayed, and the
-  // findings API shows it in its own group.
+  // finding detail shows it in its own group.
   const all = (await c.query("select id::int from findings")).rows.map((x) => x.id as number);
   const standing = await standingOf(db, all);
   const quarantined = all.filter((id) => standing.get(id)!.state === "quarantined");
@@ -188,7 +188,7 @@ async function findings(db: Database, c: pg.Client, uploadsDir: string, backupDi
   const quarantinedVerdicts = (await c.query("select count(distinct q.row_id)::int n from evidence_quarantine q join evidence_migrations m on m.id = q.migration_id where q.kind = 'verdict' and m.status = 'applied'")).rows[0].n;
   const analysesWith = (await c.query("select distinct c.job_id::int a from candidates c join findings f on f.candidate_id = c.id where f.id = any($1) and c.job_id is not null", [quarantined])).rows.map((x) => x.a as number);
   let shownInQuarantineGroup = 0;
-  for (const a of analysesWith) shownInQuarantineGroup += (await analysisFindings(db, a)).groups.find((g) => g.group === "quarantined")!.findings.length;
+  for (const id of quarantined) if ((await findingDetail(db, id))?.group === "quarantined") shownInQuarantineGroup++;
   return {
     documents: rows, applied,
     summary: { findings: all.length, quarantined: quarantined.length, confirmedQuarantined, reviewsUnchanged: reviewsKept, verdictsQuarantined: quarantinedVerdicts, verdictsReplayable: replayable, shownInQuarantineGroup, analysesChecked: analysesWith.length },

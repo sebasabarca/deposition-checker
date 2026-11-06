@@ -1,10 +1,9 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseRun, RunningAnalysis, CaseRunContract, CaseRunExecution, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { CaseDetail, CaseRun, RunningAnalysis, CaseRunContract, CaseRunExecution, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, ReviewDecision } from "../types";
 import type { Workspace } from "./workspace";
 
-export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
 
 export const SIGNED_OUT = "veridict:signed-out";
 // A deposition was uploaded to a case (detail: { caseId }), so an open case page reloads and shows it processing.
@@ -68,14 +67,6 @@ export const api = {
   resumeCaseRun: (id: number, budgetUsd?: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/resume`, budgetUsd === undefined ? {} : { budgetUsd }),
   cancelCaseRun: (id: number) => request<{ caseRun: CaseRun }>("POST", `/case-runs/${id}/cancel`),
   caseRunFindings: (id: number) => request<{ complete: boolean; incompleteReasons: string[]; findings: CaseRunFinding[] }>("GET", `/case-runs/${id}/findings`),
-  caseAnalysis: (id: number) => request<{ analysis: CaseAnalysisView | null }>("GET", `/cases/${id}/case-analysis`),
-  // The whole-case analysis report as a PDF file; the decisions travel with it (they're kept in this browser).
-  caseAnalysisReport: async (id: number, decisions: { id: string; decision: ReviewDecision; note: string; at: string }[]) => {
-    const res = await fetch(`/api/cases/${id}/case-analysis/report.pdf`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions }) }).catch(() => null);
-    if (!res) throw new ApiError("The server can't be reached. Is it running?", 0);
-    if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `The report couldn't be made (${res.status}).`, res.status);
-    return res.blob();
-  },
   addWitness: (caseId: number, name: string) => request<{ witness: { id: number; name: string } }>("POST", `/cases/${caseId}/witnesses`, { name }),
   upload: (caseId: number, file: File, witness: string, takenOn?: string) => {
     const q = new URLSearchParams({ witness, filename: file.name, ...(takenOn ? { takenOn } : {}) });
@@ -91,22 +82,11 @@ export const api = {
   depositionOriginal: (id: number) => `/api/depositions/${id}/pdf`,
   // One whole-case run's kept findings (and, withContext, those marked Needs context) as a PDF download.
   caseRunReportUrl: (runId: number, withContext: boolean) => `/api/case-runs/${runId}/report.pdf${withContext ? "?context=1" : ""}`,
-  // The kept findings as a PDF download: of the given finished analyses, or all of the case's.
-  reportPdf: (caseId: number, analyses?: number[], withContext = false) =>
-    `/api/cases/${caseId}/report.pdf?${new URLSearchParams({ ...(analyses ? { analyses: analyses.join(",") } : {}), ...(withContext ? { context: "1" } : {}) })}`,
   setDepositionDate: (id: number, takenOn: string | null) => request<{ deposition: DepositionView }>("PATCH", `/depositions/${id}`, { takenOn }),
   moveDeposition: (id: number, caseId: number, witness: string) => request<{ deposition: DepositionView }>("POST", `/depositions/${id}/move`, { caseId, witness }),
   deleteDeposition: (id: number) => request<{ deleted: { depositions: number; analyses: number } }>("DELETE", `/depositions/${id}`),
   deleteCase: (id: number) => request<{ deleted: { depositions: number; analyses: number } }>("DELETE", `/cases/${id}`),
   retryDeposition: (id: number) => request<unknown>("POST", `/depositions/${id}/retry`),
-  estimate: (caseId: number, a: number, b: number) => request<{ estimate: CheckEstimate }>("GET", `/cases/${caseId}/estimate?a=${a}&b=${b}`),
-  startAnalysis: (caseId: number, body: { depositionA: number; depositionB: number; mode: "demo" | "live"; budgetUsd?: number; maxCandidates?: number; strategy?: string }) =>
-    request<{ created: boolean; analysis: AnalysisView }>("POST", `/cases/${caseId}/analyses`, body),
-  analysis: (id: number) => request<{ analysis: AnalysisView }>("GET", `/analyses/${id}`),
-  resume: (id: number, budgetUsd?: number) => request<{ analysis: AnalysisView }>("POST", `/analyses/${id}/resume`, budgetUsd === undefined ? {} : { budgetUsd }),
-  cancel: (id: number) => request<{ analysis: AnalysisView }>("POST", `/analyses/${id}/cancel`, {}),
-  findings: (analysisId: number) => request<FindingGroups>("GET", `/analyses/${analysisId}/findings`),
-  finding: (id: number) => request<{ finding: FindingDetail }>("GET", `/findings/${id}`),
-  // epochs: the evidence versions the finding was opened at (FindingDetail.evidenceEpochs); a later correction refuses the save (409).
+  // epochs: the evidence versions the finding was opened at (CaseRunFinding.evidenceEpochs); a later correction refuses the save (409).
   review: (id: number, decision: ReviewDecision | null, note: string | undefined, epochs: Record<string, number>) => request<{ review: { reviewState: string; reviewNote: string | null; reviewedAt: string | null } }>("PATCH", `/findings/${id}/review`, { decision, note, epochs }),
 };

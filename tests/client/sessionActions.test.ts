@@ -1,6 +1,6 @@
-// The case page's session rows: which need a date, where a session can move, what a move deletes.
+// The case page's session rows: which need a date, and where a session can move.
 import { describe, expect, it } from "vitest";
-import { analysesOf, dateAction, moveTargets } from "../../client/src/components/sessionActions";
+import { dateAction, moveTargets } from "../../client/src/components/sessionActions";
 
 const found = (date: string) => ({ date, ref: "1:5", text: `Taken on ${date}` });
 
@@ -17,15 +17,6 @@ describe("dateAction", () => {
   it("stops flagging a date the person kept, until they enter another", () => {
     expect(dateAction({ takenOn: "1996-01-24", dateFound: found("1996-01-23"), dateConfirmed: "1996-01-24" })).toBeNull();
     expect(dateAction({ takenOn: "1996-01-25", dateFound: found("1996-01-23"), dateConfirmed: "1996-01-24" })).toBe("differs");
-  });
-});
-
-describe("analysesOf", () => {
-  const analyses = [{ depositionA: 1, depositionB: 2 }, { depositionA: 3, depositionB: 1 }, { depositionA: 2, depositionB: 3 }];
-  it("counts the analyses that compared the session on either side", () => {
-    expect(analysesOf(analyses, 1)).toBe(2);
-    expect(analysesOf(analyses, 3)).toBe(2);
-    expect(analysesOf(analyses, 9)).toBe(0);
   });
 });
 

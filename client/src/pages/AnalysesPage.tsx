@@ -1,17 +1,14 @@
-// Every analysis across cases, with its status, newest first: whole-case analyses (running ones included, with their
-// progress) and the earlier two-session checks.
+// Every whole-case analysis across cases, newest first, with its status (a running one with its progress).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { Alert, Badge, Card, cx, Empty, Loading, PageHeader, rowClass, selectClass, Tabs, tdClass, thClass } from "../components/ui";
 import { runTitle } from "../components/CaseRuns";
 import { EXECUTION, isAnalysis, isTestRun, isUnusedEstimate, MOVING_RUN, RUN_STATUS } from "../lib/caseRuns";
-import { isActive } from "../lib/insights";
 import { formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import { useWorkspace } from "../lib/workspace";
 import type { CaseRun } from "../types";
-import { AnalysesTable, type CaseAnalysisRow } from "./CasePage";
 
 type View = "all" | "running" | "completed" | "stopped";
 const VIEWS: { id: View; label: string }[] = [
@@ -41,32 +38,18 @@ export function AnalysesPage() {
   const [view, setView] = useState<View>("all");
   const [caseId, setCaseId] = useState("");
   const inCase = (id: number) => !caseId || String(id) === caseId;
-  const all = useMemo(() => [...(data?.analyses ?? [])].sort((a, b) => b.id - a.id).filter((a) => !caseId || String(a.caseId) === caseId), [data, caseId]);
-  const bucket = (a: (typeof all)[number]): View => (isActive(a.status) ? "running" : a.status === "completed" ? "completed" : "stopped");
-  const rows = all.filter((a) => view === "all" || bucket(a) === view);
   const caseNames = useMemo(() => new Map((data?.cases ?? []).map((c) => [c.id, c.name])), [data]);
   const caseRuns = useAllCaseRuns((data?.cases ?? []).map((c) => c.id));
   const runsInCase = (caseRuns ?? []).filter((r) => inCase(r.caseId));
   const runRows = runsInCase.filter((r) => view === "all" || runBucket(r) === view);
-  // Each case's stored whole-case example analysis, listed with the finished checks.
-  const [caseAnalyses, setCaseAnalyses] = useState<CaseAnalysisRow[]>([]);
-  const caseIds = (data?.cases ?? []).map((c) => c.id).join(",");
-  useEffect(() => {
-    if (!caseIds) return;
-    Promise.all(caseIds.split(",").map(Number).map((id) => api.caseAnalysis(id).then((r) => (r.analysis ? [{ caseId: id, analysis: r.analysis }] : []), () => [])))
-      .then((all) => setCaseAnalyses(all.flat()));
-  }, [caseIds]);
-  const caseRows = caseAnalyses.filter((r) => (view === "all" || view === "completed") && inCase(r.caseId));
 
   if (error) return <Alert title="Analyses couldn't be loaded">{error}</Alert>;
-  const spent = all.reduce((n, a) => n + a.cost.actualUsd, 0) + runsInCase.reduce((n, r) => n + (isTestRun(r) ? 0 : r.cost.costUsd), 0);
-  const shownTotal = all.length + runsInCase.length;
-  const count = (v: View) => (v === "all" ? shownTotal : all.filter((a) => bucket(a) === v).length + runsInCase.filter((r) => runBucket(r) === v).length) + (v === "all" || v === "completed" ? caseAnalyses.filter((r) => inCase(r.caseId)).length : 0);
-  const twoSession = rows.length > 0 || caseRows.length > 0;
+  const spent = runsInCase.reduce((n, r) => n + (isTestRun(r) ? 0 : r.cost.costUsd), 0);
+  const count = (v: View) => (v === "all" ? runsInCase.length : runsInCase.filter((r) => runBucket(r) === v).length);
   return (
     <>
-      <PageHeader title="Analyses" description={data && caseRuns ? `Every analysis across your cases, newest first. ${formatUsd(spent)} spent on the ${shownTotal} shown.` : undefined} />
-      {!data || !caseRuns ? <Loading label="Loading analyses" /> : shownTotal === 0 && caseAnalyses.length === 0 ? (
+      <PageHeader title="Analyses" description={data && caseRuns ? `Every analysis across your cases, newest first. ${formatUsd(spent)} spent on the ${runsInCase.length} shown.` : undefined} />
+      {!data || !caseRuns ? <Loading label="Loading analyses" /> : (caseRuns ?? []).length === 0 ? (
         <Empty title="No analyses yet">Open a case and follow its steps to analyze it.</Empty>
       ) : (
         <Card className="overflow-hidden">
@@ -83,22 +66,7 @@ export function AnalysesPage() {
               </select>
             </label>
           </div>
-          {runRows.length === 0 && !twoSession ? <p className="border-t border-line px-5 py-6 text-sm text-muted">No analyses in this view.</p> : (
-            <>
-              {runRows.length > 0 && (
-                <section className="border-t border-line">
-                  {twoSession && <h2 className="px-5 pt-4 pb-1 text-sm font-semibold">Whole-case analyses</h2>}
-                  <CaseRunsTable runs={runRows} caseNames={caseNames} />
-                </section>
-              )}
-              {twoSession && (
-                <section className="border-t border-line">
-                  {runRows.length > 0 && <h2 className="px-5 pt-4 pb-1 text-sm font-semibold">Two-session checks</h2>}
-                  <AnalysesTable analyses={rows} caseNames={caseNames} caseRows={caseRows} />
-                </section>
-              )}
-            </>
-          )}
+          {runRows.length === 0 ? <p className="border-t border-line px-5 py-6 text-sm text-muted">No analyses in this view.</p> : <div className="border-t border-line"><CaseRunsTable runs={runRows} caseNames={caseNames} /></div>}
         </Card>
       )}
     </>

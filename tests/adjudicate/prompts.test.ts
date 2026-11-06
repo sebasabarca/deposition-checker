@@ -3,7 +3,7 @@
 
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { checkConsistency, PROMPTS, readVerdict, resolvesToContext, VerdictV3, type Packet, type PacketExchange, type Verdict } from "../../server/src/adjudicate";
+import { checkConsistency, PROMPTS, resolvesToContext, VerdictV3, type Packet, type PacketExchange, type Verdict } from "../../server/src/adjudicate";
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -106,7 +106,5 @@ describe("v3 grounding checks", () => {
     expect(VerdictV3.safeParse(missing).success).toBe(false);
     expect(VerdictV3.safeParse({ ...ok, contextUsed: [{ lines: "10:01", purpose: "contradicting_assertion" }] }).success).toBe(false);
     for (const key of ["confidence", "score", "band", "probability", "certainty"]) expect(VerdictV3.safeParse({ ...ok, [key]: 1 }).success).toBe(false);
-    expect(readVerdict("end_turn", JSON.stringify(ok), "adjudicate-v3").status).toBe("valid");
-    expect(readVerdict("end_turn", JSON.stringify(ok), "adjudicate-v2").status).toBe("schema_invalid");
   });
 });

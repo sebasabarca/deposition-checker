@@ -1,25 +1,25 @@
-// One deposition: read it page by page as the transcript, search it, and see where it was checked.
+// One deposition: read it page by page as the transcript, search it, and see its case's analyses.
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight, ExternalLink, Pencil } from "lucide-react";
 import { DangerZone } from "../components/DangerZone";
-import { TranscriptRows } from "../components/FindingView";
-import { useNow } from "../components/CheckProgress";
+import { TranscriptRows } from "../components/Transcript";
+import { useNow } from "../lib/useNow";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, fieldClass, inputClass, Loading, PageHeader, selectClass } from "../components/ui";
 import { dateAction } from "../components/sessionActions";
 import { DateInput } from "../components/DateInput";
 import { api } from "../lib/api";
-import { inMarkedRange, isActive } from "../lib/insights";
-import { ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate } from "../lib/labels";
+import { inMarkedRange } from "../lib/insights";
+import { MOVING_RUN, RUN_STATUS } from "../lib/caseRuns";
+import { DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import type { AnalysisView, CaseDetail, CaseSummary, DepositionLines, DepositionView } from "../types";
+import type { CaseDetail, CaseSummary, DepositionLines, DepositionView } from "../types";
 
 const FORMAT = { pdf: "PDF", html: "HTML", text: "Text", rtf: "RTF", docx: "Word (.docx)" } as const;
 
 export function DepositionPage({ id, page, q, mark }: { id: number; page: number | null; q: string; mark: string }) {
   const [d, setD] = useState<DepositionView | null>(null);
   const [kase, setKase] = useState<CaseDetail | null>(null);
-  const [analyses, setAnalyses] = useState<AnalysisView[]>([]);
   const [text, setText] = useState<DepositionLines | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<"witness" | "case" | null>(null);
@@ -32,12 +32,9 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
   const caseId = d?.caseId;
   useEffect(() => {
     if (caseId === undefined) return;
-    api.case(caseId).then(async (c) => {
-      setKase(c);
-      const mine = c.analyses.filter((a) => a.depositionA === id || a.depositionB === id);
-      setAnalyses((await Promise.all(mine.map((a) => api.analysis(a.id)))).map((r) => r.analysis).sort((a, b) => b.id - a.id));
-    }).catch(() => undefined);
-  }, [caseId, id]);
+    api.case(caseId).then(setKase).catch(() => undefined);
+  }, [caseId]);
+  const analyses = kase?.runs ?? [];
   const ready = d?.status === "ready" || d?.status === "needs_review";
   useEffect(() => {
     if (!ready) return;
@@ -148,25 +145,22 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
           </Card>
 
           <Card>
-            <CardHeader title="Analyses" count={analyses.length} />
+            <CardHeader title="Analyses of this case" count={analyses.length} />
             {analyses.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-muted">Not checked yet. Open the case and select this session with another of the same witness.</p>
+              <p className="px-5 py-4 text-sm text-muted">Not analyzed yet. Open the case to analyze it with its other sessions.</p>
             ) : (
               <ul className="divide-y divide-rule">
-                {analyses.map((a) => {
-                  const other = a.depositions.find((x) => x.id !== id);
-                  return (
-                    <li key={a.id}>
-                      <a href={href.analysis(a.id)} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-hover">
-                        <span className="min-w-0">
-                          <span className="block font-medium">Against {formatDate(other?.takenOn ?? null)}</span>
-                          <span className="block text-xs text-muted">{a.status === "completed" ? `${a.findings.groups.contradictions} potential contradictions · ${a.findings.groups.needs_context} need context` : ANALYSIS_STATUS[a.status].label}</span>
-                        </span>
-                        {isActive(a.status) && <Badge tone="active" dot>Checking</Badge>}
-                      </a>
-                    </li>
-                  );
-                })}
+                {analyses.map((a) => (
+                  <li key={a.id}>
+                    <a href={href.caseRun(a.id)} className="flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-hover">
+                      <span className="min-w-0">
+                        <span className="block font-medium">{a.name ?? `Analysis #${a.id}`}</span>
+                        <span className="block text-xs text-muted">Started {formatDate(a.createdAt)}</span>
+                      </span>
+                      <Badge tone={RUN_STATUS[a.status].tone} dot={MOVING_RUN.includes(a.status)}>{RUN_STATUS[a.status].label}</Badge>
+                    </a>
+                  </li>
+                ))}
               </ul>
             )}
           </Card>
@@ -178,7 +172,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
       <DangerZone
         what="deposition"
         name={`${d.witness.name}, ${formatDate(d.takenOn)}`}
-        consequence={`Deletes this transcript${analyses.length ? `, the ${analyses.length === 1 ? "analysis" : `${analyses.length} analyses`} that compared it, and their findings, decisions and notes` : ""}. Cost records are kept.`}
+        consequence={`Deletes this transcript and every finding that cites it, with their decisions and notes. Cost records are kept.`}
         onDelete={async () => {
           await api.deleteDeposition(d.id);
           window.location.hash = kase ? href.case(kase.case.id) : href.depositions();

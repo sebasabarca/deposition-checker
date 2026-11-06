@@ -8,7 +8,7 @@ import type { Database } from "../db/client";
 import { caseRuns, cases, depositions } from "../db/schema";
 import { enqueueCaseRun } from "../jobs/queue";
 import { CASE_RUN_CONTRACTS, caseRunFindings, caseRunReport, confirmCaseRun, createCaseRun, resumeCaseRun, stretchAllowed } from "../jobs/caseRun";
-import { analysisKeySet } from "../jobs/analysis";
+import { analysisKeySet } from "../jobs/paid";
 
 const Id = z.coerce.number().int().positive();
 const ACTIVE = ["queued", "retrieving", "awaiting_confirmation", "adjudicating"];

@@ -1,7 +1,7 @@
 // Layer 1 (source) and Layer 2 (attribution) checks on hand-built exchanges. Pure: no database.
 
 import { describe, expect, it } from "vitest";
-import { assess, readVerdict, untilGap } from "../../server/src/adjudicate";
+import { assess, untilGap } from "../../server/src/adjudicate";
 import { attributeSide, checkSide, isBareAnswer, matchScore, type EvidenceExchange, type EvidenceLine } from "../../server/src/verify";
 
 let n = 1;
@@ -108,15 +108,7 @@ describe("Layer 2: attribution", () => {
   });
 });
 
-describe("readVerdict", () => {
-  it("classifies each kind of response", () => {
-    expect(readVerdict("refusal", null).status).toBe("refused");
-    expect(readVerdict("max_tokens", "{").status).toBe("cut_off");
-    expect(readVerdict("end_turn", null).status).toBe("schema_invalid");
-    expect(readVerdict("end_turn", "{oops").error).toBe("the output is not JSON");
-    expect(readVerdict("end_turn", JSON.stringify({ classification: "direct" })).status).toBe("schema_invalid");
-  });
-});
+
 
 describe("packet context", () => {
   it("stops context lines at a page skip, nearest first", () => {

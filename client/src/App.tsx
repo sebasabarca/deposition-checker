@@ -1,6 +1,4 @@
 import { AnalysesPage } from "./pages/AnalysesPage";
-import { AnalysisPage } from "./pages/AnalysisPage";
-import { CaseAnalysisPage } from "./pages/CaseAnalysisPage";
 import { CaseRunPage } from "./pages/CaseRunPage";
 import { CasePage } from "./pages/CasePage";
 import { CasesPage } from "./pages/CasesPage";
@@ -9,7 +7,6 @@ import { DepositionsPage } from "./pages/DepositionsPage";
 import { FindingsPage } from "./pages/FindingsPage";
 import { HelpPage } from "./pages/HelpPage";
 import { OverviewPage } from "./pages/OverviewPage";
-import { ReportPage } from "./pages/ReportPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { useEffect, useState } from "react";
 import { ForgotPage, RegisterPage, ResetPage, SignInPage, VerifyPage } from "./pages/AuthPages";
@@ -55,14 +52,11 @@ export default function App() {
       {route.name === "overview" && <OverviewPage />}
       {route.name === "cases" && <CasesPage />}
       {route.name === "case" && <CasePage key={route.id} id={route.id} />}
-      {route.name === "report" && <ReportPage key={route.id} id={route.id} />}
-      {route.name === "case_analysis" && <CaseAnalysisPage key={route.id} id={route.id} />}
       {route.name === "case_run" && <CaseRunPage key={route.id} id={route.id} />}
       {route.name === "depositions" && <DepositionsPage caseId={route.caseId} />}
       {route.name === "deposition" && <DepositionPage key={route.id} id={route.id} page={route.page} q={route.q} mark={route.mark} />}
       {route.name === "findings" && <FindingsPage />}
       {route.name === "analyses" && <AnalysesPage />}
-      {route.name === "analysis" && <AnalysisPage key={route.id} id={route.id} findingId={route.findingId} />}
       {route.name === "help" && <HelpPage />}
       {route.name === "profile" && <ProfilePage user={user} onUser={setUser} />}
       {route.name === "not_found" && <Empty title="Page not found">Go back to the <a className="underline" href={href.overview()}>overview</a>.</Empty>}

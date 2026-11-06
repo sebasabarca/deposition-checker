@@ -7,12 +7,12 @@ import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { analysisRoutes, caseRoutes, depositionRoutes } from "../../server/src/api";
+import { caseRoutes, caseRunRoutes, depositionRoutes, findingRoutes } from "../../server/src/api";
 import { accountGates, authRoutes, hashPassword, resetRateLimits, requireUser, sameOrigin, scopeToOrg, verifyPassword } from "../../server/src/auth";
 import type { Database } from "../../server/src/db/client";
 import { authTokens, cases, orgs, sessions, users } from "../../server/src/db/schema";
 import type { Email } from "../../server/src/email";
-import { createAnalysisQueues, createIngestQueues, startBoss } from "../../server/src/jobs";
+import { createCaseRunQueues, createIngestQueues, startBoss } from "../../server/src/jobs";
 import { emptyTables, listen, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 describe("password hashing", () => {
@@ -36,13 +36,14 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
     ({ db, pool } = await openTestDatabase());
     boss = await startBoss(TEST_DATABASE_URL!, { supervise: false });
     await createIngestQueues(boss);
-    await createAnalysisQueues(boss);
+    await createCaseRunQueues(boss);
     const app = express();
     app.use(express.json());
     app.use("/api", authRoutes(db, { mailer: async (e) => void sent.push(e) }));
     app.use("/api", sameOrigin, requireUser(db), scopeToOrg(db), accountGates());
     app.use("/api", caseRoutes({ db }));
-    app.use("/api", analysisRoutes({ db, pool, boss }));
+    app.use("/api", caseRunRoutes({ db, boss, env: {} }));
+    app.use("/api", findingRoutes({ db }));
     app.use("/api", depositionRoutes({ db, pool, boss }));
     api = await listen(app);
   });
@@ -137,13 +138,13 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
     expect((await b("POST", "/auth/signin", { email: "ana@harlow.law", password: "a long passphrase" })).body.user.emailVerified).toBe(false);
     const kase = (await b("POST", "/cases", { name: "Webb v. Harlow" })).body.case;
     expect(await b("POST", `/cases/${kase.id}/depositions?witness=Webb`, { text: "x" })).toMatchObject({ status: 403, body: { code: "email_unverified" } });
-    expect(await b("POST", `/cases/${kase.id}/analyses`, { depositionA: 1, depositionB: 2, mode: "demo" })).toMatchObject({ status: 403, body: { code: "email_unverified" } });
+    expect(await b("POST", `/cases/${kase.id}/case-runs`, { mode: "mock" })).toMatchObject({ status: 403, body: { code: "email_unverified" } });
 
     await b("POST", "/auth/verify", { token: tokenIn(sent[0]) });
-    expect(await b("POST", `/cases/${kase.id}/analyses`, { depositionA: 1, depositionB: 2, mode: "live" })).toMatchObject({ status: 403, body: { code: "no_analysis_access" } });
-    expect((await b("POST", `/cases/${kase.id}/analyses`, { depositionA: 1, depositionB: 2, mode: "demo" })).status).toBe(404); // past the gates: the depositions don't exist
+    expect(await b("POST", `/cases/${kase.id}/case-runs`, { mode: "live" })).toMatchObject({ status: 403, body: { code: "no_analysis_access" } });
+    expect(await b("POST", `/cases/${kase.id}/case-runs`, { mode: "mock" })).toMatchObject({ status: 403, body: { code: "test_runs_disabled" } }); // past the gates: the route's own rule
     await db.update(users).set({ analysisAccess: true });
-    expect((await b("POST", `/cases/${kase.id}/analyses`, { depositionA: 1, depositionB: 2, mode: "live" })).status).toBe(404);
+    expect((await b("POST", `/cases/${kase.id}/case-runs`, { mode: "live" })).status).toBe(202); // an estimate is prepared; nothing is sent
   });
 
   it("resets a password with a single-use link, ends every other session, and answers forgot-password the same for anyone", async () => {
