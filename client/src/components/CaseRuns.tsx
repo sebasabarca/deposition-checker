@@ -251,8 +251,8 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
           );
         })}
       </ol>
-      {previous.length > 0 && <PreviousAnalyses runs={previous} sessions={sessions} />}
     </Card>
+    {previous.length > 0 && <PreviousAnalyses runs={previous} sessions={sessions} />}
     </div>
   );
 }
@@ -678,9 +678,9 @@ function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean;
 // and how far its review has got, each a click from its findings. Shown whenever the case has one.
 function PreviousAnalyses({ runs, sessions }: { runs: CaseRun[]; sessions: WorkflowSession[] }) {
   return (
-    <section aria-labelledby="previous-analyses" className="border-t border-line">
-      <h3 id="previous-analyses" className="px-5 pt-4 pb-2 text-sm font-semibold">Previous analyses <span className="font-normal text-faint tabular-nums">({runs.length})</span></h3>
-      <ul className="divide-y divide-rule border-t border-rule">
+    <Card className="mt-6 overflow-hidden">
+      <CardHeader title="Previous analyses" count={runs.length} description="Every analysis of this case, newest first. Open one to review its findings or download its report." />
+      <ul className="divide-y divide-rule">
         {runs.map((r) => {
           const found = r.findings.reduce((n, f) => n + f.n, 0);
           const reviewed = Math.min(r.reviewed ?? 0, found);
@@ -708,6 +708,6 @@ function PreviousAnalyses({ runs, sessions }: { runs: CaseRun[]; sessions: Workf
           );
         })}
       </ul>
-    </section>
+    </Card>
   );
 }
