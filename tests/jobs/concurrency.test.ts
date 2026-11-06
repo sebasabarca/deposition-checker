@@ -48,14 +48,20 @@ describe("case run settings: tiers, caps, adaptive", () => {
 });
 
 describe("provider limiter: adaptive window", () => {
-  it("halves on a 429 once per pause, grows back by about one per window of replies, never past maxInFlight", async () => {
+  it("halves on repeated 429s (once per pause), ignores a lone one, grows back by about one per window of replies", async () => {
     const { c, clock } = clockAt();
     const l = new ProviderLimiter({ ...UNLIMITED, maxInFlight: 8, adaptive: true }, clock);
     expect(l.capacity()).toBe(8);
+    l.pause(1_000); // a lone 429: the pause alone handles it
+    expect(l.capacity()).toBe(8);
+    c.t = 1_500; // again within two retry-afters: congestion
     l.pause(1_000);
     l.pause(1_000); // same burst: one decrease
     expect(l.capacity()).toBe(4);
-    c.t = 1_000;
+    c.t = 2_600;
+    l.pause(1_000);
+    expect(l.capacity()).toBe(2);
+    c.t = 10_000; // long after: a lone one again
     l.pause(1_000);
     expect(l.capacity()).toBe(2);
     const t = { input: 0, output: 0 };
@@ -70,7 +76,8 @@ describe("provider limiter: adaptive window", () => {
     const { clock } = clockAt();
     const l = new ProviderLimiter({ ...UNLIMITED, maxInFlight: 4, adaptive: true }, clock);
     const held = await Promise.all([0, 1, 2, 3].map(() => l.acquireSlot("run")));
-    l.pause(10); // window 2, 4 in flight
+    l.pause(10);
+    l.pause(10); // congestion: window 2, 4 in flight
     let granted = 0;
     void l.acquireSlot("run").then(() => granted++);
     held[0].release();

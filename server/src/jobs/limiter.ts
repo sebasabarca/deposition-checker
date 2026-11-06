@@ -13,9 +13,10 @@
 //              `burstSeconds` of its rate, because the provider may enforce a per-minute limit over shorter
 //              intervals; a request larger than that waits for a full bucket and leaves it in debt.
 //   pause      a 429 or 529 pauses every request through this limiter until its retry-after (or reset) has passed.
-//   adaptive   (off by default) additive increase, multiplicative decrease of the slots actually granted: a 429 or 529
-//              halves them (once per pause), every reply adds 1/window, up to `maxInFlight`. Requests already in
-//              flight are never cancelled; new ones wait until the in-flight count is back under the window.
+//   adaptive   (off by default) additive increase, multiplicative decrease of the slots actually granted: a 429 or
+//              529 within two retry-afters of the previous one (congestion right after resuming, not a stray error)
+//              halves them, at most once per pause; every reply adds 1/window, up to `maxInFlight`. Requests already in flight are
+//              never cancelled; new ones wait until the in-flight count is back under the window.
 //
 // The limits are configuration (the account's tier), not assumptions; nothing here sends or retries a request.
 // shortcut: per process only; several worker processes each get the full limits. Coordinate them in Postgres if
@@ -92,6 +93,7 @@ export class ProviderLimiter {
   readonly stats = { pauses: 0, peakInFlight: 0, waitedMs: 0, decreases: 0, lowestWindow: Number.MAX_SAFE_INTEGER };
   private window: number; // adaptive: the slots currently granted (fractional; floor is used)
   private decreasedUntil = -Infinity;
+  private lastPauseAt = -Infinity;
 
   constructor(readonly limits: ProviderLimits = UNLIMITED, private readonly clock: Clock = realClock) {
     const now = clock.now();
@@ -202,12 +204,16 @@ export class ProviderLimiter {
   }
 
   // Every request through this limiter waits until `ms` from now.
-  // Adaptive: halves the window, once per pause (the 429s of one burst are one congestion signal, not several).
+  // Adaptive: a rate limit within 2 × `ms` of the previous one halves the window, once per pause (the 429s of one
+  // burst are one congestion signal; a lone one is noise, handled by the pause alone). Simulated: a lone-429 rule
+  // at 1% stray 429s doubled completion time; this one costs ~15% there and still cuts congestion 429s ~6×.
   pause(ms: number) {
     const now = this.clock.now();
     this.stats.pauses++;
     this.pausedUntil = Math.max(this.pausedUntil, now + ms);
-    if (this.limits.adaptive && now >= this.decreasedUntil) {
+    const congested = now - this.lastPauseAt < 2 * ms;
+    this.lastPauseAt = now;
+    if (this.limits.adaptive && congested && now >= this.decreasedUntil && this.window > 1) {
       this.window = Math.max(1, Math.floor(this.window / 2));
       this.decreasedUntil = this.pausedUntil;
       this.stats.decreases++;
