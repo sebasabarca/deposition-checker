@@ -2,7 +2,7 @@
 // analyses, and add a witness. Requests only read and write rows; nothing here parses or adjudicates.
 
 import { Router } from "express";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "../db/client";
 import { analyses, candidates, cases, depositions, findings, orgs, witnesses } from "../db/schema";
@@ -144,9 +144,4 @@ export function caseRoutes({ db }: { db: Database }): Router {
   });
 
   return router;
-}
-
-// Depositions of a case by ID, for validating an analysis request.
-export async function depositionsOf(db: Database, caseId: number, ids: number[]) {
-  return db.select().from(depositions).where(and(eq(depositions.caseId, caseId), inArray(depositions.id, ids)));
 }

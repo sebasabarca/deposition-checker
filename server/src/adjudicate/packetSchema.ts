@@ -71,8 +71,6 @@ export function parsePacketReply(text: string | null): { ok: true; reply: Packet
 export const SUBSTANTIVE_OUTCOMES_V2 = ["direct", "inferential", "compatible", "clarification_or_correction", "secondhand_or_uncertain"] as const;
 export const PACKET_OUTCOMES_V2 = [...SUBSTANTIVE_OUTCOMES_V2, ...ABSTENTIONS] as const;
 export type PacketOutcomeV2 = (typeof PACKET_OUTCOMES_V2)[number];
-// Outcomes that surface the pair to a lawyer for review, beyond the two conflict outcomes.
-export const REVIEW_OUTCOMES_V2: readonly PacketOutcomeV2[] = ["clarification_or_correction", "secondhand_or_uncertain"];
 export const DETAIL_RELATIONS_V2 = ["same", "different", "only_one"] as const;
 
 export const PairVerdictV2 = z.strictObject({

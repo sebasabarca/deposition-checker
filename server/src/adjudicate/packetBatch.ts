@@ -16,7 +16,6 @@ import { PACKET_PROMPT_VERSION, PACKET_PROMPTS, type ContractId, type IssuePacke
 
 export const PROVIDER_MAX_REQUESTS = 100_000;
 export const PROVIDER_MAX_BYTES = 256 * 1024 * 1024;
-export const RESULT_RETENTION_DAYS = 29;
 export const CUSTOM_ID = /^[a-zA-Z0-9_-]{1,64}$/;
 
 // contract: the request contract (packet-v1 when absent; stretch-v2 for an experimental whole-stretch run).

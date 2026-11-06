@@ -4,8 +4,6 @@
 
 import { appendFileSync } from "node:fs";
 
-export type Timing = { stage: string; ms: number; at: string; pid: number } & Record<string, unknown>;
-
 export function recordTiming(stage: string, ms: number, meta: Record<string, unknown> = {}) {
   const file = process.env.BENCHMARK_TIMING_FILE;
   if (!file) return;

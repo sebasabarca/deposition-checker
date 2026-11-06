@@ -37,5 +37,3 @@ export const CARD_EPISTEMIC = EPISTEMIC;
 export const CLAIM_SOURCES = ["answer", "adopted_question"] as const;
 
 export type Polarity = (typeof POLARITIES)[number];
-export type Epistemic = (typeof EPISTEMIC)[number];
-export type ClaimSource = (typeof CLAIM_SOURCES)[number];

@@ -1,17 +1,15 @@
 // Direct discovery's pure parts: the locked prompt, and telling outcomes apart.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { classifyDiscovery, DISCOVERY_SYSTEM, discoveryUserPrompt, fitsContext, inputTokensBound, readDiscoveryOutput, type DiscoveryResult } from "../../server/src/adjudicate";
 
 const message = (stop_reason: string, text: string | null, extra = {}): DiscoveryResult => ({ type: "succeeded", message: { model: "claude-fable-5-1", stop_reason, content: text === null ? [] : [{ type: "text", text }], usage: { input_tokens: 10, output_tokens: 5 }, ...extra } as never });
 const EMPTY = JSON.stringify({ summary: { completion_status: "complete", limitations: [] }, findings: [] });
-const R = "experiments/multimodel-contradictions/prompts/";
 const session = { description: "session of 2022-06-20", lines: [{ page: 6, line: 6, text: "the cab" }] };
 
 describe("the discovery prompt", () => {
   it("is the prompt of the November 1 Fable run, word for word", () => {
-    expect(DISCOVERY_SYSTEM).toBe(readFileSync(`${R}system.md`, "utf8") + readFileSync(`${R}read-fully.md`, "utf8"));
+    // The experiment that produced it was removed on November 6; the hash pins the prompt word for word.
     expect(createHash("sha256").update(DISCOVERY_SYSTEM).digest("hex")).toBe("12bf630c0f5d606b2b26a4369b4a13a67dec7c0fecfd36f82e7f541a15bd5110");
   });
 

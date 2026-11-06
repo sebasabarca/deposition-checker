@@ -28,7 +28,6 @@ const Pair = z.strictObject({
   b: Anchor,
   note: z.string().trim().min(1).max(600),
 });
-export type CrossPair = z.infer<typeof Pair>;
 
 const Document = z.strictObject({
   file: z.string().min(1), // relative to the set's root directory, which is given when the set is run

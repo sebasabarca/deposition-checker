@@ -137,7 +137,3 @@ export async function isMostlyImages(data: Uint8Array): Promise<boolean> {
 }
 
 export const extractItems = (pages: TextItem[][], layout: LayoutProfile): ExtractedPdf => ({ pageCount: pages.length, pages: pages.map((items, i) => readPageItems(i + 1, items, layout)) });
-
-export async function extractPdf(data: Uint8Array, layout: LayoutProfile): Promise<ExtractedPdf> {
-  return extractItems(await readPdfItems(data), layout);
-}

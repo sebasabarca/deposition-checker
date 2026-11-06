@@ -20,7 +20,6 @@ export const COMPACT_OUTPUT_MARGIN = 2;
 const ROW_BOUND: Record<CompactContractId, number> = { "packet-c1": 30, "packet-c2": 70, "packet-c3": 100 };
 export const COMPACT_MAX_OUTPUT_TOKENS_PER_PAIR: Record<CompactContractId, number> = Object.fromEntries(COMPACT_CONTRACTS.map((c) => [c, Math.ceil((COMPACT_MAX_V1_VERDICT_TOKENS + ROW_BOUND[c]) * COMPACT_OUTPUT_MARGIN)])) as Record<CompactContractId, number>;
 export const COMPACT_ENVELOPE_TOKENS = 50;
-export const compactMaxOutputTokens = (contract: CompactContractId, pairs: number) => COMPACT_ENVELOPE_TOKENS + COMPACT_MAX_OUTPUT_TOKENS_PER_PAIR[contract] * pairs;
 
 const words = (s: string | null | undefined, n: number) => (s ?? "").split(/\s+/).filter(Boolean).slice(0, n).join(" ");
 

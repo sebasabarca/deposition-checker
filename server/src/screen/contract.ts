@@ -49,8 +49,6 @@ export const ScreeningResultSchema = z
   });
 export type ScreeningResult = z.infer<typeof ScreeningResultSchema>;
 
-export const isPending = (r: Pick<ScreeningResult, "adjudication">) => r.adjudication !== "adjudicated";
-
 export type Accounting = {
   poolPairs: number; // retrieved candidate pairs
   packetedPairs: number; // listed in exactly one packet

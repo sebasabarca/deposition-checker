@@ -15,7 +15,7 @@ import { z } from "zod";
 import { buildUnits, STRETCH_SETTINGS } from "../retrieve/stretchSet";
 import { spanLabel } from "./packet";
 import { PairVerdict } from "./packetSchema";
-import type { IssuePacket, PacketPassage, PassageLine } from "./packetPrompt";
+import type { IssuePacket, PassageLine } from "./packetPrompt";
 
 export const STRETCH_V2_PROMPT_VERSION = "stretch-v2";
 export const STRETCH_V2_SYSTEM_PROMPT_SHA256 = "b312bfb2d9fa2e5b6803ce6f86932efa0a98ba64e588f47bb56c2353b690013e";
@@ -159,6 +159,3 @@ export function formatStretchRequest(packet: IssuePacket, render: StretchRenderI
   const pairs = units.reduce((n, u) => n + u.pairs.length, 0);
   return [...blocks, ...unitText, `Compare the two stretches of each of these ${units.length} unit${units.length === 1 ? "" : "s"}, report your findings, and give each of the ${pairs} original pair${pairs === 1 ? "" : "s"} exactly one ledger status.`].join("\n\n");
 }
-
-// Which passages a request shows (for sizing): its stretches' passages.
-export const stretchPassages = (packet: IssuePacket): PacketPassage[] => { const ids = new Set(requestUnits(packet).flatMap((u) => [...u.a, ...u.b])); return packet.passages.filter((p) => ids.has(p.id)); };

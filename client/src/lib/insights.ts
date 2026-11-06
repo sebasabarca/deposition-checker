@@ -1,6 +1,6 @@
 // Figures derived from API responses. Pure, so every number on a screen traces to stored rows.
 
-import type { AnalysisProgress, AnalysisRow, AnalysisStatus, CaseDetail, DepositionRow, EvidenceSide, FindingSummary } from "../types";
+import type { AnalysisProgress, AnalysisRow, AnalysisStatus, CaseDetail, DepositionRow, EvidenceSide } from "../types";
 
 export const ACTIVE_STATUSES: AnalysisStatus[] = ["queued", "parsing", "retrieving", "adjudicating"];
 export const isActive = (s: AnalysisStatus) => ACTIVE_STATUSES.includes(s);
@@ -18,13 +18,6 @@ export function progressShare(status: AnalysisStatus, p: AnalysisProgress) {
   if (status === "completed") return 1;
   const selected = p.candidates?.selected ?? 0;
   return selected ? Math.min(candidateCoverage(p).assessed / selected, 1) : 0;
-}
-
-export function countClassifications(findings: Pick<FindingSummary, "classification">[]) {
-  return {
-    direct: findings.filter((f) => f.classification === "direct").length,
-    inferential: findings.filter((f) => f.classification === "inferential").length,
-  };
 }
 
 export type Activity = { key: string; kind: "analysis" | "deposition" | "case"; title: string; subject: string; at: string; link: string };

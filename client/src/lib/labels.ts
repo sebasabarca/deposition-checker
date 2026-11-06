@@ -182,5 +182,3 @@ export const EVIDENCE_STATUS: Record<FindingSummary["evidenceStatus"], string> =
   wrong_reference: "Citation not verified",
   unsupported: "Citation not verified",
 };
-
-export const priorityTone = (p: FindingSummary["priority"]) => (p === "high" ? "contradiction" : p === "needs_context" || p === "unverified" ? "warn" : "neutral") as "contradiction" | "warn" | "neutral";

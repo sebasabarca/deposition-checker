@@ -224,16 +224,6 @@ export const thClass = "h-9 whitespace-nowrap px-4 text-left text-xs font-medium
 export const tdClass = "px-4 py-3 first:pl-5 last:pr-5";
 export const rowClass = "border-t border-rule transition-colors hover:bg-hover";
 
-export function Stat({ label, value, note, tone }: { label: string; value: ReactNode; note?: ReactNode; tone?: "bad" }) {
-  return (
-    <div className="min-w-0 px-5 py-4">
-      <p className="text-xs text-faint">{label}</p>
-      <p className={cx("mt-1 text-lg font-semibold tabular-nums", tone === "bad" && "text-conflict")}>{value}</p>
-      {note && <p className="mt-0.5 truncate text-xs text-muted">{note}</p>}
-    </div>
-  );
-}
-
 // Evidence strength, out of 100, where a finding has one. Its meaning is explained on the finding.
 export function Strength({ score, size = "sm" }: { score: number | null; size?: "sm" | "lg" }) {
   if (score === null) return null;

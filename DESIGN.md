@@ -866,7 +866,7 @@ Hybrid is now the only pipeline, and v1 is gone, on the developer's instruction.
 - New analyses are hybrid, whatever a client sends. `analyses.retrieval` defaults to `hybrid` (migration 0017). Past `pair` analyses stay readable, and no table, column or row was dropped.
 - Adjudication's disagreement check read claims, so it now receives none, as new uploads always did. On Ellison, where claims were stored, a re-run can score differently from earlier runs.
 - A live analysis without paid access stops before retrieval rather than after.
-- The direct full-transcript call stays in `experiments/multimodel-contradictions/`, outside the product.
+- The direct full-transcript call stayed in `experiments/multimodel-contradictions/`, outside the product (removed from the repository on November 6, 2026; it is in the git history).
 
 ## Implementation note: direct discovery as the default (November 1, approved)
 
