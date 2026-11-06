@@ -29,6 +29,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { buildIssuePacket, resolvePassages } from "../server/src/adjudicate/packetLoad";
 import { anthropicPacketAdjudicator } from "../server/src/adjudicate/packetModel";
 import { maxOutputTokensFor, PACKET_MODEL, PACKET_PROMPTS, type IssuePacket, type PacketPassage } from "../server/src/adjudicate/packetPrompt";
+import { formatStretchRequest, STRETCH_RENDER_R1 } from "../server/src/adjudicate/stretchPrompt";
 import { parseVerdictsLenient, VERDICT_SCHEMAS } from "../server/src/adjudicate/packetSchema";
 import { classifyFailure } from "../server/src/adjudicate/requests";
 import { mockStretchReply, readStretchReply } from "../server/src/adjudicate/stretch";
@@ -302,7 +303,9 @@ async function run(o: { set: "labelled" | "pilot"; contract: Contract; label: st
         if (round > 0) {
           const b = buildIssuePacket({ id: r.spec.id, issue: "", items: r.spec.items, pairs: packet.pairs.map((p) => keyOfPair(packet, p.pairId).split("|") as [string, string]), inputTokens: 0 }, passages, { allItems: contract === "stretch-v2" });
           packet = b.packet!;
-          text = PACKET_PROMPTS[contract].format(packet);
+          // The frozen set (accuracy-eval-v1) was rendered by stretch render r1: its recovery rounds keep that render,
+          // so one request id never mixes renders. Re-freeze to evaluate r2.
+          text = contract === "stretch-v2" ? formatStretchRequest(packet, STRETCH_RENDER_R1) : PACKET_PROMPTS[contract].format(packet);
         }
         const p = packet;
         const reply = await send(r.id, round, text!, packet.pairs.length, o.mock ? () => (contract === "stretch-v2" ? mockStretchReply(p) : mockPacketReply(p)).text : undefined);

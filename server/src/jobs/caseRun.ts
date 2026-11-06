@@ -35,7 +35,7 @@ import { assessPacketPair } from "../adjudicate/packetAssess";
 import { buildIssuePacket, resolvePassages } from "../adjudicate/packetLoad";
 import { formatIssuePacket, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, maxOutputTokensFor, requestChars, type ContractId, type IssuePacket } from "../adjudicate/packetPrompt";
 import { mockStretchReply, readStretchReply, verificationOf, type StretchReading } from "../adjudicate/stretch";
-import { STRETCH_RENDER_ID, STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
+import { STRETCH_RENDER_ID, STRETCH_RENDER_R1, STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
 import { buildStretchSet } from "../retrieve/stretchSet";
 import type { PacketAdjudicator } from "../adjudicate/packetModel";
 import { parseVerdictsLenient, VERDICT_SCHEMAS } from "../adjudicate/packetSchema";
@@ -193,12 +193,24 @@ export async function interruptCaseRun(db: Database, run: CaseRun, reason: strin
 }
 
 // "polling": an economy run with batches still open; the caller queues the next check.
+// A stretch-v2 run created before render r2 existed has no stretchRender in its config, and any request it sent so
+// far used r1. When such a run is worked on again (resumed, re-queued after a restart), its later requests render r2:
+// recorded here once, so the run's config says which render applies when. Each request's own fingerprint (exact-request
+// reuse) already identifies its text.
+async function recordStretchRender(db: Database, run: CaseRun) {
+  const config = (run.config ?? {}) as { stretchRender?: string };
+  if (contractOf(run) !== STRETCH_V2_PROMPT_VERSION || config.stretchRender) return;
+  run.config = { ...config, stretchRender: STRETCH_RENDER_ID, stretchRenderEarlier: { render: STRETCH_RENDER_R1, until: new Date().toISOString(), note: "requests sent before this time were rendered by r1" } };
+  await update(db, run.id, { config: run.config }); // and in memory: later config writes of this runner start from it
+}
+
 export async function runCaseRun(db: Database, pool: Pool, id: number, deps: CaseRunDeps): Promise<CaseRunStatus | "duplicate_delivery" | "polling"> {
   const [run] = await db.select().from(caseRuns).where(eq(caseRuns.id, id));
   if (!run) throw new Error(`No case run ${id}.`);
   if (JOB_STOPS.includes(run.status as CaseRunStatus)) return run.status as CaseRunStatus;
   const runnerId = randomUUID();
   if (!(await claimRunner(db, id, runnerId))) return "duplicate_delivery";
+  await recordStretchRender(db, run);
   try {
     // Only adjudication spends money; retrieval is free and simply runs again. An economy run's requests live in
     // the provider's batches, recorded in the database, so a new runner simply continues it.
