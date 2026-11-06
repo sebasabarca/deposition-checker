@@ -192,7 +192,7 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
     expect(await db.$count(sessions)).toBe(0);
   });
 
-  it("keeps each account's cases to itself: listing, reading, changing and deleting", async () => {
+  it("keeps each account's cases to itself: listing, reading, renaming, changing and deleting", async () => {
     const a = browser();
     const b = browser();
     await registerAndVerify(a, "ana@harlow.law");
@@ -203,6 +203,8 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
     expect((await b("GET", `/cases/${kase.id}`)).status).toBe(404);
     expect((await b("POST", `/cases/${kase.id}/witnesses`, { name: "Marcus Webb" })).status).toBe(404);
     expect((await b("DELETE", `/cases/${kase.id}`)).status).toBe(404);
+    expect((await b("PATCH", `/cases/${kase.id}`, { name: "Taken over" })).status).toBe(404);
+    expect((await a("GET", `/cases/${kase.id}`)).body.case.name).toBe("Webb v. Harlow"); // unchanged by the other account
     expect((await a("GET", `/cases/${kase.id}`)).status).toBe(200);
     const [row] = await db.select().from(cases).where(eq(cases.id, kase.id));
     expect(row.orgId).not.toBe((await db.select().from(users).where(eq(users.email, "ben@kerr.law")))[0].orgId);

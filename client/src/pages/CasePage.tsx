@@ -6,6 +6,7 @@ import { ArrowRightLeft, GripVertical, Pencil } from "lucide-react";
 import { CaseRunPanel, useCaseRuns } from "../components/CaseRuns";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
+import { RenameCase } from "../components/RenameCase";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, cx, Dialog, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
 import { dateAction, moveTargets } from "../components/sessionActions";
@@ -25,6 +26,7 @@ export function CasePage({ id }: { id: number }) {
   const [dragging, setDragging] = useState<DepositionRow | null>(null);
   const [over, setOver] = useState<number | null>(null);
   const [move, setMove] = useState<{ d: DepositionRow; to: number | null } | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const add = useAddDeposition();
   const runs = useCaseRuns(id);
   const load = useCallback(() => {
@@ -124,7 +126,9 @@ export function CasePage({ id }: { id: number }) {
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
         title={detail.case.name}
         description={summary}
+        actions={<Button variant="secondary" onClick={() => setRenaming(true)}><Pencil aria-hidden className="size-4" />Rename</Button>}
       />
+      <RenameCase caseId={id} name={detail.case.name} open={renaming} onClose={() => setRenaming(false)} onRenamed={(name) => { setRenaming(false); setDetail((d) => d && { ...d, case: { ...d.case, name } }); }} />
 
       <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} state={runs} />
 

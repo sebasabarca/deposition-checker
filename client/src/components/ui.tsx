@@ -132,12 +132,16 @@ export function Tabs<T extends string>({ value, onChange, items, label }: { valu
   );
 }
 
-// A native <dialog>: the browser traps focus, closes on Escape and returns focus afterwards.
+// A native <dialog>: the browser traps focus, closes on Escape and returns focus afterwards. The field to type in first
+// carries data-autofocus.
 export function Dialog({ open, onClose, title, description, wide, size, children }: { open: boolean; onClose: () => void; title: string; description?: string; wide?: boolean; size?: "md" | "lg" | "xl"; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    if (open) ref.current?.showModal();
-    else ref.current?.close();
+    if (open) {
+      ref.current?.showModal();
+      // showModal focuses the first control (the close button); a field marked data-autofocus takes the focus instead.
+      ref.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    } else ref.current?.close();
   }, [open]);
   const width = wide ? "max-w-7xl" : { md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl" }[size ?? "md"];
   return (

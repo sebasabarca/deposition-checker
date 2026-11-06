@@ -79,6 +79,14 @@ describe.skipIf(!TEST_DATABASE_URL)("case and deposition endpoints (Postgres)", 
     expect(list.body.cases).toEqual([expect.objectContaining({ id, name: "U.S. v. Oracle", depositions: 0, witnesses: 2, findings: 0, lastAnalysis: null })]);
     expect((await call("GET", "/cases/999999")).status).toBe(404);
     expect((await call("GET", "/cases/abc")).status).toBe(400);
+
+    // Renaming: only the name changes; an empty or overlong name, an extra field or an unknown case is refused.
+    const renamed = await call("PATCH", `/cases/${id}`, { name: "  U.S. v. Oracle Corp.  " });
+    expect(renamed).toMatchObject({ status: 200, body: { case: { id, name: "U.S. v. Oracle Corp." } } });
+    expect(renamed.body.witnesses).toHaveLength(2); // its witnesses are untouched
+    expect((await call("GET", "/cases")).body.cases[0]).toMatchObject({ id, name: "U.S. v. Oracle Corp.", witnesses: 2 });
+    for (const bad of [{ name: "   " }, { name: "x".repeat(201) }, {}, { name: "Ok", orgId: 2 }]) expect((await call("PATCH", `/cases/${id}`, bad)).status).toBe(400);
+    expect((await call("PATCH", "/cases/999999", { name: "Nobody" })).status).toBe(404);
   });
 
   it("keeps an upload's original filename for display, never as a path", async () => {

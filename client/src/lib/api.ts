@@ -54,6 +54,7 @@ export const api = {
   cases: () => request<{ cases: CaseSummary[] }>("GET", "/cases"),
   workspace: () => request<Workspace>("GET", "/workspace"),
   createCase: (name: string, witness?: string) => request<CaseDetail>("POST", "/cases", { name, ...(witness ? { witness } : {}) }),
+  renameCase: (id: number, name: string) => request<CaseDetail>("PATCH", `/cases/${id}`, { name }),
   case: (id: number) => request<CaseDetail>("GET", `/cases/${id}`),
   // Whole-case runs (docs/case-run-api.md). A live run stops after preparation with its estimate; nothing is
   // sent to a model until confirmCaseRun with a budget. A mock run uses the free deterministic test model.

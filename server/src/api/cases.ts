@@ -128,6 +128,17 @@ export function caseRoutes({ db }: { db: Database }): Router {
     return res.json(detail);
   });
 
+  // Renames a case. Only its name changes; its depositions, analyses and findings are untouched.
+  router.patch("/cases/:id", async (req, res) => {
+    const id = Id.safeParse(req.params.id);
+    const body = z.object({ name: Name }).strict().safeParse(req.body ?? {});
+    if (!id.success) return res.status(400).json({ error: "The case ID must be a positive number." });
+    if (!body.success) return res.status(400).json({ error: "A case name (up to 200 characters) is required." });
+    const [kase] = await db.update(cases).set({ name: body.data.name }).where(eq(cases.id, id.data)).returning({ id: cases.id });
+    if (!kase) return res.status(404).json({ error: "Case not found." });
+    return res.json(await caseDetail(db, kase.id));
+  });
+
   router.post("/cases/:id/witnesses", async (req, res) => {
     const id = Id.safeParse(req.params.id);
     const body = z.object({ name: Name }).safeParse(req.body);
