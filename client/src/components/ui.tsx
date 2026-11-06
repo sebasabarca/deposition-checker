@@ -1,7 +1,7 @@
 // Shared components, written with Tailwind directly. White sheets with a 1px edge on the grey
 // canvas, a navy primary, pale status pairs; no shadows except on what floats.
 
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { BadgeCheck, ChevronRight, CircleCheck, ScanText, Sparkles, UserRoundCheck, X, type LucideIcon } from "lucide-react";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -202,15 +202,28 @@ export const selectClass = cx(controlClass, "h-9 appearance-none bg-[url(\"data:
 
 // Loading: a transcript page with the highlighter moving down it (the app's own reading motif, as on a running
 // analysis), large and centred, with what is being loaded beneath it. A whole page centres it on the screen;
-// inline, it centres in the panel it loads.
+// inline, it centres in the panel it loads. It appears only once loading has taken LOADER_DELAY_MS, fading in, so a
+// quick load never flashes a lone icon on a blank page (which reads as "nothing here"); screen readers hear the label
+// at once.
+const LOADER_DELAY_MS = 400;
 export function Loading({ label = "Loading", inline }: { label?: string; inline?: boolean }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setShown(true), LOADER_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, []);
   return (
     <div role="status" aria-live="polite" aria-busy className={cx("flex flex-col items-center justify-center gap-5 text-center", inline ? "py-12" : "min-h-[calc(100dvh-10rem)]")}>
-      <span aria-hidden className={cx("relative block overflow-hidden rounded-md bg-sheet shadow-[0_12px_32px_-14px_rgb(19_33_58/0.4)] ring-1 ring-line", inline ? "h-[92px] w-[70px]" : "h-[124px] w-[94px]")}>
-        <span className={cx("absolute inset-x-[10%] top-[9%] h-[11%] rounded-[2px] bg-mark", inline ? "loader-scan" : "loader-scan-lg")} />
-        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="absolute left-[14%] h-[2px] rounded-full bg-control" style={{ top: `${13 + i * 10}%`, right: i % 3 === 2 ? "34%" : "14%" }} />)}
-      </span>
-      <p className={cx("font-medium text-muted", inline ? "text-base" : "text-lg")}>{label}…</p>
+      <span className="sr-only">{label}…</span>
+      {shown && (
+        <div aria-hidden className="fade-in flex flex-col items-center gap-5">
+          <span className={cx("relative block overflow-hidden rounded-md bg-sheet shadow-[0_12px_32px_-14px_rgb(19_33_58/0.4)] ring-1 ring-line", inline ? "h-[92px] w-[70px]" : "h-[124px] w-[94px]")}>
+            <span className={cx("absolute inset-x-[10%] top-[9%] h-[11%] rounded-[2px] bg-mark", inline ? "loader-scan" : "loader-scan-lg")} />
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="absolute left-[14%] h-[2px] rounded-full bg-control" style={{ top: `${13 + i * 10}%`, right: i % 3 === 2 ? "34%" : "14%" }} />)}
+          </span>
+          <p className={cx("font-medium text-muted", inline ? "text-base" : "text-lg")}>{label}…</p>
+        </div>
+      )}
     </div>
   );
 }
