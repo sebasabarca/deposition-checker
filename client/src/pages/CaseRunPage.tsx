@@ -3,17 +3,29 @@
 // run says so on every finding. Unread pairs are counted in the coverage, never listed as cleared.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { OPTIONS } from "../components/FindingPanel";
 import { StandingNotice } from "../components/FindingRegister";
 import { TranscriptRows } from "../components/FindingView";
-import { Alert, Badge, Breadcrumbs, Button, Card, cx, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
+import { Alert, Badge, Breadcrumbs, Button, Card, cx, fieldClass, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { COVERAGE, isTestRun, laneOf, LANES, MOVING_RUN, RUN_STATUS, type Lane } from "../lib/caseRuns";
 import { displayRef } from "../lib/insights";
 import { CLASSIFICATION, formatDate, formatUsd, PRIORITY } from "../lib/labels";
+import { decisionOf, REVIEW_LABEL, reviewFailure, reviewLock, shownDecision, type ShownDecision } from "../lib/review";
 import { href, usePoll } from "../lib/router";
-import type { CaseRun, CaseRunFinding, CaseRunSide } from "../types";
+import type { CaseRun, CaseRunFinding, CaseRunSide, ReviewDecision } from "../types";
 
 const PAGE = 25;
+// Which findings the list shows, by the person's decision. "todo" is every current finding not yet decided.
+type Filter = "all" | "todo" | ReviewDecision;
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "todo", label: "To decide" },
+  { id: "confirmed", label: "Kept" },
+  { id: "needs_context", label: "Needs context" },
+  { id: "dismissed", label: "Dismissed" },
+];
+const inFilter = (filter: Filter, d: ShownDecision) => filter === "all" || (filter === "todo" ? d === "unreviewed" : d === filter);
 
 export function CaseRunPage({ id }: { id: number }) {
   const [run, setRun] = useState<CaseRun | null>(null);
@@ -22,6 +34,7 @@ export function CaseRunPage({ id }: { id: number }) {
   const [error, setError] = useState<string | null>(null);
   const [lane, setLane] = useState<Lane>("contradictions");
   const [shown, setShown] = useState(PAGE);
+  const [filter, setFilter] = useState<Filter>("all");
   const load = useCallback(() => {
     api.caseRun(id)
       .then(async ({ caseRun }) => {
@@ -45,7 +58,12 @@ export function CaseRunPage({ id }: { id: number }) {
   const reused = run.cost.reuse?.requests ?? run.requests.reused ?? 0;
   const s = RUN_STATUS[run.status];
   const c = COVERAGE[run.coverageState];
-  const list = byLane.get(lane)!;
+  const inLane = byLane.get(lane)!;
+  const list = inLane.filter((f) => inFilter(filter, shownDecision(f)));
+  const reviewable = inLane.filter((f) => shownDecision(f) !== "quarantined");
+  const decided = reviewable.filter((f) => shownDecision(f) !== "unreviewed").length;
+  // A decision saved on a row: kept in the list, so the counts update without reloading the run.
+  const onDecided = (id: number, review: Pick<CaseRunFinding, "reviewState" | "reviewNote" | "reviewedAt">) => setFindings((fs) => fs && fs.map((f) => (f.id === id ? { ...f, ...review } : f)));
 
   return (
     <>
@@ -89,13 +107,31 @@ export function CaseRunPage({ id }: { id: number }) {
         <div className="px-5 pt-2">
           <Tabs label="Findings by lane" value={lane} onChange={(l) => { setLane(l); setShown(PAGE); }} items={LANES.filter((l) => l.id !== "quarantined" || lane === l.id || byLane.get(l.id)!.length > 0).map((l) => ({ id: l.id, label: l.label, count: byLane.get(l.id)!.length }))} />
         </div>
+        {reviewable.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-rule bg-well px-5 py-3">
+            <div className="min-w-48 flex-1 basis-56">
+              <p className="text-sm"><span className="font-semibold tabular-nums">{decided} of {reviewable.length}</span> <span className="text-muted">reviewed in this lane</span></p>
+              <div className="mt-1.5 h-1 max-w-72 overflow-hidden rounded-full bg-rule"><div className="h-full rounded-full bg-ok transition-[width] duration-500" style={{ width: `${(decided / reviewable.length) * 100}%` }} /></div>
+            </div>
+            <div role="group" aria-label="Show findings" className="flex flex-wrap gap-1">
+              {FILTERS.map((x) => {
+                const n = inLane.filter((f) => inFilter(x.id, shownDecision(f))).length;
+                return (
+                  <button key={x.id} type="button" aria-pressed={filter === x.id} onClick={() => { setFilter(x.id); setShown(PAGE); }} className={cx("inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors", filter === x.id ? "bg-navy text-white" : "text-muted ring-1 ring-inset ring-line hover:bg-hover hover:text-ink")}>
+                    {x.label}<span className={cx("tabular-nums", filter === x.id ? "text-navy-ink" : "text-faint")}>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {list.length === 0 ? (
           <p className="px-5 py-6 text-sm text-muted">
-            {findings.length === 0 ? (MOVING_RUN.includes(run.status) && run.status !== "reconciling" ? "No findings yet. This page updates as packets are read." : "This run has no findings.") : "No findings in this lane."}
+            {findings.length === 0 ? (MOVING_RUN.includes(run.status) && run.status !== "reconciling" ? "No findings yet. This page updates as packets are read." : "This run has no findings.") : inLane.length === 0 ? "No findings in this lane." : filter === "todo" ? "Every finding in this lane has a decision." : `No findings marked ${FILTERS.find((x) => x.id === filter)!.label.toLowerCase()} in this lane.`}
           </p>
         ) : (
           <div className="divide-y divide-rule">
-            {list.slice(0, shown).map((f) => <FindingRow key={f.id} f={f} test={test} />)}
+            {list.slice(0, shown).map((f) => <FindingRow key={f.id} f={f} test={test} onDecided={onDecided} />)}
           </div>
         )}
         {list.length > shown && (
@@ -109,12 +145,15 @@ export function CaseRunPage({ id }: { id: number }) {
   );
 }
 
-function FindingRow({ f, test }: { f: CaseRunFinding; test: boolean }) {
+// The decision's colour on the finding's left edge, so a reviewed list reads at a glance.
+const EDGE: Record<ShownDecision, string> = { unreviewed: "border-l-transparent", confirmed: "border-l-ok", needs_context: "border-l-context", dismissed: "border-l-control", quarantined: "border-l-transparent" };
+
+function FindingRow({ f, test, onDecided }: { f: CaseRunFinding; test: boolean; onDecided: (id: number, review: Pick<CaseRunFinding, "reviewState" | "reviewNote" | "reviewedAt">) => void }) {
   const explanation = (f.model.verdict as { explanation?: unknown } | null)?.explanation;
   const kind = CLASSIFICATION[f.type as keyof typeof CLASSIFICATION] ?? f.type;
   const setAside = f.standing?.state === "quarantined";
   return (
-    <article className="space-y-3 px-5 py-5">
+    <article className={cx("space-y-3 border-l-4 px-5 py-5", EDGE[shownDecision(f)])}>
       <header className="flex flex-wrap items-center gap-2">
         {setAside ? (
           <><h3 className="font-semibold">Needs revalidation</h3><Badge tone="neutral">Earlier verdict: {kind}</Badge></>
@@ -136,7 +175,63 @@ function FindingRow({ f, test }: { f: CaseRunFinding; test: boolean }) {
           {f.safeguards.length > 0 && f.model.outcome && <p className="mt-2 max-w-[75ch] text-muted">Veridict's model called this {/^[aeiou]/.test(f.model.outcome) ? "an" : "a"} {f.model.outcome.replace(/_/g, " ")} contradiction. A code check moved it to Needs context: {f.safeguards.map((g) => `${g.side ? `side ${g.side.toUpperCase()}: ` : ""}${g.detail}`).join("; ")}.</p>}
         </div>
       )}
+      <DecisionBar f={f} onDecided={onDecided} />
     </article>
+  );
+}
+
+// The person's decision on one finding: Keep, Needs context or Dismiss, each saved at once, with an optional note
+// for the file (saved with the decision, and again when edited). A set-aside finding can't be decided.
+function DecisionBar({ f, onDecided }: { f: CaseRunFinding; onDecided: (id: number, review: Pick<CaseRunFinding, "reviewState" | "reviewNote" | "reviewedAt">) => void }) {
+  const state = decisionOf(f.reviewState);
+  const [note, setNote] = useState(f.reviewNote ?? "");
+  const [noteOpen, setNoteOpen] = useState(!!f.reviewNote);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lock, setLock] = useState(reviewLock(f));
+  const noteId = `note-${f.id}`;
+  const save = async (decision: ReviewDecision | null) => {
+    if (lock) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { review } = await api.review(f.id, decision, decision === null ? undefined : note, f.evidenceEpochs);
+      onDecided(f.id, review as Pick<CaseRunFinding, "reviewState" | "reviewNote" | "reviewedAt">);
+      if (decision === null) { setNote(""); setNoteOpen(false); }
+    } catch (e) {
+      const failure = reviewFailure(e);
+      setError(failure.message);
+      if (failure.locked) setLock("This finding can no longer be reviewed as it was. Reload the page to see where it stands.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-2 border-t border-rule pt-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="group" aria-label="Your decision" className="inline-flex overflow-hidden rounded-md ring-1 ring-control ring-inset">
+          {OPTIONS.map((o, i) => (
+            <button key={o.d} type="button" aria-pressed={!lock && state === o.d} aria-disabled={lock ? true : undefined} disabled={busy} onClick={() => void save(state === o.d ? null : o.d)} title={state === o.d ? "Click again to undo" : undefined}
+              className={cx("inline-flex h-8 items-center gap-1.5 px-3 text-sm font-semibold transition-colors disabled:cursor-wait", i > 0 && "border-l border-control", lock ? "cursor-not-allowed bg-well text-faint" : state === o.d ? o.on : "bg-sheet text-ink hover:bg-hover")}>
+              <o.icon aria-hidden className="size-4" strokeWidth={2} />{o.label}
+            </button>
+          ))}
+        </div>
+        {!noteOpen && !lock && <button type="button" onClick={() => setNoteOpen(true)} aria-controls={noteId} className="text-sm font-medium text-info hover:underline">Add a note</button>}
+        <span className="text-sm text-muted" aria-live="polite">
+          {lock ? lock : busy ? "Saving…" : state === "unreviewed" ? "Not decided" : `${REVIEW_LABEL[state]}${f.reviewedAt ? ` · ${formatDate(f.reviewedAt)}` : ""}`}
+        </span>
+      </div>
+      {noteOpen && !lock && (
+        <label className="block max-w-3xl">
+          <span className="sr-only">Note for the file</span>
+          <textarea id={noteId} value={note} onChange={(e) => setNote(e.target.value)} onBlur={() => state !== "unreviewed" && note !== (f.reviewNote ?? "") && void save(state)} rows={2} maxLength={5000} autoFocus={!f.reviewNote}
+            className={cx(fieldClass, "w-full py-2 text-sm leading-5")} placeholder="Note for the file: why you decided this, or what to ask the witness" />
+          <span className="mt-0.5 block text-xs text-faint">{state === "unreviewed" ? "Saved with your decision." : "Saved when you click away."}</span>
+        </label>
+      )}
+      {error && <Alert>{error}</Alert>}
+    </div>
   );
 }
 

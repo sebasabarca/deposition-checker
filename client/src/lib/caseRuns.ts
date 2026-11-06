@@ -80,6 +80,20 @@ export const EXECUTION: Record<CaseRunExecution, { label: string; short: string;
   batch: { label: "Economy Analysis", short: "Economy", description: "Save on analysis costs when you're not in a hurry." },
 };
 
+// A rough time left for a fast run, from its pace so far; null until there's enough to go on (the first few
+// percent, or the first 20 seconds), and for economy, whose batches run on the provider's schedule.
+export function timeLeft(run: { execution: CaseRunExecution; startedAt: string | null; packets: { adjudicated: number; total: number } }, now: number): string | null {
+  const { adjudicated: done, total } = run.packets;
+  if (run.execution === "batch" || !run.startedAt || total === 0 || done >= total) return null;
+  const elapsed = now - Date.parse(run.startedAt);
+  if (elapsed < 20_000 || done < Math.max(3, total * 0.03)) return null;
+  const minutes = Math.round((elapsed * (total - done)) / done / 60_000);
+  if (minutes < 1) return "Less than a minute left";
+  if (minutes < 60) return `About ${minutes} ${minutes === 1 ? "minute" : "minutes"} left`;
+  const hours = Math.round(minutes / 60);
+  return `About ${hours} ${hours === 1 ? "hour" : "hours"} left`;
+}
+
 // What the confirm step shows for a mode: the cost as a single figure (fast) or a range (economy: the provider's
 // cache is best effort, so from fast mode's caching to none), and the recommended limit. null when the estimate
 // predates economy mode.

@@ -48,7 +48,7 @@ and the server's reservations still cover the whole run, so a reuse that misses 
   reviews untouched; a deposition added to a case.
 - `tests/adjudicate/requestReuse.test.ts` (7): fingerprint, evidence key, switches and estimate.
 - `tests/client/caseRuns.test.ts`: the review step and result labels.
-- Full suite on the integration branch: 1,499 passed, 59 skipped. Typecheck clean, client builds.
+- Full suite on the integration branch (merged with main 1fd75b7): 1,502 passed, 59 skipped. Typecheck clean, client builds.
 
 **Browser check** (Hutchinson case, disposable database, fake providers, no API key): a repeated Fast run reused
 the 300 packets the estimate expected and paid only for the 35 the first run never answered; a repeated Economy

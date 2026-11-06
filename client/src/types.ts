@@ -337,6 +337,7 @@ export type CaseRun = {
 export type CaseRunSide = { exchange: string; depositionId: number; witnessId: number | null; witness: string | null; takenOn: string | null; range: string | null; lines: { id: number; at: string; text: string }[] };
 export type CaseRunFinding = {
   id: number; crossWitness: boolean; type: string; priority: string; score: number | null; band: string | null; unscoredReason: string | null; evidenceStatus: string; reviewState: string; standing: FindingStanding;
+  reviewNote: string | null; reviewedAt: string | null; evidenceEpochs: Record<string, number>; // the person's decision, and the transcript versions it is saved against
   verification: { a: { status: string | null; lineIds: number[] }; b: { status: string | null; lineIds: number[] } };
   a: CaseRunSide; b: CaseRunSide;
   model: { origin: "model" | "fixture"; model: string; promptVersion: string; outcome: string | null; verdict: unknown };
