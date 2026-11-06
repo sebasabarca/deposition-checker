@@ -80,6 +80,7 @@ export async function caseDetail(db: Database, id: number) {
       fileSha256: depositions.fileSha256,
       createdAt: depositions.createdAt,
       dateFound: sql<{ date: string; ref: string; text: string } | null>`${depositions.validation}->'dateFound'`,
+      dateConfirmed: sql<string | null>`${depositions.validation}->>'dateConfirmed'`,
       scanned: sql<boolean>`(${depositions.validation}->'ocr') is not null and ${depositions.validation}->'ocr' <> 'null'::jsonb`,
     })
     .from(depositions)

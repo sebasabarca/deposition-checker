@@ -14,6 +14,10 @@ describe("dateAction", () => {
     expect(dateAction({ takenOn: "1996-01-23", dateFound: found("1996-01-23") })).toBeNull();
     expect(dateAction({ takenOn: "1996-01-23", dateFound: null })).toBeNull();
   });
+  it("stops flagging a date the person kept, until they enter another", () => {
+    expect(dateAction({ takenOn: "1996-01-24", dateFound: found("1996-01-23"), dateConfirmed: "1996-01-24" })).toBeNull();
+    expect(dateAction({ takenOn: "1996-01-25", dateFound: found("1996-01-23"), dateConfirmed: "1996-01-24" })).toBe("differs");
+  });
 });
 
 describe("analysesOf", () => {

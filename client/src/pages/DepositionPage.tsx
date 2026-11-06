@@ -6,6 +6,7 @@ import { DangerZone } from "../components/DangerZone";
 import { TranscriptRows } from "../components/FindingView";
 import { useNow } from "../components/CheckProgress";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, fieldClass, inputClass, Loading, PageHeader, selectClass } from "../components/ui";
+import { dateAction } from "../components/sessionActions";
 import { DateInput } from "../components/DateInput";
 import { api } from "../lib/api";
 import { inMarkedRange, isActive } from "../lib/insights";
@@ -194,14 +195,14 @@ const saveDate = (d: DepositionView, date: string | null) => api.setDepositionDa
 function DateBanner({ d, onSaved, onEnter }: { d: DepositionView; onSaved: (d: DepositionView) => void; onEnter: () => void }) {
   const [problem, setProblem] = useState<string | null>(null);
   const found = d.dateFound;
-  if (d.takenOn && (!found || found.date === d.takenOn)) return null;
+  if (!dateAction(d)) return null;
   const where = found ? `page ${found.ref.split(":")[0]}, line ${found.ref.split(":")[1]}` : "";
   const use = found && <Button onClick={() => saveDate(d, found.date).then(onSaved).catch((e: Error) => setProblem(e.message))}>Use {formatDate(found.date)}</Button>;
   return (
     <Alert
       tone="warn"
       title={d.takenOn ? "The transcript gives a different date" : "Add the date this session was taken"}
-      action={<div className="flex flex-wrap gap-2">{use}<Button variant="secondary" onClick={onEnter}><Pencil aria-hidden className="size-4" />{d.takenOn ? "Edit date" : "Enter the date"}</Button></div>}
+      action={<div className="flex flex-wrap gap-2">{use}{d.takenOn && <Button variant="secondary" onClick={() => saveDate(d, d.takenOn).then(onSaved).catch((e: Error) => setProblem(e.message))}>Keep {formatDate(d.takenOn)}</Button>}<Button variant="secondary" onClick={onEnter}><Pencil aria-hidden className="size-4" />{d.takenOn ? "Edit date" : "Enter the date"}</Button></div>}
     >
       {d.takenOn
         ? `You entered ${formatDate(d.takenOn)}; the transcript's cover says ${formatDate(found!.date)} (${where}). The dates decide which testimony came first.`

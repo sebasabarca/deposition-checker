@@ -188,7 +188,8 @@ describe.skipIf(!TEST_DATABASE_URL)("deposition endpoints (Postgres)", () => {
       const set = await send("PATCH", `/depositions/${deposition.id}`, { takenOn: "2004-01-20" });
       expect(set.status).toBe(200);
       expect((await set.json()).deposition.takenOn).toBe("2004-01-20");
-      expect((await (await send("PATCH", `/depositions/${deposition.id}`, { takenOn: null })).json()).deposition.takenOn).toBeNull();
+      const cleared = (await (await send("PATCH", `/depositions/${deposition.id}`, { takenOn: null })).json()).deposition;
+      expect(cleared).toMatchObject({ takenOn: null, dateConfirmed: null });
       expect((await send("PATCH", `/depositions/${deposition.id}`, { takenOn: "2004-13-45" })).status).toBe(400);
       expect((await send("PATCH", "/depositions/999999", { takenOn: null })).status).toBe(404);
     });

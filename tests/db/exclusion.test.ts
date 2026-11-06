@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { analysisRoutes } from "../../server/src/api";
+import { analysisRoutes, depositionRoutes } from "../../server/src/api";
 import { deleteCase, deleteDeposition } from "../../server/src/api/remove";
 import type { Database } from "../../server/src/db/client";
 import { cases, depositionSessions, depositions, exchanges, orgs, witnesses } from "../../server/src/db/schema";
@@ -36,6 +36,7 @@ describe.skipIf(!TEST_DATABASE_URL)("excluded copies (Postgres, synthetic archiv
     const app = express();
     app.use(express.json());
     app.use("/api", analysisRoutes({ db, pool, boss: {} as PgBoss })); // refused before any job is queued
+    app.use("/api", depositionRoutes({ db, pool, boss: {} as PgBoss })); // only the date edit is used
     api = await listen(app);
   });
   afterAll(async () => {
@@ -110,6 +111,12 @@ describe.skipIf(!TEST_DATABASE_URL)("excluded copies (Postgres, synthetic archiv
     expect(await start.json()).toMatchObject({ code: "deposition_excluded", error: expect.stringContaining(`Deposition ${legacy}`) });
     const estimate = await fetch(`${api.url}/api/cases/${caseId}/estimate?a=${active}&b=${legacy}`);
     expect(estimate.status).toBe(409);
+  });
+
+  it("records a saved date as confirmed on a read file, and forgets it when the date is cleared", async () => {
+    const patch = async (takenOn: string | null) => (await (await fetch(`${api.url}/api/depositions/${active}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ takenOn }) })).json()).deposition;
+    expect(await patch("2024-05-02")).toMatchObject({ takenOn: "2024-05-02", dateConfirmed: "2024-05-02" });
+    expect(await patch(null)).toMatchObject({ takenOn: null, dateConfirmed: null });
   });
 
   it("deletes a case whose files were re-read, though a re-read leaves an empty session behind", async () => {

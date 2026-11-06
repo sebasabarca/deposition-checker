@@ -33,6 +33,7 @@ export type DepositionRow = {
   createdAt: string;
   scanned: boolean;
   dateFound: DateFound | null;
+  dateConfirmed?: string | null; // the date the person saved; a different cover date isn't raised again
 };
 
 export type OcrReadout = {
@@ -62,6 +63,7 @@ export type DepositionView = {
   validation: { layout: string; pages: Record<string, number>; failedPages: number[]; reasons: unknown; ocr: OcrReadout | null; warnings?: string[] } | null;
   stored: { lines: number; exchanges: number; parts: number };
   dateFound: DateFound | null;
+  dateConfirmed?: string | null;
   checks: number; // analyses that compared it: moving it deletes them
   createdAt: string;
 };

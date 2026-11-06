@@ -3,10 +3,11 @@
 
 import type { AnalysisRow, CaseDetail, DepositionRow } from "../types";
 
-// "missing" when no date is entered, "differs" when it disagrees with the date the transcript states.
-export function dateAction(d: Pick<DepositionRow, "takenOn" | "dateFound">): "missing" | "differs" | null {
+// "missing" when no date is entered, "differs" when it disagrees with the date the transcript states and the
+// person hasn't kept it (a date they saved or kept is confirmed, and not raised again).
+export function dateAction(d: Pick<DepositionRow, "takenOn" | "dateFound" | "dateConfirmed">): "missing" | "differs" | null {
   if (!d.takenOn) return "missing";
-  return d.dateFound && d.dateFound.date !== d.takenOn ? "differs" : null;
+  return d.dateFound && d.dateFound.date !== d.takenOn && d.dateConfirmed !== d.takenOn ? "differs" : null;
 }
 
 // The analyses that compared a session: moving it deletes them.

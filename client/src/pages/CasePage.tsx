@@ -58,7 +58,7 @@ export function CasePage({ id }: { id: number }) {
     .map((d) => ({ id: d.id, witness: witnessName(d.witnessId), takenOn: d.takenOn, label: d.originalFilename ?? `Deposition #${d.id}`, status: d.status, fileSha256: d.fileSha256 }));
   const depositionsStep = (
     <div className="space-y-3">
-      <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} />
+      <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} onKeep={(ds) => Promise.all(ds.map((d) => api.setDepositionDate(d.id, d.takenOn))).then(load)} />
       {detail.depositions.length === 0 ? (
         <p className="rounded-lg bg-well px-4 py-6 text-center text-sm text-muted">No depositions in this case yet.</p>
       ) : (
@@ -262,6 +262,7 @@ function SessionDate({ d, onUse }: { d: DepositionRow; onUse: (date: string) => 
       {found && <span className="block text-xs text-muted">The transcript says {formatDate(found.date)}</span>}
       <span className="flex flex-wrap gap-1.5">
         {found && <button type="button" disabled={busy} onClick={() => save(found.date)} className={smallButton("primary")}>{busy ? "Saving…" : `Use ${formatDate(found.date)}`}</button>}
+        {action === "differs" && <button type="button" disabled={busy} onClick={() => save(d.takenOn!)} className={smallButton("secondary")}>Keep {formatDate(d.takenOn)}</button>}
         <button type="button" disabled={busy} onClick={edit} className={smallButton(found ? "ghost" : "primary")}>{d.takenOn ? "Edit date" : "Enter date"}</button>
       </span>
       {error}
@@ -271,18 +272,26 @@ function SessionDate({ d, onUse }: { d: DepositionRow; onUse: (date: string) => 
 
 // Above the sessions while any of them needs a date (or has one the transcript contradicts), since no
 // check can start without both dates.
-function DatesBanner({ depositions, witnesses }: { depositions: DepositionRow[]; witnesses: CaseDetail["witnesses"] }) {
+// onKeep: the person keeps the dates they entered; each is saved as confirmed, so the banner doesn't come back.
+function DatesBanner({ depositions, witnesses, onKeep }: { depositions: DepositionRow[]; witnesses: CaseDetail["witnesses"]; onKeep: (ds: DepositionRow[]) => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const missing = depositions.filter((d) => dateAction(d) === "missing");
   const differ = depositions.filter((d) => dateAction(d) === "differs");
   if (missing.length + differ.length === 0) return null;
   const name = (d: DepositionRow) => `${witnesses.find((w) => w.id === d.witnessId)?.name ?? "Witness"}, ${d.originalFilename ?? `deposition #${d.id}`}`;
   return (
-    <Alert tone="warn" title={missing.length ? `${missing.length} ${missing.length === 1 ? "session needs" : "sessions need"} a date` : `${differ.length} ${differ.length === 1 ? "date differs" : "dates differ"} from the transcript`}>
+    <Alert
+      tone="warn"
+      title={missing.length ? `${missing.length} ${missing.length === 1 ? "session needs" : "sessions need"} a date` : `${differ.length} ${differ.length === 1 ? "date differs" : "dates differ"} from the transcript`}
+      action={missing.length === 0 ? <Button variant="secondary" disabled={busy} onClick={() => { setBusy(true); setProblem(null); onKeep(differ).catch((e: Error) => setProblem(e.message)).finally(() => setBusy(false)); }}>{busy ? "Saving…" : differ.length === 1 ? "Keep the entered date" : "Keep the entered dates"}</Button> : undefined}
+    >
       <p>The dates decide which testimony came first, so a check can't start until both sessions have one. In the highlighted rows below, use the date the transcript states or enter it.</p>
       <ul className="mt-1.5 list-disc pl-5">
         {missing.map((d) => <li key={d.id}>{name(d)}: <strong className="font-semibold">Date needed</strong>{d.dateFound ? ` (the transcript says ${formatDate(d.dateFound.date)})` : ""}</li>)}
         {differ.map((d) => <li key={d.id}>{name(d)}: <strong className="font-semibold">Check the date</strong>, entered as {formatDate(d.takenOn)}, the transcript says {formatDate(d.dateFound!.date)}</li>)}
       </ul>
+      {problem && <p role="alert" className="mt-1.5 text-conflict">{problem}</p>}
     </Alert>
   );
 }

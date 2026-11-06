@@ -49,6 +49,9 @@ export type Validation = {
   inferredPages?: number[];
   // The session date the transcript states on its cover, offered to the user to confirm (sessionDate.ts).
   dateFound?: DateFound;
+  // The date the person last saved for this session (api/depositions.ts). When it differs from dateFound, they chose
+  // it knowingly, so the mismatch isn't raised again. A new reading of the file starts without it.
+  dateConfirmed?: string;
 };
 
 // Below this a page is unreliable as evidence. Start of a measured range, to revisit with more scans.

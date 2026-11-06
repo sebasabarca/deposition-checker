@@ -88,6 +88,7 @@ export async function depositionView(db: Database, id: number) {
     stored: { lines: await db.$count(lines, eq(lines.depositionId, id)), exchanges: stored.exchanges, parts: stored.parts },
     // The date the transcript states on its cover, for the user to confirm; never applied by itself.
     dateFound: d.validation?.dateFound ?? null,
+    dateConfirmed: d.validation?.dateConfirmed ?? null,
     // Analyses that compared this deposition: moving it to another witness or case deletes them.
     checks: await db.$count(analyses, or(eq(analyses.depositionA, id), eq(analyses.depositionB, id))),
     createdAt: d.createdAt,
@@ -152,7 +153,10 @@ export function depositionRoutes({ db, pool, boss, uploadsDir = UPLOADS_DIR }: A
     const body = DateEdit.safeParse(req.body ?? {});
     if (!id.success) return res.status(400).json({ error: "The deposition ID must be a positive number." });
     if (!body.success) return res.status(400).json({ error: "takenOn must be a date (YYYY-MM-DD) or null." });
-    const [updated] = await db.update(depositions).set({ takenOn: body.data.takenOn }).where(eq(depositions.id, id.data)).returning({ id: depositions.id });
+    // A date the person saves is one they chose: recorded as confirmed, so a different cover date stops being raised.
+    // Kept with the file's reading (null || x stays null), so a file still being read records nothing; it has no cover date yet.
+    const confirmed = body.data.takenOn === null ? sql`${depositions.validation} - 'dateConfirmed'` : sql`${depositions.validation} || ${JSON.stringify({ dateConfirmed: body.data.takenOn })}::jsonb`;
+    const [updated] = await db.update(depositions).set({ takenOn: body.data.takenOn, validation: confirmed }).where(eq(depositions.id, id.data)).returning({ id: depositions.id });
     if (!updated) return res.status(404).json({ error: "Deposition not found." });
     return res.json({ deposition: await depositionView(db, id.data) });
   });
