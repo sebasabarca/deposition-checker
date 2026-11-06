@@ -55,7 +55,11 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
   const running = latest && ACTIVE_RUN.includes(latest.status) && !estimate ? latest : null;
   const analysis = runs?.find(isAnalysis) ?? null;
   const ready = sessions.filter((s) => s.status === "ready").length;
-  const step = workflowStep({ running: !!running, estimate: !!estimate, analysis: !!analysis }, choice, ready);
+  // Runs seen running during this visit: when one finishes, its results stay in view; otherwise the steps start again.
+  const seenRunning = useRef(new Set<number>());
+  if (running) seenRunning.current.add(running.id);
+  const finishedHere = !!analysis && seenRunning.current.has(analysis.id);
+  const step = workflowStep({ running: !!running, estimate: !!estimate, finishedHere }, choice, ready);
   const act = (p: Promise<unknown>) => {
     setBusy(true);
     setProblem(null);
@@ -183,8 +187,8 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
             onReview={() => (estimate && desired !== null && runScopeKey(estimate) === desired && estimate.status === "awaiting_confirmation" ? setChoice("review") : setReviewWanted(true))}
             onRetry={prepare}
           />
-          {analysis && <Button variant="secondary" disabled={busy} onClick={() => setChoice(null)}>Back to the latest results</Button>}
-          {!analysis && <Button variant="secondary" disabled={busy} onClick={() => setChoice("depositions")}>Back</Button>}
+          {/* Results that finished on this visit can be returned to; earlier ones are under Previous analyses. */}
+          {finishedHere ? <Button variant="secondary" disabled={busy} onClick={() => setChoice(null)}>Back to the latest results</Button> : <Button variant="secondary" disabled={busy} onClick={() => setChoice("depositions")}>Back</Button>}
         </div>
       ),
     },
@@ -210,7 +214,8 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
       ),
     },
   ];
-  const earlier = (runs ?? []).filter((r) => r !== shown && r !== estimate && !isUnusedEstimate(r));
+  // Every analysis that ran (or is running), not estimates: the list under the steps.
+  const previous = (runs ?? []).filter((r) => r !== estimate && !isUnusedEstimate(r) && (isAnalysis(r) || ACTIVE_RUN.includes(r.status)) && r.status !== "awaiting_confirmation");
 
   return (
     <div id={WHOLE_CASE_PANEL} tabIndex={-1} className="scroll-mt-6 rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-slate/40">
@@ -246,7 +251,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
           );
         })}
       </ol>
-      {earlier.length > 0 && <div className="border-t border-rule px-5 py-3"><EarlierRuns runs={earlier} /></div>}
+      {previous.length > 0 && <PreviousAnalyses runs={previous} sessions={sessions} />}
     </Card>
     </div>
   );
@@ -669,25 +674,40 @@ function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean;
   );
 }
 
-// Every earlier run stays reachable, with its findings, after a newer one starts.
-function EarlierRuns({ runs }: { runs: CaseRun[] }) {
+// Every analysis of the case, newest first, under the steps: its name, what it covered and how, where it stands,
+// and how far its review has got, each a click from its findings. Shown whenever the case has one.
+function PreviousAnalyses({ runs, sessions }: { runs: CaseRun[]; sessions: WorkflowSession[] }) {
   return (
-    <details className="text-sm">
-      <summary className="cursor-pointer font-medium">Earlier runs ({runs.length})</summary>
-      <ul className="mt-2 divide-y divide-rule rounded-lg border border-line">
-        {runs.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">{runTitle(r)}</span>
-              <Badge tone={RUN_STATUS[r.status].tone} dot>{RUN_STATUS[r.status].label}</Badge>
-              {isTestRun(r) && <Badge tone="accent">Test model</Badge>}
-              {r.confirmedAt !== null || isTestRun(r) ? <Badge tone="neutral">{EXECUTION[r.execution].short}</Badge> : null}
-              <span className="text-muted">{formatDate(r.createdAt)} · {r.findings.reduce((n, f) => n + f.n, 0)} findings · {COVERAGE[r.coverageState].label}</span>
-            </span>
-            <a href={href.caseRun(r.id)} className="font-medium text-info hover:underline">View findings</a>
-          </li>
-        ))}
+    <section aria-labelledby="previous-analyses" className="border-t border-line">
+      <h3 id="previous-analyses" className="px-5 pt-4 pb-2 text-sm font-semibold">Previous analyses <span className="font-normal text-faint tabular-nums">({runs.length})</span></h3>
+      <ul className="divide-y divide-rule border-t border-rule">
+        {runs.map((r) => {
+          const found = r.findings.reduce((n, f) => n + f.n, 0);
+          const reviewed = Math.min(r.reviewed ?? 0, found);
+          const s = RUN_STATUS[r.status];
+          return (
+            <li key={r.id}>
+              <a href={href.caseRun(r.id)} className="group flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 transition-colors hover:bg-hover">
+                <span className="min-w-0 flex-1 basis-72">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold group-hover:underline">{runTitle(r)}</span>
+                    {s.tone !== "good" && <Badge tone={s.tone} dot>{s.label}</Badge>}
+                    {isTestRun(r) && <Badge tone="accent">Test model</Badge>}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-muted">
+                    {[formatDate(r.createdAt), scopeText(r, sessions), r.contract === "stretch-v2" ? "Contextual Analysis" : "Focused Analysis", EXECUTION[r.execution].label, ...(isTestRun(r) ? [] : [formatUsd(r.cost.costUsd)])].join(" · ")}
+                  </span>
+                </span>
+                <span className="text-sm tabular-nums">
+                  <span className="font-semibold">{found.toLocaleString()}</span> <span className="text-muted">{found === 1 ? "finding" : "findings"}</span>
+                  {found > 0 && <span className="text-muted"> · {reviewed === found ? "all reviewed" : `${reviewed} reviewed`}</span>}
+                </span>
+                <ArrowRight aria-hidden className="size-4 text-faint group-hover:text-ink" />
+              </a>
+            </li>
+          );
+        })}
       </ul>
-    </details>
+    </section>
   );
 }

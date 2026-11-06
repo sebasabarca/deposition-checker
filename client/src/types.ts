@@ -329,6 +329,7 @@ export type CaseRun = {
   candidates: { total: number; adjudicated: number; incomplete: number; pending: number; deferred: number; uncovered: number; excluded: number; sameWitness: number; crossWitness: number };
   packets: { total: number; adjudicated: number; incomplete: number; failed: number; notStarted: number; inProgress: number; uncertain: number; retryable: number };
   findings: { type: string; priority: string; scored: boolean; n: number }[];
+  reviewed?: number; // findings a person has decided
   // reused: requests answered by reusing the recorded response to an identical request from an earlier run of the
   // case (exact-request reuse): never sent, never charged. avoidedUsdEstimate is an estimate, not a charge.
   requests: { total: number; answered: number; failedNotBilled: number; uncertain: number; open: number; reused?: number };

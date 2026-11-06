@@ -897,6 +897,8 @@ export async function caseRunReport(db: Database, id: number) {
   const kinds = await db.execute<{ cross: boolean; n: number }>(sql`select (da.witness_id <> db.witness_id) as cross, count(*)::int as n from candidates c join depositions da on da.id = c.deposition_a join depositions db on db.id = c.deposition_b where c.candidate_set = ${set} group by 1`);
   const entries = ledger ? await db.select({ status: screeningEntries.adjudicationStatus, n: sql<number>`count(*)::int`, uncertain: sql<number>`count(*) filter (where ${screeningEntries.failureBillable})::int`, attempts: sql<number>`coalesce(sum(${screeningEntries.attempts}), 0)::int`, stored: sql<number>`count(*) filter (where ${screeningEntries.llmCallId} is not null)::int` }).from(screeningEntries).where(eq(screeningEntries.runId, ledger.id)).groupBy(screeningEntries.adjudicationStatus) : [];
   const unresolved = ledger ? await db.select({ packetId: screeningEntries.packetId, status: screeningEntries.adjudicationStatus, pairs: screeningEntries.unresolvedPairs, note: screeningEntries.adjudicationNote, uncertain: screeningEntries.failureBillable }).from(screeningEntries).where(and(eq(screeningEntries.runId, ledger.id), inArray(screeningEntries.adjudicationStatus, ["incomplete", "failed"]))).orderBy(asc(screeningEntries.rank)) : [];
+  // How many of the run's findings a person has decided (Keep, Needs context or Dismiss), for the case's list of analyses.
+  const [{ reviewed }] = await db.select({ reviewed: sql<number>`count(*) filter (where ${findings.reviewState} <> 'unreviewed')::int` }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.candidateSet, set));
   const lanes = await db.select({ type: findings.type, priority: findings.priority, scored: sql<boolean>`${findings.score} is not null`, n: sql<number>`count(*)::int` }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.candidateSet, set)).groupBy(findings.type, findings.priority, sql`${findings.score} is not null`);
   // Requests by what is known about them: answered (a reply was recorded), failed and not billed (rejected,
   // or a released reservation), uncertain (may have been billed: counted in full, never retried automatically).
@@ -969,7 +971,7 @@ export async function caseRunReport(db: Database, id: number) {
       uncertain: uncertainPackets, retryable: ledgerCount("failed") - uncertainPackets + ledgerCount("incomplete"), storedRepliesNotParsed: entries.reduce((n, r) => n + r.stored, 0), modelReplies: entries.reduce((n, r) => n + r.attempts, 0),
     },
     unresolved,
-    findings: lanes,
+    findings: lanes, reviewed,
     requests: { total: req.requests, answered: req.answered, failedNotBilled: req.unbilled, uncertain: req.uncertain, open: req.open, reused: req.reused },
     cost: {
       recordedCalls: req.calls, costUsd: req.cost === null ? 0 : Number(req.cost), inputTokens: req.input, outputTokens: req.output, budget: budget ? { limitUsd: Number(budget.limit_usd), spentUsd: Number(budget.spent_usd), reservedUsd: Number(budget.reserved_usd) } : null,

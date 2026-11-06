@@ -95,7 +95,7 @@ describe("choosing fast or economy", () => {
 
 describe("the guided analysis workflow", () => {
   it("opens one step at a time: depositions, choice with its estimate, cost, results", () => {
-    const none = { running: false, estimate: false, analysis: false };
+    const none = { running: false, estimate: false, finishedHere: false };
     expect(workflowStep(none, null, 0)).toBe(1); // a new case starts by adding depositions
     expect(workflowStep(none, null, 3)).toBe(1); // and confirms them before choosing
     expect(workflowStep(none, "scope", 1)).toBe(1); // fewer than two ready sessions: back to adding
@@ -104,8 +104,9 @@ describe("the guided analysis workflow", () => {
     expect(workflowStep({ ...none, estimate: true }, "review", 3)).toBe(3);
     expect(workflowStep(none, "review", 3)).toBe(2); // no estimate to review: back to the choice
     expect(workflowStep({ ...none, running: true }, "depositions", 3)).toBe(4); // a running analysis decides
-    expect(workflowStep({ ...none, analysis: true }, null, 3)).toBe(4); // a finished analysis stays on its results
-    expect(workflowStep({ ...none, analysis: true }, "scope", 3)).toBe(2); // until a new analysis is started
+    expect(workflowStep({ ...none, finishedHere: true }, null, 3)).toBe(4); // an analysis that finished while watched stays on its results
+    expect(workflowStep({ ...none, finishedHere: true }, "scope", 3)).toBe(2); // until a new analysis is started
+    expect(workflowStep(none, null, 3)).toBe(1); // coming back after earlier analyses starts the steps again
   });
   it("tells estimates from analyses, and an estimate's choice from another", () => {
     const run = (status: string, confirmedAt: string | null, mode = "live") => ({ status, confirmedAt, mode }) as never;
