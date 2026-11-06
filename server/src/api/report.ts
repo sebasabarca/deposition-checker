@@ -88,6 +88,9 @@ export async function caseRunReportData(db: Database, runId: number, withContext
 // report says so instead of attributing them to Veridict's analysis.
 export type Report = NonNullable<Awaited<ReturnType<typeof reportData>>> & { authorship?: "hand" };
 
+// The case's witnesses in the header: the first few by name, then a count, so a large case fits its column.
+export const witnessSummary = (names: string[], shown = 3) => (names.length === 0 ? "None" : names.length <= shown + 1 ? names.join(", ") : `${names.slice(0, shown).join(", ")} and ${names.length - shown} more`);
+
 const NAVY = "#13213a";
 const INK = "#1b2230";
 const MUTED = "#5d6676";
@@ -110,14 +113,16 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
   doc.font("Times-Bold").fontSize(24).fillColor(INK).text(r.name, { width });
   doc.font("Times-Roman").fontSize(14).fillColor(MUTED).text("Potential contradictions kept for follow-up");
   doc.moveDown(0.9);
-  const meta: [string, string][] = [["Prepared", prepared], ["Witnesses", r.witnesses.join(", ") || "None"], ["Kept", String(r.kept)], ["Needs context", r.withContext ? String(r.context) : `${r.context} (not included)`]];
+  const meta: [string, string][] = [["Prepared", prepared], ["Witnesses", witnessSummary(r.witnesses)], ["Kept", String(r.kept)], ["Needs context", r.withContext ? String(r.context) : `${r.context} (not included)`]];
   const metaY = doc.y;
+  let metaBottom = metaY;
   meta.forEach(([k, v], i) => {
     const x = left + (width / 4) * i;
     doc.font("Helvetica").fontSize(8).fillColor(FAINT).text(k, x, metaY, { width: width / 4 - 8 });
     doc.font("Helvetica-Bold").fontSize(10).fillColor(INK).text(v, x, metaY + 12, { width: width / 4 - 8 });
+    metaBottom = Math.max(metaBottom, doc.y);
   });
-  doc.y = metaY + 40;
+  doc.y = Math.max(metaY + 40, metaBottom + 14); // a value that wraps pushes what follows down, never under it
   doc.font("Helvetica").fontSize(8).fillColor(FAINT).text(r.covered.length === 1 ? "SESSIONS COMPARED" : `ANALYSES INCLUDED (${r.covered.length})`, left, doc.y, { characterSpacing: 0.6 });
   doc.font("Helvetica").fontSize(10).fillColor(INK).text(r.covered.join("\n") || "None", { width });
   if (r.gaps.length > 0) {
