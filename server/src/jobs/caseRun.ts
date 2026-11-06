@@ -58,7 +58,7 @@ import { claimNext, markFailed, recordScreening, releaseInProgress, retryFailed 
 import { screen } from "../screen/strategies";
 import { MAX_RECOVERY_ROUNDS, verifyPacketReply } from "../verify/packet";
 import { VERIFICATION_VERSION } from "../verify/version";
-import { Aborted, ProviderLimiter, realClock, UNLIMITED, type Clock } from "./limiter";
+import { Aborted, caseRunSettings, ProviderLimiter, realClock, UNLIMITED, type Clock, type ProviderLimits } from "./limiter";
 import { BATCH_DEFAULTS, reconcileStaleBatchRun, runBatchTick, STALE_BATCH_RECONCILING, type BatchDeps } from "./caseRunBatch";
 import { BATCH_MULTIPLIER } from "../costs/pricing";
 import { caseHasSources, findReusable, freshOf, recordReuse, requestKeys, reuseApplies, storeKeys, type RequestKeys } from "./requestReuse";
@@ -502,7 +502,8 @@ async function reuseEstimate(db: Database, run: CaseRun, ledgerId: number, index
     if (typeof ctx === "string") continue;
     const built = buildIssuePacket({ id: entry.packetId, issue: "", items: ctx.keys, pairs: ctx.ids.map((c) => ctx.pairOfCandidate.get(c)!), inputTokens: 0 }, ctx.passages, { allItems: stretch });
     if (!built.packet || built.unbuilt.length) continue;
-    const keys = await requestKeys(db, contractOf(run), built.packet, { model: PACKET_MODEL, effort: PACKET_EFFORT });
+    // Keyed with the cap the worker would first send this packet with (its settings, as the estimate's process reads them).
+    const keys = await requestKeys(db, contractOf(run), built.packet, { model: PACKET_MODEL, effort: PACKET_EFFORT }, run.execution === "batch" ? undefined : outputCapFor(run, caseRunSettings(process.env).limits, built.packet.pairs.length, false));
     if (await findReusable(db, run.caseId, keys, PACKET_MODEL)) reusable.add(entry.packetId);
   }
   const avoided = projected(reusable);
@@ -614,17 +615,20 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
       }
       // Exact-request reuse: the same provider-visible request, from the same evidence, already answered in a live
       // run of this case. Its recorded response is parsed again below instead of paying for a new one.
-      const keys = await requestKeys(db, contractOf(run), step.packet, model);
+      // The request is keyed with the output cap it would be sent with: a response produced under another cap is
+      // a different request and is never reused (it could be longer than this cap allows).
+      const cap = outputCapFor(run, ex.limiter.limits, step.packet.pairs.length, replies.made > 0);
+      const keys = await requestKeys(db, contractOf(run), step.packet, model, cap);
       const source = reuseApplies(run, deps.reuse) ? await findReusable(db, run.caseId, keys, model.model) : null;
       if (source) {
-        const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round: replies.made + 1, strategy: "packet", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: maxOutputTokensFor(step.packet.pairs.length) });
+        const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round: replies.made + 1, strategy: "packet", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: cap });
         replies.made++;
         reply = hit.reply;
         deps.faults?.afterReuseRecorded?.(at.entry.packetId);
         at.entry = await applyReply(db, run, at.entry, step.packet, step.sentIds, reply, model);
         continue;
       }
-      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex, keys, replies.made > 0);
+      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex, keys, cap);
       if (call.kind === "halted") return call; // nothing sent: the interrupt returns the packet to the queue
       if (call.kind !== "reply") return call.kind === "budget" ? releaseForBudget(db, at.entry, call.message) : fail(db, ledgerId, at.entry, call.message, call.billable, call.fatal);
       replies.made++;
@@ -642,6 +646,12 @@ async function storedReply(db: Database, requestId: number, llmCallId: number) {
   return req && call ? { candidateIds: req.candidateIds, text: call.text } : null;
 }
 
+// The output cap a fast request is sent with: a packet's first request uses the lower cap configured for the run's
+// contract (limits.outputTokensPerPair), a recovery request the default. The same value keys reuse, is sent as
+// max_tokens, reserved and admitted (callModel).
+export const outputCapFor = (run: Pick<CaseRun, "promptVersion">, limits: { outputTokensPerPair?: ProviderLimits["outputTokensPerPair"] }, pairs: number, recovery: boolean) =>
+  packetMaxTokens(pairs, recovery ? undefined : limits.outputTokensPerPair?.[contractOf(run)]);
+
 // One reply for the packet: wait for the provider limiter, reserve its worst case, send, record, settle. A 429
 // or 529 pauses every request in the process for its retry-after (or reset), then this one is retried a bounded
 // number of times; any other failure ends the attempt, with whether it may have been billed. A request whose
@@ -649,9 +659,8 @@ async function storedReply(db: Database, requestId: number, llmCallId: number) {
 // Output cap: one value (packetMaxTokens) is sent as max_tokens, reserved from the budget, charged to the limiter's
 // output bucket and stored on the request. A lower cap configured for the contract (limits.outputTokensPerPair)
 // applies to a packet's first request; a recovery request (for pairs a cut-off reply left unanswered) gets the default.
-async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec, keys: RequestKeys, recovery = false) {
+async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec, keys: RequestKeys, maxOutputTokens: number) {
   const live = run.mode === "live";
-  const maxOutputTokens = packetMaxTokens(packet.pairs.length, recovery ? undefined : limiter.limits.outputTokensPerPair?.[contractOf(run)]);
   const chars = requestChars(packet, contractOf(run));
   const inputTokens = inputTokenBound(chars);
   const maxCostUsd = live ? maxRequestCost(PACKET_MODEL, { inputTokens, maxOutputTokens }) : 0;

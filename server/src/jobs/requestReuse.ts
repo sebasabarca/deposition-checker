@@ -29,11 +29,12 @@ export const freshOf = (run: { config?: unknown }) => (run.config as { reuse?: s
 // as before), and never in a fresh analysis.
 export const reuseApplies = (run: { mode: string; config?: unknown }, enabled: boolean | undefined) => run.mode === "live" && enabled === true && !freshOf(run);
 
-export async function requestKeys(db: Database, contract: ContractId, packet: IssuePacket, adjudicator: { model: string; effort: string }): Promise<RequestKeys> {
+// maxTokens: the output cap the request is (or would be) sent with; absent, the contract's default (Economy).
+export async function requestKeys(db: Database, contract: ContractId, packet: IssuePacket, adjudicator: { model: string; effort: string }, maxTokens?: number): Promise<RequestKeys> {
   const ids = [...new Set(packet.passages.map((p) => p.depositionId))];
   const rows = ids.length ? await db.select({ id: depositions.id, witnessId: depositions.witnessId, parserVersion: depositions.parserVersion, evidenceEpoch: depositions.evidenceEpoch }).from(depositions).where(inArray(depositions.id, ids)) : [];
   const evidence = new Map<number, DepositionEvidence>(rows.map((r) => [r.id, { witnessId: r.witnessId, parserVersion: r.parserVersion, evidenceEpoch: r.evidenceEpoch }]));
-  return { fingerprint: requestFingerprint(contract, packet, adjudicator), evidenceKey: evidenceKey(packet, evidence) };
+  return { fingerprint: requestFingerprint(contract, packet, adjudicator, undefined, maxTokens), evidenceKey: evidenceKey(packet, evidence) };
 }
 
 // The latest eligible source: a completed request (not cut off, no error kind such as a refusal) of a live run of

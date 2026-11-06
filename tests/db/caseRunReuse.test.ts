@@ -14,6 +14,7 @@ import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
 import { caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
+import { caseRunSettings, ProviderLimiter } from "../../server/src/jobs/limiter";
 import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 type Reply = Awaited<ReturnType<CasePacketModel["adjudicate"]>>;
@@ -111,6 +112,30 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
     expect(sources.has(null)).toBe(false); // every request of the later run was reused
     expect((await requests(fresh.id)).some((x) => sources.has(x.id))).toBe(true); // the latest qualifying source: the fresh run's
   }, 120_000);
+
+  it("the output cap is part of the request: a capped run never reuses an uncapped response, nor an uncapped run a capped one", async () => {
+    const capped = () => new ProviderLimiter(caseRunSettings({ PACKET_OUTPUT_TOKENS_PER_PAIR: "1200" }).limits);
+    // First capped run: every request differs from the uncapped sources (max_tokens), so all are sent, at the cap.
+    const p1 = provider();
+    const c1 = (await live()).id;
+    expect(await runCaseRun(db, pool, c1, deps(p1.model, { limiter: capped() }))).toBe("completed");
+    const sent = (await requests(c1)).filter((r) => r.status === "completed");
+    expect(sent.length).toBeGreaterThan(0);
+    expect(p1.calls.length).toBe(sent.length);
+    expect((await report(c1)).requests.reused ?? 0).toBe(0);
+    for (const r of sent) expect(r.maxOutputTokens).toBe(1_200 * r.candidateIds.length);
+    // A second capped run reuses the capped responses (same request, cap included): nothing is sent.
+    const p2 = provider();
+    const c2 = (await live()).id;
+    expect(await runCaseRun(db, pool, c2, deps(p2.model, { limiter: capped() }))).toBe("completed");
+    expect(p2.calls.length).toBe(0);
+    for (const r of (await requests(c2)).filter((x) => x.status === "reused")) expect(r.maxOutputTokens).toBe(1_200 * r.candidateIds.length);
+    // An uncapped run's requests are keyed at the default cap: its sources are the earlier uncapped runs, never c1/c2.
+    const sources = (await db.execute<{ src: string }>(sql`select distinct s.candidate_set as src from adjudication_requests r join adjudication_requests s on s.id = r.reused_from_request_id where r.candidate_set = ${caseRunSetOf((await (async () => { const p3 = provider(); const u = (await live()).id; expect(await runCaseRun(db, pool, u, deps(p3.model))).toBe("completed"); return u; })()))}`)).rows.map((r) => r.src);
+    expect(sources).not.toContain(caseRunSetOf(c1));
+    expect(sources).not.toContain(caseRunSetOf(c2));
+    expect(await signature(c2)).toEqual(await signature(c1));
+  }, 240_000);
 
   it("a source answered by another model id than the one requested is never reused", async () => {
     const latest = (await db.execute<{ id: number }>(sql`select id from case_runs where case_id = ${caseId} and mode = 'live' order by id desc`)).rows.map((x) => Number(x.id));

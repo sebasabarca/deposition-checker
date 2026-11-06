@@ -29,6 +29,12 @@ describe("the request fingerprint", () => {
     ];
     expect(new Set([base, ...variants]).size).toBe(variants.length + 1);
   });
+  it("changes with the output cap actually sent (max_tokens); the default cap keys exactly as before", () => {
+    const base = requestFingerprint("packet-v1", packet, real);
+    expect(requestFingerprint("packet-v1", packet, real, undefined, 5_500)).toBe(base); // the default for one pair
+    expect(requestFingerprint("packet-v1", packet, real, undefined, 1_200)).not.toBe(base);
+    expect(requestFingerprint("packet-v1", packet, real, undefined, 1_200)).not.toBe(requestFingerprint("packet-v1", packet, real, undefined, 1_100));
+  });
   it("changes with the cache-compatibility version, so bumping it retires every earlier response", () => {
     expect(requestFingerprint("packet-v1", packet, real)).toBe(requestFingerprint("packet-v1", packet, real, REUSE_COMPATIBILITY_VERSION));
     expect(requestFingerprint("packet-v1", packet, real, `${REUSE_COMPATIBILITY_VERSION}-next`)).not.toBe(requestFingerprint("packet-v1", packet, real));

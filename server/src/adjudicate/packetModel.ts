@@ -29,7 +29,7 @@ export function packetMaxTokens(pairs: number, perPair?: number): number {
 // The request body for one packet, shared by the Messages API client below and the Message Batches API client
 // (packetBatch.ts), so fast and economy runs send the same model, prompt, schema, effort and output cap.
 // maxTokens: from packetMaxTokens; the default cap when absent.
-export function packetRequestParams(packetText: string, pairCount: number, version: ContractId = PACKET_PROMPT_VERSION, maxTokens = maxOutputTokensFor(pairCount)) {
+export function packetRequestParams(packetText: string, pairCount: number, version: ContractId = PACKET_PROMPT_VERSION, maxTokens: number = maxOutputTokensFor(pairCount)) {
   const prompt = PACKET_PROMPTS[version];
   return {
     model: PACKET_MODEL,

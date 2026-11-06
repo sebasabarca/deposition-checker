@@ -27,9 +27,11 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 // The provider-visible request, as both transports send it (packetRequestParams: model, max_tokens, system prompt
 // with cache control, effort, output schema, the packet text), plus the adjudicator that would send it (a test or
 // stand-in model with another id or effort never shares a key with the real one) and the contract.
-export function requestFingerprint(contract: ContractId, packet: IssuePacket, adjudicator: { model: string; effort: string }, compatibility: string = REUSE_COMPATIBILITY_VERSION): string {
+// maxTokens: the max_tokens actually sent (packetMaxTokens); absent, the contract's default. It is part of the
+// request, so a response produced under one output cap is never reused for a request with another.
+export function requestFingerprint(contract: ContractId, packet: IssuePacket, adjudicator: { model: string; effort: string }, compatibility: string = REUSE_COMPATIBILITY_VERSION, maxTokens?: number): string {
   const text = PACKET_PROMPTS[contract].format(packet);
-  const params = packetRequestParams(text, packet.pairs.length, contract);
+  const params = packetRequestParams(text, packet.pairs.length, contract, maxTokens);
   return sha(canonicalJson({ v: REQUEST_REUSE_VERSION, compatibility, contract, adjudicator: { model: adjudicator.model, effort: adjudicator.effort }, params }));
 }
 
