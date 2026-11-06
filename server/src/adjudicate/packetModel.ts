@@ -6,22 +6,34 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { AdjudicatorReply, CallOptions } from "./model";
-import { maxOutputTokensFor, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, type ContractId } from "./packetPrompt";
+import { maxOutputTokensFor, PACKET_OUTPUT_TOKENS_PER_PAIR, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, type ContractId } from "./packetPrompt";
 
 export type PacketAdjudicator = {
   model: string;
   promptVersion: string;
   effort: string;
-  adjudicate(packetText: string, pairCount: number, options?: CallOptions): Promise<AdjudicatorReply>;
+  adjudicate(packetText: string, pairCount: number, options?: PacketCallOptions): Promise<AdjudicatorReply>;
 };
+// maxOutputTokens: the request's max_tokens when the caller set a lower cap (packetMaxTokens); absent, the default.
+export type PacketCallOptions = CallOptions & { maxOutputTokens?: number };
+
+// The one output cap (max_tokens) of a packet request. The caller sends it, reserves its cost and charges it to the
+// limiter's output bucket, so the three can't differ. perPair: a configured lower allowance per pair; it can only
+// lower the default (PACKET_OUTPUT_TOKENS_PER_PAIR), never raise it.
+export function packetMaxTokens(pairs: number, perPair?: number): number {
+  if (perPair === undefined) return maxOutputTokensFor(pairs);
+  if (!Number.isInteger(perPair) || perPair < 1 || perPair > PACKET_OUTPUT_TOKENS_PER_PAIR) throw new Error(`An output cap per pair must be a whole number from 1 to ${PACKET_OUTPUT_TOKENS_PER_PAIR}, not ${perPair}.`);
+  return Math.min(maxOutputTokensFor(pairs), perPair * pairs);
+}
 
 // The request body for one packet, shared by the Messages API client below and the Message Batches API client
 // (packetBatch.ts), so fast and economy runs send the same model, prompt, schema, effort and output cap.
-export function packetRequestParams(packetText: string, pairCount: number, version: ContractId = PACKET_PROMPT_VERSION) {
+// maxTokens: from packetMaxTokens; the default cap when absent.
+export function packetRequestParams(packetText: string, pairCount: number, version: ContractId = PACKET_PROMPT_VERSION, maxTokens = maxOutputTokensFor(pairCount)) {
   const prompt = PACKET_PROMPTS[version];
   return {
     model: PACKET_MODEL,
-    max_tokens: maxOutputTokensFor(pairCount),
+    max_tokens: maxTokens,
     system: [{ type: "text" as const, text: prompt.system, cache_control: { type: "ephemeral" as const } }],
     output_config: { effort: PACKET_EFFORT, format: { type: "json_schema" as const, schema: prompt.jsonSchema } },
     messages: [{ role: "user" as const, content: packetText }],
@@ -38,7 +50,7 @@ export function anthropicPacketAdjudicator(client = new Anthropic({ maxRetries: 
       const started = performance.now();
       // Streamed: a large max_tokens on a plain request would hit HTTP timeouts. finalMessage() resolves with
       // the whole message, or rejects with the same typed errors as a plain request.
-      const stream = client.messages.stream(packetRequestParams(packetText, pairCount, version), { signal: options?.signal });
+      const stream = client.messages.stream(packetRequestParams(packetText, pairCount, version, options?.maxOutputTokens), { signal: options?.signal });
       const response = await stream.finalMessage();
       const latencyMs = Math.round(performance.now() - started);
       const text = response.content.find((b) => b.type === "text");

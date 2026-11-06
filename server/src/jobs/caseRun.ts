@@ -37,7 +37,7 @@ import { formatIssuePacket, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, 
 import { mockStretchReply, readStretchReply, verificationOf, type StretchReading } from "../adjudicate/stretch";
 import { STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
 import { buildStretchSet } from "../retrieve/stretchSet";
-import type { PacketAdjudicator } from "../adjudicate/packetModel";
+import { packetMaxTokens, type PacketAdjudicator } from "../adjudicate/packetModel";
 import { parseVerdictsLenient, VERDICT_SCHEMAS } from "../adjudicate/packetSchema";
 import { classifyFailure, closeRequest, openRequest } from "../adjudicate/requests";
 import type { AdjudicatorReply } from "../adjudicate/model";
@@ -78,7 +78,8 @@ export const caseRunSetOf = (id: number) => `case-run-${id}`;
 
 export type CaseRun = typeof caseRuns.$inferSelect;
 // The model as the run sees it: one issue packet in, one reply out.
-export type CasePacketModel = { model: string; effort: string; promptVersion: string; adjudicate(packet: IssuePacket, options?: { signal?: AbortSignal }): Promise<AdjudicatorReply> };
+// maxOutputTokens: the request's max_tokens, set by callModel (the same value it reserves and charges to the limiter).
+export type CasePacketModel = { model: string; effort: string; promptVersion: string; adjudicate(packet: IssuePacket, options?: { signal?: AbortSignal; maxOutputTokens?: number }): Promise<AdjudicatorReply> };
 // adjudicator: the live packet model, or null when this server can't make paid calls.
 // faults: test hooks that simulate a crash at a named point.
 // concurrency: packets in flight for this run; limiter: shared by every run in the process (none: unlimited).
@@ -616,7 +617,7 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
         at.entry = await applyReply(db, run, at.entry, step.packet, step.sentIds, reply, model);
         continue;
       }
-      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex, keys);
+      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex, keys, replies.made > 0);
       if (call.kind === "halted") return call; // nothing sent: the interrupt returns the packet to the queue
       if (call.kind !== "reply") return call.kind === "budget" ? releaseForBudget(db, at.entry, call.message) : fail(db, ledgerId, at.entry, call.message, call.billable, call.fatal);
       replies.made++;
@@ -638,9 +639,12 @@ async function storedReply(db: Database, requestId: number, llmCallId: number) {
 // or 529 pauses every request in the process for its retry-after (or reset), then this one is retried a bounded
 // number of times; any other failure ends the attempt, with whether it may have been billed. A request whose
 // outcome is unknown is never sent again here.
-async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec, keys: RequestKeys) {
+// Output cap: one value (packetMaxTokens) is sent as max_tokens, reserved from the budget, charged to the limiter's
+// output bucket and stored on the request. A lower cap configured for the contract (limits.outputTokensPerPair)
+// applies to a packet's first request; a recovery request (for pairs a cut-off reply left unanswered) gets the default.
+async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec, keys: RequestKeys, recovery = false) {
   const live = run.mode === "live";
-  const maxOutputTokens = maxOutputTokensFor(packet.pairs.length);
+  const maxOutputTokens = packetMaxTokens(packet.pairs.length, recovery ? undefined : limiter.limits.outputTokensPerPair?.[contractOf(run)]);
   const chars = requestChars(packet, contractOf(run));
   const inputTokens = inputTokenBound(chars);
   const maxCostUsd = live ? maxRequestCost(PACKET_MODEL, { inputTokens, maxOutputTokens }) : 0;
@@ -676,7 +680,7 @@ async function callModel(db: Database, run: CaseRun, entry: Entry, packet: Issue
     await storeKeys(db, requestId, keys); // so an identical later request can reuse this one's response once it completes
     deps.faults?.afterRequestSent?.(entry.packetId);
     try {
-      const reply = await model.adjudicate(packet, { signal: deps.signal });
+      const reply = await model.adjudicate(packet, { signal: deps.signal, maxOutputTokens });
       limiter.afterReply(ticket, reply.usage);
       // The reply is paid for: record it with its raw text before anything that could fail.
       let callId: number | null = null;

@@ -13,14 +13,21 @@
 //              `burstSeconds` of its rate, because the provider may enforce a per-minute limit over shorter
 //              intervals; a request larger than that waits for a full bucket and leaves it in debt.
 //   pause      a 429 or 529 pauses every request through this limiter until its retry-after (or reset) has passed.
+//   adaptive   (off by default) additive increase, multiplicative decrease of the slots actually granted: a 429 or 529
+//              halves them (once per pause), every reply adds 1/window, up to `maxInFlight`. Requests already in
+//              flight are never cancelled; new ones wait until the in-flight count is back under the window.
 //
 // The limits are configuration (the account's tier), not assumptions; nothing here sends or retries a request.
 // shortcut: per process only; several worker processes each get the full limits. Coordinate them in Postgres if
 // the worker is ever scaled out.
 
 import { z } from "zod";
+import { packetMaxTokens } from "../adjudicate/packetModel";
 
-export type ProviderLimits = { maxInFlight: number; requestsPerMinute: number; inputTokensPerMinute: number; outputTokensPerMinute: number; burstSeconds: number };
+// adaptive: AIMD on the slots (above). outputTokensPerPair: a lower output cap (max_tokens) per pair for a request
+// contract, by contract id (adjudicate/packetModel.ts, packetMaxTokens); absent, the contract's default. It lives
+// with the limits because the limiter charges the same cap to its output bucket, and so it is recorded with them.
+export type ProviderLimits = { maxInFlight: number; requestsPerMinute: number; inputTokensPerMinute: number; outputTokensPerMinute: number; burstSeconds: number; adaptive?: boolean; outputTokensPerPair?: Record<string, number> };
 export type Clock = { now(): number; sleep(ms: number, signal?: AbortSignal): Promise<void> };
 export type Usage = { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number | null };
 // input: estimated input tokens; output: the most output the request may produce (its max_tokens).
@@ -82,7 +89,9 @@ export class ProviderLimiter {
   private readonly held = new Map<string, number>();
   private readonly waiting: { owner: string; grant: (slot: Slot) => void; seq: number }[] = [];
   private seq = 0;
-  readonly stats = { pauses: 0, peakInFlight: 0, waitedMs: 0 };
+  readonly stats = { pauses: 0, peakInFlight: 0, waitedMs: 0, decreases: 0, lowestWindow: Number.MAX_SAFE_INTEGER };
+  private window: number; // adaptive: the slots currently granted (fractional; floor is used)
+  private decreasedUntil = -Infinity;
 
   constructor(readonly limits: ProviderLimits = UNLIMITED, private readonly clock: Clock = realClock) {
     const now = clock.now();
@@ -90,6 +99,12 @@ export class ProviderLimiter {
     this.requests = new Bucket(limits.requestsPerMinute, cap(limits.requestsPerMinute), now);
     this.input = new Bucket(limits.inputTokensPerMinute, cap(limits.inputTokensPerMinute), now);
     this.output = new Bucket(limits.outputTokensPerMinute, cap(limits.outputTokensPerMinute), now);
+    this.window = limits.maxInFlight;
+  }
+
+  // The most packets in flight right now: maxInFlight, or the adaptive window below it.
+  capacity() {
+    return this.limits.adaptive ? Math.max(1, Math.floor(this.window)) : this.limits.maxInFlight;
   }
 
   inFlight() {
@@ -105,7 +120,7 @@ export class ProviderLimiter {
   // A packet slot for `owner` (a run). Resolves when one is free; rejects with Aborted if `signal` fires first.
   acquireSlot(owner: string, signal?: AbortSignal): Promise<Slot> {
     if (signal?.aborted) return Promise.reject(new Aborted());
-    if (this.inFlight() < this.limits.maxInFlight && this.waiting.length === 0) return Promise.resolve(this.grant(owner));
+    if (this.inFlight() < this.capacity() && this.waiting.length === 0) return Promise.resolve(this.grant(owner));
     return new Promise((ok, no) => {
       const entry = { owner, seq: this.seq++, grant: (slot: Slot) => { signal?.removeEventListener("abort", onAbort); ok(slot); } };
       const onAbort = () => {
@@ -136,7 +151,7 @@ export class ProviderLimiter {
 
   // Fair hand-off: the waiting owner holding the fewest slots, then the oldest waiter.
   private dispatch() {
-    while (this.waiting.length && this.inFlight() < this.limits.maxInFlight) {
+    while (this.waiting.length && this.inFlight() < this.capacity()) {
       let best = 0;
       for (let i = 1; i < this.waiting.length; i++) {
         const [a, b] = [this.waiting[i], this.waiting[best]];
@@ -171,6 +186,10 @@ export class ProviderLimiter {
     const now = this.clock.now();
     this.input.take(usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) - ticket.input, now);
     this.output.take(Math.min(usage.output_tokens, ticket.output) - ticket.output, now);
+    if (this.limits.adaptive && this.window < this.limits.maxInFlight) {
+      this.window = Math.min(this.limits.maxInFlight, this.window + 1 / Math.max(1, this.window));
+      this.dispatch();
+    }
   }
 
   // A request that got no reply. Rejected before generating anything (billable false): refunded in full. Its
@@ -183,32 +202,73 @@ export class ProviderLimiter {
   }
 
   // Every request through this limiter waits until `ms` from now.
+  // Adaptive: halves the window, once per pause (the 429s of one burst are one congestion signal, not several).
   pause(ms: number) {
+    const now = this.clock.now();
     this.stats.pauses++;
-    this.pausedUntil = Math.max(this.pausedUntil, this.clock.now() + ms);
+    this.pausedUntil = Math.max(this.pausedUntil, now + ms);
+    if (this.limits.adaptive && now >= this.decreasedUntil) {
+      this.window = Math.max(1, Math.floor(this.window / 2));
+      this.decreasedUntil = this.pausedUntil;
+      this.stats.decreases++;
+      this.stats.lowestWindow = Math.min(this.stats.lowestWindow, this.window);
+    }
   }
 }
 
 // The worker's settings, from the environment. Defaults are conservative for a first paid pilot; set the
 // provider limits to the account's tier (Console, Rate limits page).
+//   PROVIDER_TIER=1..4         a preset for the three per-minute limits (PROVIDER_TIERS); an explicit PROVIDER_* wins
+//   CASE_RUN_ADAPTIVE=true     AIMD on the in-flight slots after 429/529 (off by default)
+//   PACKET_OUTPUT_TOKENS_PER_PAIR / STRETCH_OUTPUT_TOKENS_PER_PAIR   a lower max_tokens per pair for packet-v1 /
+//                              stretch-v2 (default 5,500); a reply cut off at it is recovered by the run's recovery
+//                              request, which uses the default cap
+// ASSUMED: Anthropic's published Sonnet-class limits per tier (requests, input and output tokens per minute) as last
+// seen; nothing in the SDK states them. The account's real limits are on its Console page and in the
+// anthropic-ratelimit-* response headers, and they win: set the PROVIDER_* variables to them.
+export const PROVIDER_TIERS = {
+  "1": { requestsPerMinute: 50, inputTokensPerMinute: 30_000, outputTokensPerMinute: 8_000 },
+  "2": { requestsPerMinute: 1_000, inputTokensPerMinute: 450_000, outputTokensPerMinute: 90_000 },
+  "3": { requestsPerMinute: 2_000, inputTokensPerMinute: 800_000, outputTokensPerMinute: 160_000 },
+  "4": { requestsPerMinute: 4_000, inputTokensPerMinute: 2_000_000, outputTokensPerMinute: 400_000 },
+} as const;
 const positive = (fallback: number) => z.coerce.number().int().positive().default(fallback);
+const optionalPositive = z.coerce.number().int().positive().optional();
 const CaseRunEnv = z.object({
   CASE_RUN_PACKETS_PER_CASE: positive(2),
   CASE_RUN_PACKETS_GLOBAL: positive(4),
   CASE_RUN_MAX_CASES: positive(2),
-  PROVIDER_REQUESTS_PER_MINUTE: positive(50),
-  PROVIDER_INPUT_TOKENS_PER_MINUTE: positive(200_000),
-  PROVIDER_OUTPUT_TOKENS_PER_MINUTE: positive(200_000), // worst case per 8-pair packet: 44,000 (max_tokens)
+  PROVIDER_TIER: z.enum(["1", "2", "3", "4"]).optional(),
+  PROVIDER_REQUESTS_PER_MINUTE: optionalPositive,
+  PROVIDER_INPUT_TOKENS_PER_MINUTE: optionalPositive,
+  PROVIDER_OUTPUT_TOKENS_PER_MINUTE: optionalPositive, // worst case per 8-pair packet at the default cap: 44,000 (max_tokens)
   PROVIDER_BURST_SECONDS: positive(10),
+  CASE_RUN_ADAPTIVE: z.enum(["true", "false"]).default("false"),
+  PACKET_OUTPUT_TOKENS_PER_PAIR: optionalPositive,
+  STRETCH_OUTPUT_TOKENS_PER_PAIR: optionalPositive,
 });
+const NO_TIER = { requestsPerMinute: 50, inputTokensPerMinute: 200_000, outputTokensPerMinute: 200_000 };
 export type CaseRunSettings = { packetsPerCase: number; maxCases: number; limits: ProviderLimits };
 
 export function caseRunSettings(env: Record<string, string | undefined>): CaseRunSettings {
   const e = CaseRunEnv.parse(Object.fromEntries(Object.keys(CaseRunEnv.shape).map((k) => [k, env[k] === "" ? undefined : env[k]])));
   if (e.CASE_RUN_PACKETS_PER_CASE > e.CASE_RUN_PACKETS_GLOBAL) throw new Error("CASE_RUN_PACKETS_PER_CASE can't be more than CASE_RUN_PACKETS_GLOBAL.");
+  const tier = e.PROVIDER_TIER ? PROVIDER_TIERS[e.PROVIDER_TIER] : NO_TIER;
+  const caps = { "packet-v1": e.PACKET_OUTPUT_TOKENS_PER_PAIR, "stretch-v2": e.STRETCH_OUTPUT_TOKENS_PER_PAIR };
+  for (const perPair of Object.values(caps)) if (perPair !== undefined) packetMaxTokens(1, perPair); // throws above the default: a cap only lowers
+  const outputTokensPerPair = Object.fromEntries(Object.entries(caps).filter((c): c is [string, number] => c[1] !== undefined));
   return {
     packetsPerCase: e.CASE_RUN_PACKETS_PER_CASE,
     maxCases: e.CASE_RUN_MAX_CASES,
-    limits: { maxInFlight: e.CASE_RUN_PACKETS_GLOBAL, requestsPerMinute: e.PROVIDER_REQUESTS_PER_MINUTE, inputTokensPerMinute: e.PROVIDER_INPUT_TOKENS_PER_MINUTE, outputTokensPerMinute: e.PROVIDER_OUTPUT_TOKENS_PER_MINUTE, burstSeconds: e.PROVIDER_BURST_SECONDS },
+    limits: {
+      maxInFlight: e.CASE_RUN_PACKETS_GLOBAL,
+      requestsPerMinute: e.PROVIDER_REQUESTS_PER_MINUTE ?? tier.requestsPerMinute,
+      inputTokensPerMinute: e.PROVIDER_INPUT_TOKENS_PER_MINUTE ?? tier.inputTokensPerMinute,
+      outputTokensPerMinute: e.PROVIDER_OUTPUT_TOKENS_PER_MINUTE ?? tier.outputTokensPerMinute,
+      burstSeconds: e.PROVIDER_BURST_SECONDS,
+      // Only when set, so the recorded limits of a default worker stay as they were.
+      ...(e.CASE_RUN_ADAPTIVE === "true" ? { adaptive: true } : {}),
+      ...(Object.keys(outputTokensPerPair).length ? { outputTokensPerPair } : {}),
+    },
   };
 }
