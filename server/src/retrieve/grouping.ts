@@ -147,9 +147,23 @@ export function groupPool(pool: CandidatePool, items: readonly FrozenItem[], nam
     const adj = new Map<string, Map<string, number>>();
     const link = (u: string, v: string, i: number) => (adj.get(u) ?? adj.set(u, new Map()).get(u)!).set(v, i);
     pairs.forEach((p, i) => { if (!covered.has(i)) { link(p.a, p.b, i); link(p.b, p.a, i); } });
+    // The hub (most uncovered pairs, then the smallest key) comes from a max-heap of [size, key] entries; a node's size
+    // only shrinks and every change pushes a new entry, so an entry whose size is stale is skipped.
+    const heap: [number, string][] = [];
+    const above = (x: [number, string], y: [number, string]) => x[0] > y[0] || (x[0] === y[0] && x[1] < y[1]);
+    const push = (e: [number, string]) => { heap.push(e); for (let i = heap.length - 1; i > 0;) { const p = (i - 1) >> 1; if (!above(heap[i], heap[p])) break; [heap[i], heap[p]] = [heap[p], heap[i]]; i = p; } };
+    const pop = () => {
+      const top = heap[0], last = heap.pop()!;
+      if (heap.length) {
+        heap[0] = last;
+        for (let i = 0; ;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && above(heap[l], heap[m])) m = l; if (r < heap.length && above(heap[r], heap[m])) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; }
+      }
+      return top;
+    };
+    for (const [k, n] of adj) push([n.size, k]);
     for (;;) {
       let hub: string | undefined;
-      for (const [k, n] of adj) if (n.size && (!hub || n.size > adj.get(hub)!.size || (n.size === adj.get(hub)!.size && k < hub))) hub = k;
+      while (heap.length) { const [size, k] = pop(); if (size > 0 && adj.get(k)!.size === size) { hub = k; break; } }
       if (!hub) break;
       const keys = [hub];
       let t = tok.get(hub)!;
@@ -159,6 +173,7 @@ export function groupPool(pool: CandidatePool, items: readonly FrozenItem[], nam
       if (keys.length < 2) throw new Error("a residual pair that fits alone found no room"); // fits(2, …) was checked above
       emit(keys, "star");
       for (const u of keys) for (const v of keys) adj.get(u)?.delete(v);
+      for (const u of keys) { const n = adj.get(u); if (n?.size) push([n.size, u]); }
     }
   }
   pairs.forEach((p, i) => { if (!covered.has(i)) uncovered.push({ a: p.a, b: p.b, reason: s.residual === "none" ? "items in different issue clusters (residual packing off)" : "not covered" }); });

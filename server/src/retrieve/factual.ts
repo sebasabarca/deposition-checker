@@ -306,13 +306,31 @@ export function pairScore(ix: FactualIndex, a: number, b: number): number {
 
 // Every item's scored partners in other sessions, best first: to `depth`, or all of them for `full` rows.
 export function factualNeighbours(items: readonly FactualItem[], depth: number, full: ReadonlySet<number> = new Set(), ix = indexItems(items)): { id: number; score: number }[][] {
-  // Candidate partners share a dimension family or a claim term; a full scan stays affordable at this size.
   const hasFacts = ix.facts.map((f) => f.values.length > 0 || f.claims.length > 0);
+  // Only partners that can score above 0 are scored (pairScore itself is unchanged, so the result is identical):
+  // a value conflict needs both sides to hold values and subject cosine >= MIN_SUBJECT, an opposition needs both to
+  // hold claims sharing two terms. Both are found through inverted indexes; the cosine summed there can differ from
+  // cosine()'s in the last bits only, so a margin keeps the set a superset.
+  const n = items.length;
+  const valuePostings = new Map<number, [number, number][]>();
+  const claimTerms = ix.facts.map((f) => [...new Set(f.claims.flatMap((c) => c.terms))]);
+  const claimPostings = new Map<string, number[]>();
+  for (let b = 0; b < n; b++) {
+    if (ix.facts[b].values.length) for (const [t, x] of ix.vectors[b]) (valuePostings.get(t) ?? valuePostings.set(t, []).get(t)!).push([b, x]);
+    for (const t of claimTerms[b]) (claimPostings.get(t) ?? claimPostings.set(t, []).get(t)!).push(b);
+  }
+  const subject = new Float64Array(n), shared = new Uint16Array(n), mark = new Uint8Array(n);
   return items.map((it, a) => {
     if (!hasFacts[a]) return [];
+    const touched: number[] = [];
+    const touch = (b: number) => { if (!mark[b]) { mark[b] = 1; touched.push(b); } };
+    if (ix.facts[a].values.length) for (const [t, x] of ix.vectors[a]) for (const [b, y] of valuePostings.get(t) ?? []) { touch(b); subject[b] += x * y; }
+    for (const t of claimTerms[a]) for (const b of claimPostings.get(t) ?? []) { touch(b); shared[b]++; }
+    const partners = touched.filter((b) => subject[b] >= MIN_SUBJECT - 1e-9 || shared[b] >= 2).sort((x, y) => x - y);
+    for (const b of touched) { mark[b] = 0; subject[b] = 0; shared[b] = 0; }
     const out: { id: number; score: number }[] = [];
-    for (let b = 0; b < items.length; b++) {
-      if (!hasFacts[b] || items[b].session === it.session) continue;
+    for (const b of partners) {
+      if (items[b].session === it.session) continue;
       const s = pairScore(ix, a, b);
       if (s > 0) out.push({ id: b, score: Math.round(s * 1e6) / 1e6 });
     }

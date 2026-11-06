@@ -16,7 +16,9 @@ import { depositions, exchanges, witnesses } from "../db/schema";
 import type { LoadedFixtures } from "../eval/evidenceFixtures";
 import { fullText, loadItems, NEIGHBOURS_PER_ITEM, type ProbeItem } from "../eval/retrievalProbe";
 import { lastWords, representationText } from "./embeddings";
+import { denseNeighboursParallel } from "./denseParallel";
 import { factualNeighbours } from "./factual";
+import { fullTextMemory } from "./fullTextMemory";
 import { buildPool, itemKeyOf, type Candidate, type CandidatePool, type FrozenItem, type PathNeighbours, type Ranked } from "./frozen";
 import { DEFAULT_GROUPING, groupPool, type PacketSet } from "./grouping";
 import { anchorNeighbours, anchors, denseNeighbours, lsa, nameVocabulary, sparseNeighbours, tfidf, tokens, type Neighbour } from "./independent";
@@ -44,7 +46,11 @@ export type CasePoolResult = {
 // other session / witness on top of the fused top perItem; perPath keeps each path's own best partners.
 export type CaseSelection = { perSession?: number; perWitness?: number; perPath?: number; minShare?: number };
 
-export async function buildCasePool(db: Database, pool: Pool, caseId: number, options: { perItem?: number; minilm?: "auto" | "off"; selection?: CaseSelection; depositionIds?: readonly number[] } = {}): Promise<CasePoolResult> {
+// denseThreads (default 1): the dense paths' all-pairs search split over this many worker threads (denseParallel.ts);
+// identical neighbours, more CPU cores at once.
+// pathA (default "postgres"): "memory" computes Path A's identical neighbours in memory (fullTextMemory.ts), with
+// Postgres only parsing the text; Postgres ranking every match grows ~items^2.2 and dominates large cases.
+export async function buildCasePool(db: Database, pool: Pool, caseId: number, options: { perItem?: number; minilm?: "auto" | "off"; selection?: CaseSelection; depositionIds?: readonly number[]; pathA?: "postgres" | "memory"; denseThreads?: number } = {}): Promise<CasePoolResult> {
   const perItem = options.perItem ?? DEFAULT_PER_ITEM;
   const depth = NEIGHBOURS_PER_ITEM;
   const rows = await db
@@ -84,9 +90,10 @@ export async function buildCasePool(db: Database, pool: Pool, caseId: number, op
   if (new Set(items.map((i) => i.sessionId)).size >= 2) {
     const context = (i: ProbeItem) => lastWords(i.context);
     const names = nameVocabulary(probe.map((i) => `${i.text} ${i.context}`));
+    const dense = async (vectors: Float64Array[]) => ((options.denseThreads ?? 1) > 1 ? denseNeighboursParallel(probe, vectors, depth, options.denseThreads!) : denseNeighbours(probe, vectors, depth));
     const add = (name: string, lists: Neighbour[][]) => { neighbours.push(toNeighbours(name, lists)); paths.push({ name, available: true, reason: null, depth }); };
-    add("A_fulltext", await fullText(pool, probe, depth));
-    { const t = tfidf(probe.map((i) => tokens(`${i.question} ${i.answer} ${context(i)}`)), { maxDfShare: 0.5 }); add("B_semantic_lsa", denseNeighbours(probe, lsa(t.vectors, t.vocabulary.length), depth)); }
+    add("A_fulltext", options.pathA === "memory" ? await fullTextMemory(pool, probe, depth) : await fullText(pool, probe, depth));
+    { const t = tfidf(probe.map((i) => tokens(`${i.question} ${i.answer} ${context(i)}`)), { maxDfShare: 0.5 }); add("B_semantic_lsa", await dense(lsa(t.vectors, t.vocabulary.length))); }
     { const t = tfidf(probe.map((i) => tokens(`${i.question} ${context(i)}`))); add("C_question", sparseNeighbours(probe, t.vectors, depth)); }
     add("D_anchors", anchorNeighbours(probe, probe.map((i) => anchors(i.text, names)), probe.map((i) => anchors(i.context, names)), depth));
     // F reads the witness's name to recognise "I" in claims, so it gets the stored name, not the w<id> key.
@@ -99,7 +106,7 @@ export async function buildCasePool(db: Database, pool: Pool, caseId: number, op
         const model = await loadMiniLM();
         const { vectors } = await model.embed(items.map((i) => representationText(i, "qac", true)));
         if (model.fetchAttempts()) throw new Error("the model library attempted network access");
-        add(MINILM_PATH, denseNeighbours(probe, vectors.map((v) => Float64Array.from(v)), depth));
+        add(MINILM_PATH, await dense(vectors.map((v) => Float64Array.from(v))));
       } catch (e) {
         paths.push({ name: MINILM_PATH, available: false, reason: e instanceof Error ? e.message : String(e), depth });
       }
@@ -130,3 +137,4 @@ export async function buildCasePool(db: Database, pool: Pool, caseId: number, op
     sourceHash,
   };
 }
+

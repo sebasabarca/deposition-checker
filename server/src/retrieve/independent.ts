@@ -60,16 +60,61 @@ export function tfidf(docs: readonly string[][], { minDf = 2, maxDfShare = 0.2 }
 export function sparseNeighbours(items: readonly Item[], vectors: readonly SparseVector[], k: number, eligible: (i: number) => boolean = () => true, rows?: ReadonlySet<number>): Neighbour[][] {
   const postings = new Map<number, [number, number][]>();
   vectors.forEach((v, d) => { if (eligible(d)) for (const [t, x] of v) (postings.get(t) ?? postings.set(t, []).get(t)!).push([d, x]); });
+  const acc = new Accumulator(items.length);
   return vectors.map((v, d) => {
     if (rows && !rows.has(d)) return [];
-    const acc = new Map<number, number>();
-    for (const [t, x] of v) for (const [e, y] of postings.get(t) ?? []) if (items[e].session !== items[d].session) acc.set(e, (acc.get(e) ?? 0) + x * y);
-    return topK(acc, k);
+    for (const [t, x] of v) for (const [e, y] of postings.get(t) ?? []) if (items[e].session !== items[d].session) acc.add(e, x * y);
+    return acc.drain(k);
   });
 }
 
-function topK(acc: Map<number, number>, k: number): Neighbour[] {
-  return [...acc].filter(([, s]) => s > 0).sort((x, y) => y[1] - x[1] || x[0] - y[0]).slice(0, k).map(([i, score]) => ({ id: i, score }));
+// A reusable score accumulator over item ids: a dense array plus the ids touched, so a row costs what it touches, not n.
+// Each id's sum starts at 0 and adds in the same order a Map would, so scores are bit-identical to the Map version.
+class Accumulator {
+  private readonly sum: Float64Array;
+  private readonly seen: Uint8Array;
+  private touched: number[] = [];
+  constructor(n: number) { this.sum = new Float64Array(n); this.seen = new Uint8Array(n); }
+  add(e: number, x: number) { if (!this.seen[e]) { this.seen[e] = 1; this.touched.push(e); } this.sum[e] += x; }
+  drain(k: number): Neighbour[] {
+    const top = new TopK(k);
+    for (const e of this.touched) { top.offer(e, this.sum[e]); this.sum[e] = 0; this.seen[e] = 0; }
+    this.touched = [];
+    return top.sorted();
+  }
+}
+
+// The k best (score desc, id asc) of the positive scores offered, by a bounded heap: the same list as sorting all
+// offers and keeping the first k, since (score, id) is a total order. Offer each id at most once.
+export class TopK {
+  private readonly ids: number[] = [];
+  private readonly scores: number[] = [];
+  constructor(private readonly k: number) {}
+  // Heap root = the worst kept entry.
+  private worse(i: number, j: number) { return this.scores[i] < this.scores[j] || (this.scores[i] === this.scores[j] && this.ids[i] > this.ids[j]); }
+  private swap(i: number, j: number) { [this.ids[i], this.ids[j]] = [this.ids[j], this.ids[i]]; [this.scores[i], this.scores[j]] = [this.scores[j], this.scores[i]]; }
+  offer(id: number, score: number) {
+    if (!(score > 0) || this.k <= 0) return;
+    const n = this.ids.length;
+    if (n < this.k) {
+      this.ids.push(id); this.scores.push(score);
+      for (let i = n; i > 0;) { const p = (i - 1) >> 1; if (!this.worse(i, p)) break; this.swap(i, p); i = p; }
+      return;
+    }
+    if (score < this.scores[0] || (score === this.scores[0] && id > this.ids[0])) return;
+    this.ids[0] = id; this.scores[0] = score;
+    for (let i = 0; ;) {
+      const l = 2 * i + 1, r = l + 1;
+      let m = i;
+      if (l < n && this.worse(l, m)) m = l;
+      if (r < n && this.worse(r, m)) m = r;
+      if (m === i) break;
+      this.swap(i, m); i = m;
+    }
+  }
+  sorted(): Neighbour[] {
+    return this.ids.map((id, i) => ({ id, score: this.scores[i] })).sort((x, y) => y.score - x.score || x.id - y.id);
+  }
 }
 
 // Latent semantic analysis: a rank-`dims` truncated SVD of the TF-IDF matrix by randomized range
@@ -105,15 +150,18 @@ export function lsa(vectors: readonly SparseVector[], vocabularySize: number, { 
 
 function orthonormalize(m: Float64Array[], cols: number): Float64Array[] {
   const n = m.length;
-  const q = m.map((r) => Float64Array.from(r));
+  // Modified Gram-Schmidt on columns, held column-major so each pass reads memory in order; the same operations in
+  // the same order as on the row-major matrix, so the result is bit-identical.
+  const q = Array.from({ length: cols }, (_, j) => Float64Array.from({ length: n }, (_, i) => m[i][j]));
   for (let j = 0; j < cols; j++) {
-    for (let k = 0; k < j; k++) { let dot = 0; for (let i = 0; i < n; i++) dot += q[i][j] * q[i][k]; for (let i = 0; i < n; i++) q[i][j] -= dot * q[i][k]; }
+    const qj = q[j];
+    for (let k = 0; k < j; k++) { const qk = q[k]; let dot = 0; for (let i = 0; i < n; i++) dot += qj[i] * qk[i]; for (let i = 0; i < n; i++) qj[i] -= dot * qk[i]; }
     let norm = 0;
-    for (let i = 0; i < n; i++) norm += q[i][j] * q[i][j];
+    for (let i = 0; i < n; i++) norm += qj[i] * qj[i];
     norm = Math.sqrt(norm) || 1;
-    for (let i = 0; i < n; i++) q[i][j] /= norm;
+    for (let i = 0; i < n; i++) qj[i] /= norm;
   }
-  return q;
+  return m.map((_, i) => Float64Array.from({ length: cols }, (_, j) => q[j][i]));
 }
 
 // Eigenvalues and eigenvectors (columns) of a small symmetric matrix, by cyclic Jacobi rotations.
@@ -141,12 +189,29 @@ export function jacobiEigen(input: Float64Array[]): { values: number[]; vectors:
 
 // Each item's k best neighbours in other sessions by dense cosine (vectors already normalized).
 export function denseNeighbours(items: readonly Item[], vectors: readonly Float64Array[], k: number, eligible: (i: number) => boolean = () => true, rows?: ReadonlySet<number>): Neighbour[][] {
-  return vectors.map((v, d) => {
-    if (rows && !rows.has(d)) return [];
-    const acc = new Map<number, number>();
-    vectors.forEach((w, e) => { if (e === d || !eligible(e) || items[e].session === items[d].session) return; let s = 0; for (let j = 0; j < v.length; j++) s += v[j] * w[j]; acc.set(e, s); });
-    return topK(acc, k);
-  });
+  const n = vectors.length;
+  const dims = n ? vectors[0].length : 0;
+  const flat = new Float64Array(n * dims);
+  vectors.forEach((v, d) => flat.set(v, d * dims));
+  const dot = (d: number, e: number) => { let s = 0; const a = d * dims, b = e * dims; for (let j = 0; j < dims; j++) s += flat[a + j] * flat[b + j]; return s; };
+  const ok = Array.from({ length: n }, (_, e) => eligible(e));
+  const tops = vectors.map(() => new TopK(k));
+  if (rows) {
+    for (const d of rows) for (let e = 0; e < n; e++) if (e !== d && ok[e] && items[e].session !== items[d].session) tops[d].offer(e, dot(d, e));
+  } else {
+    // Each pair once (v.w and w.v sum the same products in the same order, so the score is bit-identical), in tiles
+    // that stay in cache. Still every pair: exact, O(n^2 x dims).
+    const TILE = 256;
+    for (let d0 = 0; d0 < n; d0 += TILE) for (let e0 = d0; e0 < n; e0 += TILE) {
+      for (let d = d0; d < Math.min(d0 + TILE, n); d++) for (let e = Math.max(e0, d + 1); e < Math.min(e0 + TILE, n); e++) {
+        if (items[e].session === items[d].session || (!ok[e] && !ok[d])) continue;
+        const s = dot(d, e);
+        if (ok[e]) tops[d].offer(e, s);
+        if (ok[d]) tops[e].offer(d, s);
+      }
+    }
+  }
+  return tops.map((t, d) => (rows && !rows.has(d) ? [] : t.sorted()));
 }
 
 // Anchors: what ties testimony to an occasion, read from the words alone: capitalized names (runs of
@@ -201,12 +266,12 @@ export function anchorNeighbours(items: readonly Item[], own: readonly string[][
   const idf = (x: string) => Math.log(1 + n / (df.get(x) ?? 1));
   const postings = new Map<string, [number, number][]>();
   weights.forEach((w, d) => { if (eligible(d)) for (const [x, y] of w) (postings.get(x) ?? postings.set(x, []).get(x)!).push([d, y]); });
+  const acc = new Accumulator(n);
   return weights.map((w, d) => {
     if (rows && !rows.has(d)) return [];
-    const acc = new Map<number, number>();
     // Anchors in more than 5% of a large case (a witness's own name, the case's main place) say nothing.
-    for (const [x, y] of w) { if ((df.get(x) ?? 0) > Math.max(20, n * 0.05)) continue; for (const [e, z] of postings.get(x) ?? []) if (items[e].session !== items[d].session) acc.set(e, (acc.get(e) ?? 0) + y * z * idf(x)); }
-    return topK(acc, k);
+    for (const [x, y] of w) { if ((df.get(x) ?? 0) > Math.max(20, n * 0.05)) continue; for (const [e, z] of postings.get(x) ?? []) if (items[e].session !== items[d].session) acc.add(e, y * z * idf(x)); }
+    return acc.drain(k);
   });
 }
 

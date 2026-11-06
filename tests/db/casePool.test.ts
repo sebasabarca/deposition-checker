@@ -58,6 +58,10 @@ describe.skipIf(!TEST_DATABASE_URL)("buildCasePool", () => {
     expect(await buildCasePool(db, pool, caseId)).toEqual(first);
   }, 60_000);
 
+  it("gives the identical result with Path A in memory and the dense search on threads", async () => {
+    expect(await buildCasePool(db, pool, caseId, { pathA: "memory", denseThreads: 3 })).toEqual(first);
+  }, 60_000);
+
   it("leaves an excluded document out but lists it", async () => {
     const gone = first.documents[3].depositionId;
     await db.update(depositions).set({ excludedReason: "legacy_parse" }).where(eq(depositions.id, gone));
