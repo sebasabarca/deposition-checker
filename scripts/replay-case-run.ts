@@ -21,6 +21,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { eq } from "drizzle-orm";
 import { PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPTS, maxOutputTokensFor } from "../server/src/adjudicate/packetPrompt";
+import { formatStretchRequest, STRETCH_RENDER_R1, STRETCH_RENDER_R2 } from "../server/src/adjudicate/stretchPrompt";
 import { openRequest, closeRequest } from "../server/src/adjudicate/requests";
 import { reserve, settle } from "../server/src/costs";
 import { connect } from "../server/src/db/client";
@@ -57,7 +58,10 @@ async function main() {
       if (typeof ctx === "string") continue;
       const step = await nextStep(db, run, { entry }, ctx);
       if (step.kind !== "send") continue;
-      const text = PACKET_PROMPTS[contract].format(step.packet);
+      // A recorded stretch-v2 request may have been rendered by r1 (before the order fix) or r2: replay whichever the
+      // recorded text is, byte for byte.
+      const texts = contract === "stretch-v2" ? [formatStretchRequest(step.packet, STRETCH_RENDER_R2), formatStretchRequest(step.packet, STRETCH_RENDER_R1)] : [PACKET_PROMPTS[contract].format(step.packet)];
+      const text = texts.find((t) => replyOf.has(sha(t))) ?? texts[0];
       const reply = replyOf.get(sha(text));
       if (reply === undefined) continue;
       const [call] = await db.select({ id: llmCalls.id, costUsd: llmCalls.costUsd, model: llmCalls.model }).from(llmCalls).where(eq(llmCalls.rawOutput, reply));
