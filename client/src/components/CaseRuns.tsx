@@ -4,7 +4,7 @@
 // stand-in for the model and is labelled as such everywhere its results appear.
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, ArrowUpRight, Check, FileUp, Info, LoaderCircle, RotateCcw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, CircleAlert, CircleCheck, FileUp, Info, LoaderCircle, RotateCcw } from "lucide-react";
 import { api } from "../lib/api";
 import { ACTIVE_RUN, timeLeft, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, reuseAdjusted, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
@@ -64,11 +64,10 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
   const running = runs?.find((r) => ACTIVE_RUN.includes(r.status) && !isEstimate(r)) ?? null;
   const analysis = runs?.find(isAnalysis) ?? null;
   const ready = sessions.filter((s) => s.status === "ready").length;
-  // Runs seen running during this visit: when one finishes, its results stay in view; otherwise the steps start again.
-  const seenRunning = useRef(new Set<number>());
-  if (running) seenRunning.current.add(running.id);
-  const finishedHere = !!analysis && seenRunning.current.has(analysis.id);
-  const step = workflowStep({ running: !!running, estimate: !!estimate, finishedHere }, choice, ready);
+  // The latest analysis, finished or not, is where the page opens: its result and the way to its review.
+  // An estimate waiting doesn't hide it: the steps prepare one automatically, and "Start a new analysis" opens it.
+  const results = !!analysis;
+  const step = workflowStep({ running: !!running, estimate: !!estimate, results }, choice, ready);
   const act = (p: Promise<unknown>) => {
     setBusy(true);
     setProblem(null);
@@ -198,7 +197,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
             onRetry={prepare}
           />
           {/* Results that finished on this visit can be returned to; earlier ones are under Previous analyses. */}
-          {finishedHere ? <Button variant="secondary" disabled={busy} onClick={() => setChoice(null)}>Back to the latest results</Button> : <Button variant="secondary" disabled={busy} onClick={() => setChoice("depositions")}>Back</Button>}
+          {results ? <Button variant="secondary" disabled={busy} onClick={() => setChoice(null)}>Back to the latest results</Button> : <Button variant="secondary" disabled={busy} onClick={() => setChoice("depositions")}>Back</Button>}
         </div>
       ),
     },
@@ -681,18 +680,53 @@ export function ResumeControl({ run, busy, act, paidBlocked, elsewhere, compact 
   );
 }
 
+// The moment an analysis ends: that it is done (or done with work left), what it found, and the way to its review.
+function Finished({ run }: { run: CaseRun }) {
+  const found = run.findings.reduce((n, f) => n + f.n, 0);
+  const reviewed = Math.min(run.reviewed ?? 0, found);
+  const complete = run.status === "completed";
+  const when = run.finishedAt ? ` ${formatDate(run.finishedAt)}` : "";
+  return (
+    <div role="status" className={cx("flex flex-wrap items-center justify-between gap-x-6 gap-y-4 rounded-lg border px-5 py-4", complete ? "border-ok/25 bg-ok-bg" : "border-context/25 bg-context-bg")}>
+      <div className="flex min-w-0 flex-1 basis-80 items-start gap-3">
+        {complete ? <CircleCheck aria-hidden className="mt-0.5 size-6 flex-none text-ok" strokeWidth={2} /> : <CircleAlert aria-hidden className="mt-0.5 size-6 flex-none text-context" strokeWidth={2} />}
+        <div className="min-w-0">
+          <p className="text-md font-semibold text-ink">{complete ? "Analysis complete" : "Analysis finished, with work left"}</p>
+          <p className="mt-0.5 text-sm text-ink/80">
+            {complete ? `Finished${when}. ` : `Stopped${when} before every pair was read; resume it to read the rest. `}
+            {found === 0 ? "It found nothing to review." : `${found.toLocaleString()} ${found === 1 ? "finding is" : "findings are"} ready for your review${reviewed > 0 ? `, ${reviewed.toLocaleString()} already decided` : ""}.`}
+          </p>
+        </div>
+      </div>
+      <a href={href.caseRun(run.id)} className={buttonClass("primary", "h-9 px-4")}>{found === 0 ? "Open the analysis" : "Review findings"}<ArrowRight aria-hidden className="size-4" /></a>
+    </div>
+  );
+}
+
 function Outcome({ run, busy, act, paidBlocked, elsewhere }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null }) {
   const c = COVERAGE[run.coverageState];
   const found = run.findings.reduce((n, f) => n + f.n, 0);
+  const done = run.status === "completed" || run.status === "incomplete";
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={c.tone} dot>{c.label}</Badge>
-        <span className="text-sm text-muted">{c.help}</span>
-      </div>
+      {done && <Finished run={run} />}
+      {!done && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={c.tone} dot>{c.label}</Badge>
+          <span className="text-sm text-muted">{c.help}</span>
+        </div>
+      )}
       {run.status === "blocked_credentials" && <p className="text-sm text-muted">This server has no API key in its .env (see .env.example). Nothing was sent and nothing was charged.</p>}
-      {run.error && run.status !== "blocked_credentials" && <p className="text-sm text-muted">{run.error}</p>}
-      <Progress run={run} />
+      {run.error && run.status !== "blocked_credentials" && !done && <p className="text-sm text-muted">{run.error}</p>}
+      {done ? (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted">Details</summary>
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-2"><Badge tone={c.tone} dot>{c.label}</Badge><span className="text-muted">{c.help}</span></div>
+            <Progress run={run} />
+          </div>
+        </details>
+      ) : <Progress run={run} />}
       {run.incompleteReasons.length > 0 && (
         <details className="text-sm">
           <summary className="cursor-pointer font-medium">What wasn't read, and why ({run.incompleteReasons.length})</summary>
@@ -700,7 +734,7 @@ function Outcome({ run, busy, act, paidBlocked, elsewhere }: { run: CaseRun; bus
         </details>
       )}
       <div className="flex flex-wrap items-end gap-2">
-        {(found > 0 || run.packets.adjudicated > 0) && <a href={href.caseRun(run.id)} className={buttonClass("primary")}>View findings ({found})<ArrowRight aria-hidden className="size-4" /></a>}
+        {!done && (found > 0 || run.packets.adjudicated > 0) && <a href={href.caseRun(run.id)} className={buttonClass("primary")}>View findings ({found})<ArrowRight aria-hidden className="size-4" /></a>}
         <ResumeControl run={run} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} />
       </div>
       {run.packets.uncertain > 0 && <p className="text-xs text-muted">{run.packets.uncertain} packets stopped after a request the provider may have received; resuming doesn't send them again, so they can't be charged twice.</p>}

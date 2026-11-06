@@ -139,15 +139,16 @@ export const isUnusedEstimate = (r: RunLike) => r.mode === "live" && r.confirmed
 // read evidence.
 export const isAnalysis = (r: RunLike) => r.confirmedAt !== null || r.mode === "mock" || readAny(r);
 
-// finishedHere: an analysis finished while the person was on the page, so its results stay in view. Coming back to
-// the case later starts the steps again; earlier analyses are listed under them (CaseRuns.tsx, PreviousAnalyses).
-export function workflowStep(s: { running: boolean; estimate: boolean; finishedHere: boolean }, choice: WorkflowChoice, readySessions: number): WorkflowStep {
+// results: the case has an analysis (finished, stopped or incomplete), so the page opens on it at step 4, with the way
+// to its review, until the person chooses to start a new one (an estimate waiting is shown then). Earlier analyses are listed under the steps (PreviousAnalyses).
+export function workflowStep(s: { running: boolean; estimate: boolean; results: boolean }, choice: WorkflowChoice, readySessions: number): WorkflowStep {
   if (s.running) return 4;
   if (choice === "depositions" || readySessions < 2) return 1;
   if (choice === "scope") return 2;
   if (choice === "review") return s.estimate ? 3 : 2;
+  if (s.results) return 4; // the latest analysis first, even with an estimate waiting
   if (s.estimate) return 2; // back on the page with an estimate pending: show it with its choice
-  return s.finishedHere ? 4 : 1;
+  return 1;
 }
 
 // What an estimate was prepared for, so a change of choice can be told from the estimate already shown.
