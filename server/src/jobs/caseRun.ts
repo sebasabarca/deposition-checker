@@ -640,7 +640,7 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
       // a different request and is never reused (it could be longer than this cap allows).
       const cap = outputCapFor(run, ex.limiter.limits, step.packet.pairs.length, replies.made > 0);
       const keys = await requestKeys(db, contractOf(run), step.packet, model, cap);
-      const source = reuseApplies(run, deps.reuse) ? await findReusable(db, run.caseId, keys, model.model) : null;
+      const source = reuseApplies(run, deps.reuse) ? await findReusable(db, run.caseId, keys, model.model, at.entry.id) : null;
       if (source) {
         const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round: replies.made + 1, strategy: "packet", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: cap });
         replies.made++;
@@ -714,7 +714,7 @@ async function callModel(db: Database, run: CaseRun, entry: Entry, packet: Issue
       }
     }
     const requestId = await openRequest(db, context, { candidateIds: sentIds, model: model.model, promptVersion: model.promptVersion, estimatedInputTokens: inputTokens, maxOutputTokens, maxCostUsd, reservationId });
-    await storeKeys(db, requestId, keys); // so an identical later request can reuse this one's response once it completes
+    await storeKeys(db, requestId, keys, entry.id); // so an identical later request can reuse this one's response once it completes
     deps.faults?.afterRequestSent?.(entry.packetId);
     try {
       const reply = await model.adjudicate(packet, { signal: deps.signal, maxOutputTokens });
