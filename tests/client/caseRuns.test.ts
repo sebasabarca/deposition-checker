@@ -80,7 +80,8 @@ describe("choosing fast or economy", () => {
     const reuse = { checked: true, reusableRequests: 40, expectedAvoidedUsd: 20, economy: { expectedAvoidedUsd: 10 } };
     const e = { ...base, economy, reuse };
     expect(reuseAdjusted(e, "standard", false)).toEqual({ lowUsd: 39.54, highUsd: 39.54, recommendedUsd: 60.04, reusable: 40, avoidedUsd: 20 });
-    expect(reuseAdjusted(e, "batch", false)).toEqual({ lowUsd: 19.77, highUsd: 33, recommendedUsd: 54.5, reusable: 40, avoidedUsd: 10 });
+    expect(reuseAdjusted(e, "batch", false)).toEqual({ lowUsd: 19.77, highUsd: 28.56, recommendedUsd: 54.5, reusable: 40, avoidedUsd: 10 }); // both ends scaled by the share left to pay
+    expect(reuseAdjusted({ ...e, reuse: { ...reuse, economy: { expectedAvoidedUsd: 29.77 } } }, "batch", false)).toMatchObject({ lowUsd: 0, highUsd: 0 }); // fully reused: $0 at both ends
     expect(reuseAdjusted(e, "standard", true)).toEqual({ lowUsd: 59.54, highUsd: 59.54, recommendedUsd: 60.04, reusable: 0, avoidedUsd: 0 });
     expect(reuseAdjusted({ ...e, reuse: { ...reuse, checked: false } }, "standard", false)!.reusable).toBe(0);
     expect(reuseAdjusted({ ...e, reuse: { ...reuse, expectedAvoidedUsd: 100 } }, "standard", false)!.lowUsd).toBe(0); // never below zero

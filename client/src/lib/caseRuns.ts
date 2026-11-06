@@ -98,8 +98,11 @@ export function reuseAdjusted(e: CaseRunEstimate, execution: CaseRunExecution, f
   const reusable = !fresh && e.reuse?.checked ? e.reuse.reusableRequests : 0;
   if (!reusable) return { ...m, reusable: 0, avoidedUsd: 0 };
   const avoided = execution === "batch" ? e.reuse!.economy.expectedAvoidedUsd : e.reuse!.expectedAvoidedUsd;
-  const less = (x: number) => Math.max(0, Math.round((x - avoided) * 100) / 100);
-  return { lowUsd: less(m.lowUsd), highUsd: less(m.highUsd), recommendedUsd: m.recommendedUsd, reusable, avoidedUsd: avoided };
+  // The share of the projected cost still to be paid, applied to both ends of the range (the no-cache end too), so a
+  // fully reused run reads $0.00 at both ends.
+  const left = m.lowUsd > 0 ? Math.max(0, 1 - avoided / m.lowUsd) : 0;
+  const scale = (x: number) => Math.round(x * left * 100) / 100;
+  return { lowUsd: scale(m.lowUsd), highUsd: scale(m.highUsd), recommendedUsd: m.recommendedUsd, reusable, avoidedUsd: avoided };
 }
 
 // The recommended limit can't pass the ceiling a person is allowed to confirm.
