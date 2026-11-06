@@ -75,9 +75,9 @@ function FindingsTable({ rows }: { rows: WorkspaceFinding[] }) {
               const witnesses = [...new Set([f.a.witness, f.b.witness].filter((w): w is string => !!w))].join(" and ");
               return (
                 <tr key={f.id} className={cx(rowClass, "cursor-pointer align-top")} onClick={(e) => !(e.target as HTMLElement).closest("a") && (window.location.hash = href.caseRun(f.runId))}>
-                  <td className={cx(tdClass, "max-w-[28rem]")}>
+                  <td className={cx(tdClass, "w-[30rem] min-w-[22rem]")}>
                     <a href={href.caseRun(f.runId)} className="font-medium hover:underline">{headline(f)}</a>
-                    {f.explanation && <span className="mt-0.5 line-clamp-2 block text-muted">{f.explanation}</span>}
+                    {f.explanation && <p className="mt-0.5 line-clamp-2 text-muted">{f.explanation}</p>}
                     {setAside && <span className="mt-0.5 block text-xs text-muted">Needs revalidation: the transcript was re-read with a corrected parser. Kept for audit, not a current finding.</span>}
                   </td>
                   <td className={tdClass}>
