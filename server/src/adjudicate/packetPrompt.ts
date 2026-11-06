@@ -8,6 +8,9 @@ import { formatStretchRequest, STRETCH_V2_PROMPT_VERSION, STRETCH_V2_REPLY_JSON_
 import { spanLabel } from "./packet";
 import { ADJUDICATION_MODEL } from "./prompt";
 import { PACKET_REPLY_JSON_SCHEMA, PACKET_REPLY_V2_JSON_SCHEMA, PACKET_REPLY_V3_JSON_SCHEMA } from "./packetSchema";
+import { compactSystemPrompt } from "./compactPrompt";
+import type { CompactContractId } from "./compactRead";
+import { COMPACT_REPLY_JSON_SCHEMAS } from "./compactSchema";
 
 export const PACKET_PROMPT_VERSION = "packet-v1";
 export const PACKET_MODEL = ADJUDICATION_MODEL;
@@ -237,13 +240,18 @@ Fields, for each verdict:
 // All versions, for callers that run any. v1's and v2's text, schema and formatter are the ones above, unchanged.
 export type PromptVersionId = typeof PACKET_PROMPT_VERSION | typeof PACKET_PROMPT_VERSION_V2 | typeof PACKET_PROMPT_VERSION_V3;
 // Every request contract a case run can send: the packet contracts and the experimental whole-stretch one.
-export type ContractId = PromptVersionId | typeof STRETCH_V2_PROMPT_VERSION;
+export type ContractId = PromptVersionId | typeof STRETCH_V2_PROMPT_VERSION | CompactContractId;
+// Compact contracts (experimental, off by default): packet-v1's evidence and rules, a screen row per pair and a full verdict only when not dismissed.
+const compact = (c: CompactContractId) => ({ system: compactSystemPrompt(c, PACKET_SYSTEM_PROMPT), jsonSchema: COMPACT_REPLY_JSON_SCHEMAS[c], format: formatIssuePacket, adjacent: false }) as const;
 export const PACKET_PROMPTS = {
   [PACKET_PROMPT_VERSION]: { system: PACKET_SYSTEM_PROMPT, jsonSchema: PACKET_REPLY_JSON_SCHEMA, format: formatIssuePacket, adjacent: false },
   [PACKET_PROMPT_VERSION_V2]: { system: PACKET_SYSTEM_PROMPT_V2, jsonSchema: PACKET_REPLY_V2_JSON_SCHEMA, format: formatIssuePacketV2, adjacent: true },
   [PACKET_PROMPT_VERSION_V3]: { system: PACKET_SYSTEM_PROMPT_V3, jsonSchema: PACKET_REPLY_V3_JSON_SCHEMA, format: formatIssuePacketV2, adjacent: true },
   // Whole-stretch requests (experimental, off by default): a request is a stretch bundle (retrieve/stretchSet.ts), read by adjudicate/stretch.ts.
   [STRETCH_V2_PROMPT_VERSION]: { system: STRETCH_V2_SYSTEM_PROMPT, jsonSchema: STRETCH_V2_REPLY_JSON_SCHEMA, format: formatStretchRequest, adjacent: false },
+  "packet-c1": compact("packet-c1"),
+  "packet-c2": compact("packet-c2"),
+  "packet-c3": compact("packet-c3"),
 } as const;
 
 // A request's characters (system prompt and user message) under its contract: what its input bound and

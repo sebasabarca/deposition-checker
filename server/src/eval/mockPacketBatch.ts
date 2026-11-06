@@ -9,7 +9,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BatchCounts, BatchResult, BatchState, PacketBatchProvider, PacketBatchRequest } from "../adjudicate/packetBatch";
 import type { IssuePacket } from "../adjudicate/packetPrompt";
-import { mockPacketReply } from "./mockPacketModel";
+import { mockCompactReply, mockPacketReply } from "./mockPacketModel";
 import { mockStretchReply } from "../adjudicate/stretch";
 import { STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
 
@@ -104,13 +104,13 @@ export class FakeBatchProvider implements PacketBatchProvider {
     if (o === "expired") return { customId: r.customId, type: "expired" };
     if (o === "errored") return { customId: r.customId, type: "errored", errorType: "api_error", message: "internal error" };
     if (o === "invalid") return { customId: r.customId, type: "errored", errorType: "invalid_request_error", message: "invalid request" };
-    return { customId: r.customId, type: "succeeded", reply: this.reply(r.packet, o, r.contract === STRETCH_V2_PROMPT_VERSION) };
+    return { customId: r.customId, type: "succeeded", reply: this.reply(r.packet, o, r.contract) };
   }
 
-  private reply(packet: IssuePacket, o: { drop?: string[] }, stretch = false) {
-    const m = stretch ? mockStretchReply(packet, o) : mockPacketReply(packet, o);
-    const reply = JSON.parse(m.text) as { verdicts?: unknown[]; ledger?: unknown[] };
-    const answered = (reply.verdicts ?? reply.ledger ?? []).length;
+  private reply(packet: IssuePacket, o: { drop?: string[] }, contract?: PacketBatchRequest["contract"]) {
+    const m = contract === STRETCH_V2_PROMPT_VERSION ? mockStretchReply(packet, o) : contract === "packet-c3" ? mockCompactReply(packet, o) : mockPacketReply(packet, o);
+    const reply = JSON.parse(m.text) as { verdicts?: unknown[]; ledger?: unknown[]; screen?: unknown[] };
+    const answered = (reply.screen ?? reply.verdicts ?? reply.ledger ?? []).length;
     const usage = { input_tokens: m.usage.inputTokens, output_tokens: this.options.outputPerPair ? this.options.outputPerPair * answered : m.usage.outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as Anthropic.Usage;
     return { model: this.options.model ?? "mock-packet-v1", stopReason: "end_turn", usage, text: m.text, latencyMs: 0, requestId: null };
   }

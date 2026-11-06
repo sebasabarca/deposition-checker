@@ -14,7 +14,7 @@ import { caseRunReportData } from "../../server/src/api/report";
 import { PACKET_MODEL, type IssuePacket } from "../../server/src/adjudicate/packetPrompt";
 import type { Database } from "../../server/src/db/client";
 import { adjudicationRequests, candidates, caseRuns, depositions, findings, llmCalls, screeningEntries, screeningRuns, verdicts } from "../../server/src/db/schema";
-import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
+import { mockCompactReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
 import { CASE_RUN_RUNNER_STALE_MS, caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, orphanedCaseRuns, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
@@ -28,14 +28,14 @@ function scripted(step: (packet: IssuePacket, call: number) => { drop?: string[]
   const calls: string[] = [];
   const perPacket = new Map<string, number>();
   const model: CasePacketModel = {
-    model: PACKET_MODEL, effort: "medium", promptVersion: "packet-v1",
+    model: PACKET_MODEL, effort: "medium", promptVersion: "packet-c3",
     async adjudicate(packet) {
       const n = (perPacket.get(packet.id) ?? 0) + 1;
       perPacket.set(packet.id, n);
       calls.push(packet.id);
       const s = step(packet, n);
       if (s instanceof Error) throw s;
-      const m = mockPacketReply(packet, s);
+      const m = mockCompactReply(packet, s); // the default Focused contract, packet-c3
       return { model: PACKET_MODEL, stopReason: "end_turn", usage: usage(m.usage.inputTokens, outputPerPair ? outputPerPair * packet.pairs.length : m.usage.outputTokens), text: m.text, latencyMs: 1, requestId: `req-${calls.length}` };
     },
   };

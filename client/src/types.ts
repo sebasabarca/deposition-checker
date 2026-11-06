@@ -304,8 +304,11 @@ export type CaseAnalysisView = {
 
 // Mirrors server/src/jobs/caseRun.ts (CaseRunReport, caseRunFindings) and docs/case-run-api.md: a whole-case run
 // over every witness and session of a case. A mock run uses the deterministic test model: no model, no cost.
-// The request contract: packet-v1 (the default) or the experimental whole-stretch reading (stretch-v2).
-export type CaseRunContract = "packet-v1" | "stretch-v2";
+// The request contract: packet-c3 (Focused Analysis, the default), packet-v1 (earlier Focused runs) or the
+// experimental whole-stretch reading (stretch-v2, Contextual Analysis).
+export type CaseRunContract = "packet-c3" | "packet-v1" | "stretch-v2";
+// A packet-c3 run's pairs the model's screen dismissed: read, never findings, not verified evidence.
+export type CaseRunCompact = { dismissed: number; byReason: Record<string, number>; note: string };
 // A whole-stretch run's read pairs by status. no_conflict_identified and unclear pairs have no finding.
 export type CaseRunStretch = { flagged: number; flagged_unverified: number; unclear: number; no_conflict_identified: number; related: number; note: string };
 export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | "adjudicating" | "completed" | "incomplete" | "failed" | "blocked_budget" | "blocked_credentials" | "cancelled" | "interrupted" | "reconciling";
@@ -322,7 +325,7 @@ export type CaseRun = {
   // paidAvailable / economyAvailable: the server has its Anthropic API key, so Fast and Economy runs can be confirmed.
   // name: what the person called the analysis when they started it; null for runs started before names existed.
   name?: string | null;
-  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; contract?: CaseRunContract; scope?: { kind: "case" } | { kind: "depositions"; depositionIds: number[] }; stretch?: CaseRunStretch | null; stretchAvailable?: boolean; economyAvailable?: boolean; paidAvailable?: boolean; economyBlocked?: "paid_off" | null; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
+  id: number; caseId: number; status: CaseRunStatus; mode: "live" | "mock"; execution: CaseRunExecution; contract?: CaseRunContract; scope?: { kind: "case" } | { kind: "depositions"; depositionIds: number[] }; stretch?: CaseRunStretch | null; compact?: CaseRunCompact | null; stretchAvailable?: boolean; economyAvailable?: boolean; paidAvailable?: boolean; economyBlocked?: "paid_off" | null; retentionAcknowledgedAt: string | null; batches: CaseRunBatches | null; error: string | null; model: string;
   createdAt: string; startedAt: string | null; finishedAt: string | null; confirmedAt: string | null; cancelRequested: boolean;
   estimate: CaseRunEstimate | null;
   coverageState: CoverageState; complete: boolean; incompleteReasons: string[];

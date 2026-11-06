@@ -1203,7 +1203,8 @@ and every update is scoped to it.
 
 ## Implementation note: whole-stretch reading (stretch-v2) and code safeguards (November 5, on `feature/whole-stretch-v2`, experimental)
 
-**Status.** Experimental and off by default. packet-v1 stays the default contract. stretch-v2 is offered only where
+**Status.** Experimental and off by default. The default contract was packet-v1; since November 6 it is packet-c3 (see
+"Implementation note: packet-c3 as the Focused Analysis default"). stretch-v2 is offered only where
 the server sets `ALLOW_STRETCH_V2=true`, and only as a box a person ticks before a whole-case run.
 
 **Contract.** A stretch-v2 request shows whole stretches of testimony around the triage-kept pairs, rendered once
@@ -1260,7 +1261,7 @@ The case page is one guided panel, with one step open at a time; finished steps 
    "Review and start" always prepares a current estimate on the server first, since that is what a limit is
    authorized against.
    Where `ALLOW_STRETCH_V2=true`, step 2 also asks for the analysis method, named for lawyers:
-   - "Focused Analysis" (packet-v1): Recommended and the default.
+   - "Focused Analysis" (packet-c3 since November 6; packet-v1 before): Recommended and the default.
    - "Contextual Analysis" (stretch-v2): no badge.
 
    Each method's card states its measured trade-off. A disclaimer under the choice says that results are potential
@@ -1372,3 +1373,30 @@ nor provide reuse. Nothing is shared across cases or organisations.
 - actual cost and calls still come only from `llm_calls`;
 - the result page shows reused requests and the estimated cost avoided, labelled as an estimate, never as a
   charge.
+
+## Implementation note: packet-c3 as the Focused Analysis default (November 6, developer-approved for development)
+
+**Decision.** New whole-case runs default to `packet-c3` (Focused Analysis), on Fast and Economy alike. The developer
+approved this knowing packet-c3 failed its decision-consistency criterion in the paid Test B
+(`docs/first-analysis-round3.md`: more ordinary pairs flagged, one abstention on C06, 13–15% flips). Its detection
+accuracy is not independently proven, and nothing presents it as proven.
+
+**What packet-c3 is.** It keeps packet-v1's evidence packets, reading rules, outcomes and verdict fields. Only the
+reply shape changes. The model screens every pair (with `quoteA`/`quoteB`, verbatim words of each exchange) and writes
+a full packet-v1 verdict only for pairs it does not dismiss. `adjudicate/compactRead.ts` turns the reply into packet-v1
+verdicts, so verification, attribution, scoring and persistence are packet-v1's, unchanged:
+- a full verdict is verified and scored as packet-v1's;
+- a dismissal becomes a `false_positive` verdict marked `compactDismissal`, stored but never made into a finding (it
+  is a code, not cited evidence) and counted in the run report (`compact.dismissed`, `byReason`);
+- a dismissal whose quotes are not in the pair's own exchanges is malformed, and so is a missing, duplicate or
+  malformed row. Each goes through the existing recovery request and is then left unanswered and counted, never
+  silently dismissed;
+- an abstention (insufficient_evidence, needs_more_context, unable_to_assess) always needs a full verdict.
+
+**Unchanged.** Retrieval, candidate selection and packets; the output cap (`PACKET_OUTPUT_TOKENS_PER_PAIR` applies to
+packet-c3 as to packet-v1, Fast only; Economy sends the default); reservations, estimates (packet-v1's measured output
+per pair, so conservative for packet-c3) and accounting. Exact-request reuse needs no change: the contract and system
+prompt are part of the fingerprint, so packet-c3 and packet-v1 never share a response. A run keeps the contract it
+was created with (`case_runs.prompt_version`), so a packet-v1 run resumes, replays and reviews as packet-v1.
+`contract: "packet-v1"` on `POST /cases/:id/case-runs` is the rollback. No migration and no UI change.
+

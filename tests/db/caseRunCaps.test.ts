@@ -10,7 +10,7 @@ import { PACKET_MODEL, type IssuePacket } from "../../server/src/adjudicate/pack
 import { maxRequestCost } from "../../server/src/costs";
 import type { Database } from "../../server/src/db/client";
 import { adjudicationRequests, budgetReservations, depositions } from "../../server/src/db/schema";
-import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
+import { mockCompactReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
 import { caseRunReport, caseRunSetOf, createCaseRun, runCaseRun, type CasePacketModel } from "../../server/src/jobs/caseRun";
@@ -25,12 +25,12 @@ const CAP = 1_200;
 function provider(cutOff = new Set<string>()) {
   const sent: { packet: string; pairs: number; maxOutputTokens: number | undefined }[] = [];
   const model: CasePacketModel = {
-    model: PACKET_MODEL, effort: "medium", promptVersion: "packet-v1",
+    model: PACKET_MODEL, effort: "medium", promptVersion: "packet-c3", // the default Focused contract
     async adjudicate(packet: IssuePacket, options) {
       const first = !sent.some((s) => s.packet === packet.id);
       sent.push({ packet: packet.id, pairs: packet.pairs.length, maxOutputTokens: options?.maxOutputTokens });
       const cut = first && cutOff.has(packet.id) && packet.pairs.length > 1;
-      const m = mockPacketReply(packet, cut ? { drop: [packet.pairs.at(-1)!.pairId] } : {});
+      const m = mockCompactReply(packet, cut ? { drop: [packet.pairs.at(-1)!.pairId] } : {});
       const usage = { input_tokens: m.usage.inputTokens, output_tokens: cut ? options!.maxOutputTokens! : m.usage.outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as Reply["usage"];
       return { model: PACKET_MODEL, stopReason: cut ? "max_tokens" : "end_turn", usage, text: m.text, latencyMs: 1, requestId: `req-${sent.length}` };
     },
@@ -39,7 +39,7 @@ function provider(cutOff = new Set<string>()) {
 }
 // A limiter that records every ticket it admits, in order.
 function recordingLimiter() {
-  const limiter = new ProviderLimiter({ ...UNLIMITED, maxInFlight: 1, outputTokensPerPair: { "packet-v1": CAP } });
+  const limiter = new ProviderLimiter({ ...UNLIMITED, maxInFlight: 1, outputTokensPerPair: { "packet-c3": CAP } });
   const tickets: Ticket[] = [];
   const before = limiter.beforeSend.bind(limiter);
   limiter.beforeSend = async (t, signal) => { tickets.push(t); return before(t, signal); };

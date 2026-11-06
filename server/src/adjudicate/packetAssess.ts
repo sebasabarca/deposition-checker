@@ -10,6 +10,7 @@ import { attributeSide, type AttributionCheck, type SideAttribution } from "../v
 import type { PacketPairVerification, PacketSourceSide, PacketSourceStatus } from "../verify/packet";
 import type { EvidenceStatus, SideSource, SourceCheck } from "../verify/source";
 import { VERIFICATION_VERSION } from "../verify/version";
+import { isCompactDismissal } from "./compactRead";
 import { PACKET_PROMPT_VERSION, type IssuePacket } from "./packetPrompt";
 import type { PairVerdict } from "./packetSchema";
 import type { Classification, Verdict } from "./schema";
@@ -60,6 +61,8 @@ const asSide = (s: PacketSourceSide): SideSource => ({ ...s, status: EVIDENCE_ST
 export function assessPacketPair(packet: IssuePacket, pair: PacketPairVerification): PacketFindingFields | null {
   // Missing, malformed, duplicate or a failed request: no finding, never read as compatible.
   if (pair.status !== "answered" || !pair.verdict || !pair.source || !pair.attribution || !pair.semantic) return null;
+  // A compact contract's dismissal (compactRead.ts) is a code, not cited evidence: stored as the pair's verdict, never a finding.
+  if (isCompactDismissal(pair.verdict)) return null;
   if ("sideA" in pair.verdict || "detailsCompared" in pair.verdict) throw new Error(`assessPacketPair reads packet-v1 verdicts only (pair ${pair.pairId})`);
   const v = pair.verdict as PairVerdict;
   const listed = packet.pairs.find((p) => p.pairId === pair.pairId);

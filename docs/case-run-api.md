@@ -32,7 +32,7 @@ A run reads its packets in one of two ways, chosen when it is confirmed (`execut
 | Transport | Messages API, a few packets in parallel (`CASE_RUN_PACKETS_*`) | Message Batches API (`jobs/caseRunBatch.ts`), `CASE_RUN_BATCH_SIZE` requests a batch, up to `CASE_RUN_BATCHES_IN_FLIGHT` batches open |
 | Price | Standard | 50% of standard on every token type ([pricing](https://platform.claude.com/docs/en/about-claude/pricing)) |
 | Time | Minutes, set by the rate limits | Set by the provider: most batches end within an hour, every batch within 24 hours |
-| Same packets, prompt (`packet-v1`), model, effort, output cap, verification, scoring | Yes | Yes: both send `packetRequestParams` (`adjudicate/packetModel.ts`) |
+| Same packets, prompt (the run's contract: `packet-c3` by default, `packet-v1` for earlier runs), model, effort, output cap, verification, scoring | Yes | Yes: both send `packetRequestParams` (`adjudicate/packetModel.ts`) |
 | Budget | Each request in flight holds its worst case | Each request in a submitted batch holds its worst case at batch prices until its result is imported. A batch takes only what the remaining limit covers, so a limit near the estimate means fewer packets at once and more rounds, never more spending |
 | Data retention | As configured for the account | **Not eligible for zero data retention:** the provider stores batch inputs and results for 29 days. Confirming needs `retentionAcknowledged: true` |
 | After a worker restart | A request in flight is uncertain; resume continues | Nothing is lost: the next check carries on from the database |
@@ -66,7 +66,7 @@ An economy run is a series of short checks: each one imports ended batches, send
 
 | Method and path | Body | Success | Errors |
 |---|---|---|---|
-| `POST /cases/:id/case-runs` | `{ mode: "live" \| "mock", execution?: "standard" \| "batch", contract?: "packet-v1" \| "stretch-v2", depositionIds?: number[] }` (execution: mock only; depositionIds: analyze only these depositions, absent = the whole case) | 202 `{ caseRun }` (its `scope`: `{ kind: "case" }` or `{ kind: "depositions", depositionIds }`) | 400 bad body (a budget here is refused; it comes with confirmation), 400 `code: "scope_invalid"` (a deposition not in this case), `"scope_not_ready"` (not read yet, or excluded), `"scope_one_session"` (fewer than two sessions), 403 access, 403 `code: "test_runs_disabled"` for `mode: "mock"` unless the server sets `ALLOW_TEST_RUNS=true`, 404 case, 409 `{ caseRunId }` when a run of this case is still active |
+| `POST /cases/:id/case-runs` | `{ mode: "live" \| "mock", execution?: "standard" \| "batch", contract?: "packet-c3" \| "packet-v1" \| "stretch-v2", depositionIds?: number[] }` (execution: mock only; depositionIds: analyze only these depositions, absent = the whole case) | 202 `{ caseRun }` (its `scope`: `{ kind: "case" }` or `{ kind: "depositions", depositionIds }`) | 400 bad body (a budget here is refused; it comes with confirmation), 400 `code: "scope_invalid"` (a deposition not in this case), `"scope_not_ready"` (not read yet, or excluded), `"scope_one_session"` (fewer than two sessions), 403 access, 403 `code: "test_runs_disabled"` for `mode: "mock"` unless the server sets `ALLOW_TEST_RUNS=true`, 404 case, 409 `{ caseRunId }` when a run of this case is still active |
 | `GET /cases/:id/case-runs` | | 200 `{ caseRuns: CaseRunReport[] }`, newest first | 400 |
 | `GET /case-runs/:id` | | 200 `{ caseRun }` | 404 |
 | `POST /case-runs/:id/confirm` | `{ budgetUsd, execution?: "standard" \| "batch", retentionAcknowledged?: boolean }` (budget more than 0, at most `MAX_CASE_RUN_BUDGET_USD`) | 202 `{ caseRun }` | 400 (with `code: "retention_not_acknowledged"` for economy without the acknowledgement), 403, 404, 409 when not `awaiting_confirmation` |
@@ -89,7 +89,7 @@ type CaseRunReport = {
     total; submitting; processing; awaitingImport; imported; notSubmitted; unknown: number;
     oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number>;
   };
-  model: string; promptVersion: "packet-v1"; effort: string; config: object; sourceHash: string | null;
+  model: string; promptVersion: "packet-c3" | "packet-v1" | "stretch-v2"; effort: string; config: object; sourceHash: string | null;
   createdAt: string; startedAt: string | null; finishedAt: string | null; updatedAt: string; confirmedAt: string | null; cancelRequested: boolean;
   estimate: null | {                        // set after retrieval
     packets: number; listedPairs: number; splitPackets: number; oversizePackets: number;

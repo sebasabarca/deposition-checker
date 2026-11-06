@@ -5,6 +5,7 @@
 // with two passages and one pair, so the arms differ only in grouping.
 
 import { z } from "zod";
+import { readCompactReply, type CompactContractId } from "./compactRead";
 import { ALTERNATIVE_SUPPORT, ATTRIBUTIONS, CONFLICT_BASES, CONFLICT_SOURCES, CONTEXT_PURPOSES, FALSE_POSITIVE_REASONS, STANCES } from "./schema";
 
 // Substantive outcomes, then the three abstentions. An abstention is a valid answer, never a failure.
@@ -151,7 +152,8 @@ export const MAX_CITATIONS_PER_SIDE = 3;
 // (with its pairId when it has one), so one bad entry never sinks the others. A reply that isn't JSON, or
 // has no verdicts array, fails as a whole. Nothing is repaired or rewritten.
 export type MalformedVerdict = { index: number; pairId: string | null; error: string };
-export function parseVerdictsLenient<T>(text: string | null, item: z.ZodType<T>): { ok: true; verdicts: T[]; malformed: MalformedVerdict[] } | { ok: false; error: string } {
+// compact: the run's compact contract (packet-c1/c2/c3); only then is a reply read in that compact shape.
+export function parseVerdictsLenient<T>(text: string | null, item: z.ZodType<T>, compact?: CompactContractId): { ok: true; verdicts: T[]; malformed: MalformedVerdict[] } | { ok: false; error: string } {
   if (text === null) return { ok: false, error: "no structured output" };
   let json: unknown;
   try {
@@ -159,6 +161,10 @@ export function parseVerdictsLenient<T>(text: string | null, item: z.ZodType<T>)
   } catch {
     return { ok: false, error: "reply is not JSON" };
   }
+  // A compact reply (packet-c1/c2/c3, compactRead.ts) read as packet-v1 verdicts; anything else is read as below.
+  if (compact && (item as unknown) !== PairVerdict) return { ok: false, error: "a compact contract is read with the packet-v1 verdict schema" };
+  const read = compact ? readCompactReply(json, PairVerdict, compact) ?? { ok: false as const, error: `schema: ${compact} reply expected (screen and verdicts)` } : null;
+  if (read) return read as { ok: true; verdicts: T[]; malformed: MalformedVerdict[] } | { ok: false; error: string };
   const list = (json as { verdicts?: unknown } | null)?.verdicts;
   if (!Array.isArray(list)) return { ok: false, error: "schema: no verdicts array" };
   const extra = Object.keys(json as object).filter((k) => k !== "verdicts");

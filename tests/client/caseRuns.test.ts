@@ -121,10 +121,11 @@ describe("the guided analysis workflow", () => {
     expect(isUnusedEstimate(read)).toBe(false);
     expect(isUnusedEstimate({ status: "cancelled", confirmedAt: null, mode: "live", packets: { adjudicated: 2 } } as never)).toBe(false);
     expect(isUnusedEstimate(run("failed", null))).toBe(true);
-    expect(scopeKey([3, 1], undefined)).toBe(scopeKey([1, 3], "packet-v1"));
+    expect(scopeKey([3, 1], undefined)).toBe(scopeKey([1, 3], "packet-c3")); // Focused Analysis: packet-c3
+    expect(scopeKey(null, "packet-v1")).not.toBe(scopeKey(null, undefined)); // an earlier packet-v1 run isn't the Focused choice
     expect(scopeKey(null, undefined)).not.toBe(scopeKey([1, 3], undefined));
     expect(scopeKey(null, "stretch-v2")).not.toBe(scopeKey(null, undefined));
-    expect(runScopeKey({ scope: { kind: "depositions", depositionIds: [3, 1] }, contract: "packet-v1" } as never)).toBe(scopeKey([1, 3], undefined));
+    expect(runScopeKey({ scope: { kind: "depositions", depositionIds: [3, 1] }, contract: "packet-c3" } as never)).toBe(scopeKey([1, 3], undefined));
   });
   it("accepts the whole case, or at least two ready selected depositions", () => {
     const deps = [{ id: 1, status: "ready" }, { id: 2, status: "ready" }, { id: 3, status: "processing" }];

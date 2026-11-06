@@ -1,3 +1,5 @@
+import { encodeCompact } from "../adjudicate/compactSchema";
+import type { PairVerdict } from "../adjudicate/packetSchema";
 import { formatIssuePacket, formatIssuePacketV2, PACKET_SYSTEM_PROMPT, PACKET_SYSTEM_PROMPT_V2, type IssuePacket, type PacketPassage } from "../adjudicate/packetPrompt";
 
 const NEGATION = /\b(?:no|not|never|didn't|don't)\b/i;
@@ -19,6 +21,19 @@ export function mockPacketReply(packet: IssuePacket, options: { drop?: string[];
   }).flat();
   const system = PACKET_SYSTEM_PROMPT; const user = formatIssuePacket(packet);
   return { text: JSON.stringify({ verdicts }), usage: { inputTokens: Math.ceil((system.length + user.length) / 3.5), outputTokens: 350 * verdicts.length } };
+}
+
+// packet-c3's form of the same label-blind decisions: a screen row per pair (dismissal rows for its false positives),
+// full verdicts otherwise. Each row's quotes are words of its two answer lines, as the dismissal quote check requires.
+export function mockCompactReply(packet: IssuePacket, options: { drop?: string[]; duplicate?: string[]; garble?: boolean } = {}) {
+  const m = mockPacketReply(packet, options);
+  if (options.garble) return m;
+  const byId = new Map(packet.passages.map((p) => [p.id, p]));
+  const pairs = new Map(packet.pairs.map((p) => [p.pairId, p]));
+  const quote = (id: string) => answerLine(byId.get(id)!).split(/\s+/).slice(0, 12).join(" ");
+  const reply = encodeCompact("packet-c3", (JSON.parse(m.text) as { verdicts: PairVerdict[] }).verdicts);
+  for (const row of reply.screen) { const p = pairs.get(row.pairId)!; row.quoteA = quote(p.a); row.quoteB = quote(p.b); }
+  return { ...m, text: JSON.stringify(reply) };
 }
 
 // The same label-blind mock in the packet-v2 contract: false_positive becomes compatible, and each verdict

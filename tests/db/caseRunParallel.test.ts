@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { maxOutputTokensFor, PACKET_MODEL, type IssuePacket } from "../../server/src/adjudicate/packetPrompt";
 import type { Database } from "../../server/src/db/client";
 import { adjudicationRequests, budgets, candidates, caseRuns, depositions, findings, verdicts } from "../../server/src/db/schema";
-import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
+import { mockCompactReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
 import { caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
@@ -25,7 +25,7 @@ function provider(step: (packet: IssuePacket, call: number) => Step = () => ({})
   const perPacket = new Map<string, number>();
   const state = { inFlight: 0, peak: 0 };
   const model: CasePacketModel = {
-    model: PACKET_MODEL, effort: "medium", promptVersion: "packet-v1",
+    model: PACKET_MODEL, effort: "medium", promptVersion: "packet-c3", // the default Focused contract
     async adjudicate(packet, options) {
       const n = (perPacket.get(packet.id) ?? 0) + 1;
       perPacket.set(packet.id, n);
@@ -42,7 +42,7 @@ function provider(step: (packet: IssuePacket, call: number) => Step = () => ({})
           setTimeout(ok, latencyMs);
         });
         if (s instanceof Error) throw s;
-        const m = mockPacketReply(packet, s);
+        const m = mockCompactReply(packet, s);
         const usage = { input_tokens: m.usage.inputTokens, output_tokens: outputPerPair ? outputPerPair * packet.pairs.length : m.usage.outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as Reply["usage"];
         return { model: PACKET_MODEL, stopReason: "end_turn", usage, text: m.text, latencyMs, requestId: `req-${calls.length}` };
       } finally {

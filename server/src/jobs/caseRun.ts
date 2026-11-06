@@ -46,8 +46,9 @@ import type { Database } from "../db/client";
 import { standingOf } from "../evidence/correction";
 import { captureEpochs, isStaleEvidence, jobEpochs, withEvidenceFence } from "../evidence/epoch";
 import { adjudicationRequests, budgets, candidates, caseRuns, depositions, findings, llmCalls, screeningEntries, screeningRuns, verdicts, witnesses } from "../db/schema";
-import { mockPacketReply } from "../eval/mockPacketModel";
+import { mockCompactReply, mockPacketReply } from "../eval/mockPacketModel";
 import { buildCasePool, CASE_POOL_VERSION, type CaseItem } from "../retrieve/casePool";
+import { checkDismissalQuotes } from "../adjudicate/compactRead";
 import { CHARS_PER_TOKEN, INSTRUCTION_TOKENS } from "../retrieve/grouping";
 import { PACKET_LIMITS, splitPacketSet, type PacketLimits } from "../retrieve/packetSplit";
 import { COST_ASSUMPTIONS, projectCost, STRETCH_COST_ASSUMPTIONS } from "../eval/screeningBenchmark";
@@ -102,11 +103,16 @@ export type CaseRunDeps = {
 };
 export type CaseRunExecution = "standard" | "batch";
 
-// The request contract a run sends: packet-v1 (the default), or the experimental whole-stretch contract when the
-// run was created with it. Stored as the run's promptVersion, so a resumed run keeps its contract.
-export const CASE_RUN_CONTRACTS = [PACKET_PROMPT_VERSION, STRETCH_V2_PROMPT_VERSION] as const;
+// The request contract a run sends, stored as the run's promptVersion so a resumed or reviewed run keeps its contract.
+// Focused Analysis defaults to packet-c3: packet-v1's evidence, rules and checks with a compact reply (every pair
+// screened, a full packet-v1 verdict only for pairs not dismissed; adjudicate/compactRead.ts). Its detection accuracy
+// is not independently proven (docs/first-analysis-round3.md, Test B). packet-v1 stays for earlier runs and rollback;
+// stretch-v2 is the experimental Contextual Analysis.
+export const FOCUSED_CONTRACT = "packet-c3" as const;
+export const CASE_RUN_CONTRACTS = [FOCUSED_CONTRACT, PACKET_PROMPT_VERSION, STRETCH_V2_PROMPT_VERSION] as const;
 export type CaseRunContract = (typeof CASE_RUN_CONTRACTS)[number];
-export const contractOf = (run: Pick<CaseRun, "promptVersion">): CaseRunContract => (run.promptVersion === STRETCH_V2_PROMPT_VERSION ? STRETCH_V2_PROMPT_VERSION : PACKET_PROMPT_VERSION);
+// Anything not a known contract (rows stored before contracts were recorded) is packet-v1, as before.
+export const contractOf = (run: Pick<CaseRun, "promptVersion">): CaseRunContract => ((CASE_RUN_CONTRACTS as readonly string[]).includes(run.promptVersion) ? (run.promptVersion as CaseRunContract) : PACKET_PROMPT_VERSION);
 // Whether this server lets a person choose the experimental whole-stretch contract (test-model runs included).
 export const stretchAllowed = (env: Record<string, string | undefined>) => env.ALLOW_STRETCH_V2 === "true";
 // Exact retrieval speed-ups (identical neighbours, pool and packets; retrieve/fullTextMemory.ts, denseParallel.ts), off
@@ -125,13 +131,13 @@ export const fromPacketAdjudicator = (a: PacketAdjudicator): CasePacketModel => 
 });
 
 // The deterministic label-blind mock as a packet model. `model` names what the reply stands in for.
-export function mockCaseModel(model = MOCK_MODEL, contract: CaseRunContract = PACKET_PROMPT_VERSION): CasePacketModel & { calls: string[] } {
+export function mockCaseModel(model = MOCK_MODEL, contract: CaseRunContract = FOCUSED_CONTRACT): CasePacketModel & { calls: string[] } {
   const calls: string[] = [];
   return {
     model, effort: "mock", promptVersion: contract, calls,
     async adjudicate(packet) {
       calls.push(packet.id);
-      const m = contract === STRETCH_V2_PROMPT_VERSION ? mockStretchReply(packet) : mockPacketReply(packet);
+      const m = contract === STRETCH_V2_PROMPT_VERSION ? mockStretchReply(packet) : contract === FOCUSED_CONTRACT ? mockCompactReply(packet) : mockPacketReply(packet);
       const usage = { input_tokens: m.usage.inputTokens, output_tokens: m.usage.outputTokens, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } as AdjudicatorReply["usage"];
       return { model, stopReason: "end_turn", usage, text: m.text, latencyMs: 0, requestId: `mock-${calls.length}` };
     },
@@ -604,9 +610,12 @@ export async function applyReply(db: Database, run: CaseRun, entry: Entry, packe
     await persistStretch(db, run, entry, packet, sentIds, readStretchReply(packet, reply.text), meta);
     return { ...entry, llmCallId: null, requestId: reply.requestId };
   }
-  const parsed = parseVerdictsLenient(reply.text, VERDICT_SCHEMAS["packet-v1"]);
+  const c3 = contractOf(run) === FOCUSED_CONTRACT;
+  const read = parseVerdictsLenient(reply.text, VERDICT_SCHEMAS["packet-v1"], c3 ? FOCUSED_CONTRACT : undefined);
+  // packet-c3: a dismissal whose quotes aren't in the pair's own exchanges is not accepted (recovery, then unanswered).
+  const parsed = read.ok && c3 ? checkDismissalQuotes(read, packet) : read;
   const verification = verifyPacketReply(packet, parsed);
-  await persist(db, run, entry, packet, sentIds, verification, meta);
+  await persist(db, run, entry, packet, sentIds, verification, c3 ? { ...meta, contract: FOCUSED_CONTRACT } : meta);
   return { ...entry, llmCallId: null, requestId: reply.requestId };
 }
 
@@ -832,9 +841,9 @@ async function persistStretch(db: Database, run: CaseRun, entry: Entry, packet: 
 // Creates a run, and a live run's budget. A live run created with `confirmed` (the CLI, after its own plan)
 // may spend at once; otherwise it stops after retrieval for confirmCaseRun. The caller queues the job.
 // depositionIds: analyze only these depositions of the case (the same pipeline, model and checks); absent = the whole case.
-export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION, depositionIds, fresh = false }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract; depositionIds?: number[]; fresh?: boolean }) {
+export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = FOCUSED_CONTRACT, depositionIds, fresh = false }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract; depositionIds?: number[]; fresh?: boolean }) {
   return db.transaction(async (tx) => {
-    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy", stretchRender: STRETCH_RENDER_ID } : {}), ...(fresh ? { reuse: "fresh" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
+    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy", stretchRender: STRETCH_RENDER_ID } : {}), ...(contract === FOCUSED_CONTRACT ? { note: "packet-c3: compact replies (a full verdict only for pairs not dismissed); detection accuracy not independently validated" } : {}), ...(fresh ? { reuse: "fresh" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
     const live = mode === "live";
     const [row] = await tx
       .insert(caseRuns)
@@ -988,8 +997,13 @@ export async function caseRunReport(db: Database, id: number) {
     related: stretchRows.reduce((n, r) => n + r.related, 0),
     note: "Experimental whole-stretch reading. Pairs with no conflict identified were read, not cleared; unclear pairs need a person.",
   } as { flagged: number; flagged_unverified: number; unclear: number; no_conflict_identified: number; related: number; note: string } : null;
+  // packet-c3's dismissals: stored as verdicts, never findings, so counted here for the person reviewing the run.
+  const compact = contractOf(run) === FOCUSED_CONTRACT ? await db.execute<{ reason: string; n: number }>(sql`
+    select v.parsed->'compactDismissal'->>'disposition' as reason, count(*)::int as n
+    from verdicts v join candidates c on c.id = v.candidate_id where c.candidate_set = ${set} and v.parsed ? 'compactDismissal' group by 1 order by 2 desc`)
+    .then((r) => ({ dismissed: r.rows.reduce((n, x) => n + x.n, 0), byReason: Object.fromEntries(r.rows.map((x) => [x.reason, x.n])) as Record<string, number>, note: "These pairs were read and dismissed by the model's screen. A dismissal is not verified evidence and is not shown as a finding." })) : null;
   return {
-    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, contract: contractOf(run), scope: scopeOf(run) ? { kind: "depositions" as const, depositionIds: scopeOf(run)! } : { kind: "case" as const }, stretch, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
+    id: run.id, caseId: run.caseId, status: run.status as CaseRunStatus, mode: run.mode as "live" | "mock", execution: run.execution as CaseRunExecution, contract: contractOf(run), scope: scopeOf(run) ? { kind: "depositions" as const, depositionIds: scopeOf(run)! } : { kind: "case" as const }, stretch, compact, retentionAcknowledgedAt: run.retentionAcknowledgedAt, batches, error: run.error, model: run.model, promptVersion: run.promptVersion, effort: run.effort,
     config: run.config, sourceHash: run.sourceHash, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, updatedAt: run.updatedAt,
     name: (run.config as { name?: string }).name ?? null, confirmedAt: run.confirmedAt, cancelRequested: run.cancelRequestedAt !== null,
     estimate: (run.progress as { estimate?: unknown }).estimate ?? null,

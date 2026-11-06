@@ -151,7 +151,7 @@ export function workflowStep(s: { running: boolean; estimate: boolean; finishedH
 }
 
 // What an estimate was prepared for, so a change of choice can be told from the estimate already shown.
-export const scopeKey = (depositionIds: readonly number[] | null, contract: string | undefined) => JSON.stringify([depositionIds ? [...depositionIds].sort((a, b) => a - b) : null, contract ?? "packet-v1"]);
+export const scopeKey = (depositionIds: readonly number[] | null, contract: string | undefined) => JSON.stringify([depositionIds ? [...depositionIds].sort((a, b) => a - b) : null, contract ?? "packet-c3"]);
 export const runScopeKey = (r: Pick<CaseRun, "scope" | "contract">) => scopeKey(r.scope && r.scope.kind === "depositions" ? r.scope.depositionIds : null, r.contract);
 
 // Why the chosen depositions can't be analyzed yet, or null. The server checks the same, and also that they span

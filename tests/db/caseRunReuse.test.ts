@@ -10,7 +10,7 @@ import { PACKET_MODEL, type IssuePacket } from "../../server/src/adjudicate/pack
 import type { Database } from "../../server/src/db/client";
 import { adjudicationRequests, candidates, caseRuns, depositions, findings, llmCalls, verdicts } from "../../server/src/db/schema";
 import { FakeBatchProvider } from "../../server/src/eval/mockPacketBatch";
-import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
+import { mockCompactReply, mockPacketReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
 import { caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
@@ -21,14 +21,15 @@ type Reply = Awaited<ReturnType<CasePacketModel["adjudicate"]>>;
 const usage = (i: number, o: number) => ({ input_tokens: i, output_tokens: o, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }) as Reply["usage"];
 // The label-blind mock in the live contract (model PACKET_MODEL, so its calls are priced), with a latency, counting
 // every call it receives.
-function provider({ effort = "medium", model = PACKET_MODEL, latencyMs = 0 }: { effort?: string; model?: string; latencyMs?: number } = {}) {
+// v1: answer in packet-v1 (earlier runs' contract) instead of the default packet-c3.
+function provider({ effort = "medium", model = PACKET_MODEL, latencyMs = 0, v1 = false }: { effort?: string; model?: string; latencyMs?: number; v1?: boolean } = {}) {
   const calls: string[] = [];
   const m: CasePacketModel = {
-    model, effort, promptVersion: "packet-v1",
+    model, effort, promptVersion: v1 ? "packet-v1" : "packet-c3",
     async adjudicate(packet: IssuePacket) {
       calls.push(packet.id);
       if (latencyMs) await new Promise((ok) => setTimeout(ok, latencyMs));
-      const r = mockPacketReply(packet);
+      const r = v1 ? mockPacketReply(packet) : mockCompactReply(packet); // packet-c3: the default Focused contract
       return { model: PACKET_MODEL, stopReason: "end_turn", usage: usage(r.usage.inputTokens, 350 * packet.pairs.length), text: r.text, latencyMs, requestId: `req-${calls.length}` };
     },
   };
@@ -44,7 +45,7 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
   let first: number; // the first live run of caseId, every request sent
   const clock = { t: Date.now() };
 
-  const live = (c = caseId, o: { execution?: "standard" | "batch" } = {}) => createCaseRun(db, c, { mode: "live", budgetUsd: 50, confirmed: true, ...o });
+  const live = (c = caseId, o: { execution?: "standard" | "batch"; contract?: "packet-v1" } = {}) => createCaseRun(db, c, { mode: "live", budgetUsd: 50, confirmed: true, ...o });
   const report = async (id: number) => (await caseRunReport(db, id))!;
   const requests = (id: number) => db.select().from(adjudicationRequests).where(eq(adjudicationRequests.candidateSet, caseRunSetOf(id)));
   const signature = async (id: number) => (await caseRunFindings(db, id)).map((f) => `${f.a.exchange}|${f.b.exchange}|${f.type}|${f.score}|${f.priority}|${f.evidenceStatus}|${f.a.lines.map((l) => l.id).join(",")}|${f.b.lines.map((l) => l.id).join(",")}`);
@@ -182,9 +183,11 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
   }, 180_000);
 
   it("re-reads a reused response with current code: a source whose recorded text no longer verifies gives an unverified finding", async () => {
-    // A source whose recorded reply quotes testimony (so its citations can fail to verify once tampered with).
-    // The latest run with sent requests holds the sources the next run picks (the latest qualifying one wins).
-    const newest = Number((await db.execute<{ id: number }>(sql`select c.id from case_runs c join adjudication_requests r on r.candidate_set = 'case-run-' || c.id where c.case_id = ${caseId} and r.status = 'completed' order by c.id desc limit 1`)).rows[0].id);
+    // A source whose recorded reply quotes testimony (so its citations can fail to verify once tampered with): a
+    // packet-v1 run, whose false positives carry citations (packet-c3's dismissals carry none). Reuse never crosses
+    // contracts, so the packet-v1 run below can only reuse this run's responses.
+    const newest = (await live(caseId, { contract: "packet-v1" })).id;
+    expect(await runCaseRun(db, pool, newest, deps(provider({ v1: true }).model))).toBe("completed");
     const sources = await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.candidateSet, caseRunSetOf(newest)), eq(adjudicationRequests.status, "completed")));
     let src = sources[0], call = (await db.select().from(llmCalls).where(eq(llmCalls.id, src.llmCallId!)))[0];
     for (const x of sources) {
@@ -196,8 +199,8 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
     const tampered = { ...parsed, verdicts: parsed.verdicts.map((v) => ({ ...v, keyPhraseA: v.keyPhraseA ? "words no witness ever said in this deposition" : v.keyPhraseA })) };
     await db.update(llmCalls).set({ rawOutput: JSON.stringify(tampered) }).where(eq(llmCalls.id, call.id));
     try {
-      const run = await live();
-      expect(await runCaseRun(db, pool, run.id, deps(provider().model))).toBe("completed");
+      const run = await live(caseId, { contract: "packet-v1" });
+      expect(await runCaseRun(db, pool, run.id, deps(provider({ v1: true }).model))).toBe("completed");
       const hit = (await requests(run.id)).find((x) => x.reusedFromRequestId === src.id)!;
       expect(hit).toBeDefined();
       const statuses = (await db.select({ status: findings.evidenceStatus }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(inArray(candidates.id, hit.candidateIds))).map((f) => f.status);
@@ -288,7 +291,7 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
 
   it("economy: a repeated run submits no batch, and a request still in an open batch is never a source", async () => {
     const fake = new FakeBatchProvider({ model: PACKET_MODEL, processingMs: 5_000, now: () => clock.t });
-    const standardThrows: CasePacketModel = { model: PACKET_MODEL, effort: "medium", promptVersion: "packet-v1", adjudicate: async () => { throw new Error("used the standard transport"); } };
+    const standardThrows: CasePacketModel = { model: PACKET_MODEL, effort: "medium", promptVersion: "packet-c3", adjudicate: async () => { throw new Error("used the standard transport"); } };
     const batchDeps = (p: FakeBatchProvider): CaseRunDeps => deps(standardThrows, { batch: () => ({ provider: p, settings: { batchSize: 4, inFlight: 3 }, now: () => clock.t }) });
     // Reuse from a standard run: the economy run sends nothing; the avoided cost is priced at batch rates.
     const econ = await live(caseId, { execution: "batch" });

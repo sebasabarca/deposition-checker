@@ -24,6 +24,8 @@ describe("the request fingerprint", () => {
       requestFingerprint("packet-v1", { ...packet, passages: [packet.passages[0], passage("E3", 2, 9, "A. No, blue.")], pairs: [{ pairId: "P1", a: "E1", b: "E3" }] }, real),
       requestFingerprint("packet-v1", { ...packet, passages: [...packet.passages, passage("E4", 2, 11, "A. Maybe.")], pairs: [...packet.pairs, { pairId: "P2", a: "E1", b: "E4" }] }, real),
       requestFingerprint("stretch-v2", packet, real),
+      requestFingerprint("packet-c3", packet, real), // the default Focused contract never shares a key with packet-v1
+      requestFingerprint("packet-c3", packet, real, undefined, 1_200),
       requestFingerprint("packet-v1", packet, { ...real, model: "claude-haiku-5-5" }),
       requestFingerprint("packet-v1", packet, { ...real, effort: "low" }),
     ];

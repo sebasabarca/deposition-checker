@@ -260,7 +260,8 @@ export function caseRunSettings(env: Record<string, string | undefined>): CaseRu
   const e = CaseRunEnv.parse(Object.fromEntries(Object.keys(CaseRunEnv.shape).map((k) => [k, env[k] === "" ? undefined : env[k]])));
   if (e.CASE_RUN_PACKETS_PER_CASE > e.CASE_RUN_PACKETS_GLOBAL) throw new Error("CASE_RUN_PACKETS_PER_CASE can't be more than CASE_RUN_PACKETS_GLOBAL.");
   const tier = e.PROVIDER_TIER ? PROVIDER_TIERS[e.PROVIDER_TIER] : NO_TIER;
-  const caps = { "packet-v1": e.PACKET_OUTPUT_TOKENS_PER_PAIR, "stretch-v2": e.STRETCH_OUTPUT_TOKENS_PER_PAIR };
+  // PACKET_OUTPUT_TOKENS_PER_PAIR is Focused Analysis's cap: packet-c3 (the default) and packet-v1 alike.
+  const caps = { "packet-c3": e.PACKET_OUTPUT_TOKENS_PER_PAIR, "packet-v1": e.PACKET_OUTPUT_TOKENS_PER_PAIR, "stretch-v2": e.STRETCH_OUTPUT_TOKENS_PER_PAIR };
   for (const perPair of Object.values(caps)) if (perPair !== undefined) packetMaxTokens(1, perPair); // throws above the default: a cap only lowers
   const outputTokensPerPair = Object.fromEntries(Object.entries(caps).filter((c): c is [string, number] => c[1] !== undefined));
   return {

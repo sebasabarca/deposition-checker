@@ -16,7 +16,7 @@ const NO_ACCESS = { error: "Paid checks aren't enabled for this account yet. Ver
 const Execution = z.enum(["standard", "batch"]);
 // execution: a test-model run picks its transport at start (it needs no confirmation); a live run picks it when
 // it is confirmed, after its estimate.
-// contract: packet-v1 by default; the experimental whole-stretch contract only where the server allows it
+// contract: packet-c3 (Focused Analysis) by default; packet-v1 for rollback; the experimental whole-stretch contract only where the server allows it
 // (ALLOW_STRETCH_V2=true). A live stretch run is then estimated and confirmed like any other.
 // depositionIds: analyze only these depositions (at least two sessions, all ready, all in this case); absent = the whole case.
 const StartCaseRun = z.object({ mode: z.enum(["live", "mock"]), execution: Execution.optional(), contract: z.enum(CASE_RUN_CONTRACTS).optional(), depositionIds: z.array(Id).min(2).max(1000).optional() }).strict();

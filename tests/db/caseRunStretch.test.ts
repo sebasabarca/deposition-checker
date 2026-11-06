@@ -64,7 +64,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
   let packetRun = 0;
   let stretchRun = 0;
   it("a test-model stretch run reads every kept pair once, flags exactly the pairs packet-v1's test model calls direct, and shows no 'compatible' finding", async () => {
-    packetRun = (await createCaseRun(db, caseId, { mode: "mock" })).id;
+    packetRun = (await createCaseRun(db, caseId, { mode: "mock", contract: "packet-v1" })).id;
     expect(await runCaseRun(db, pool, packetRun, plain)).toBe("completed");
     stretchRun = (await createCaseRun(db, caseId, { mode: "mock", contract: STRETCH })).id;
     expect(await runCaseRun(db, pool, stretchRun, plain)).toBe("completed");
@@ -217,10 +217,13 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case runs with the stretch-v2 contrac
       const run = (await on.json()).caseRun;
       expect(run).toMatchObject({ contract: "stretch-v2", stretchAvailable: true });
       expect(await runCaseRun(db, pool, run.id, plain)).toBe("completed");
-      // Without a contract a run is packet-v1, as before.
+      // Without a contract a run is Focused Analysis on packet-c3 (the default); packet-v1 is still accepted.
       const plainRun = (await (await post({ mode: "mock" })).json()).caseRun;
-      expect(plainRun.contract).toBe(PACKET_PROMPT_VERSION);
+      expect(plainRun.contract).toBe("packet-c3");
       expect(await runCaseRun(db, pool, plainRun.id, plain)).toBe("completed");
+      const v1Run = (await (await post({ mode: "mock", contract: PACKET_PROMPT_VERSION })).json()).caseRun;
+      expect(v1Run.contract).toBe(PACKET_PROMPT_VERSION);
+      expect(await runCaseRun(db, pool, v1Run.id, plain)).toBe("completed");
     } finally {
       await server.close();
     }
