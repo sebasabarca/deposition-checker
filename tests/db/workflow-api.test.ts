@@ -358,8 +358,9 @@ describe.skipIf(!TEST_DATABASE_URL)("case, analysis and findings endpoints (Post
     const start = (body: object) => call("POST", `/cases/${d.caseId}/analyses`, { depositionA: c.depositionA, depositionB: c.depositionB, mode: "live", ...body });
     const direct = await start({});
     const hybrid = await start({ method: "hybrid" });
-    expect([direct.status, hybrid.status]).toEqual([202, 202]);
-    expect([direct.body.analysis.retrieval, hybrid.body.analysis.retrieval]).toEqual(["direct_fable", "hybrid"]);
+    // The other method is never answered with the running one: it is refused, since one analysis runs at a time.
+    expect([direct.status, hybrid.status]).toEqual([202, 409]);
+    expect([direct.body.analysis.retrieval, hybrid.body.code]).toEqual(["direct_fable", "analysis_running"]);
     const again = await start({});
     expect([again.status, again.body.analysis.id]).toEqual([200, direct.body.analysis.id]);
     await startAnalysisWorkers(boss, db, { liveAdjudicator: () => null }, { pollingIntervalSeconds: 0.5 });

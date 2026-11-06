@@ -30,7 +30,7 @@ export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analys
   if (running.length > 0) return { running };
   // A whole-case run reading these depositions right now keeps them too.
   const caseIds = [...new Set((await tx.select({ caseId: depositions.caseId }).from(depositions).where(inArray(depositions.id, ids))).map((d) => d.caseId))];
-  const caseRunning = caseIds.length ? await tx.select({ id: caseRuns.id }).from(caseRuns).where(and(inArray(caseRuns.caseId, caseIds), inArray(caseRuns.status, ["queued", "retrieving", "adjudicating"]))) : [];
+  const caseRunning = caseIds.length ? await tx.select({ id: caseRuns.id }).from(caseRuns).where(and(inArray(caseRuns.caseId, caseIds), inArray(caseRuns.status, ["queued", "retrieving", "adjudicating", "reconciling"]))) : [];
   if (caseRunning.length > 0) return { running: caseRunning.map((r) => r.id) };
 
   const analysisIds = used.map((a) => a.id);

@@ -196,14 +196,17 @@ export const inputClass = cx(controlClass, "h-9 w-full");
 export const fieldClass = controlClass;
 export const selectClass = cx(controlClass, "h-9 appearance-none bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%234f5866' stroke-width='1.5'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E\")] bg-[right_0.6rem_center] bg-no-repeat pr-8");
 
-// Loading keeps the final shape: grey bars where the rows will land.
-export function Loading({ label = "Loading", rows = 4 }: { label?: string; rows?: number }) {
+// Loading: a transcript page with the highlighter moving down it (the app's own reading motif, as on a running
+// analysis), large and centred, with what is being loaded beneath it. A whole page centres it on the screen;
+// inline, it centres in the panel it loads.
+export function Loading({ label = "Loading", inline }: { label?: string; inline?: boolean }) {
   return (
-    <div aria-live="polite" aria-busy className="space-y-3 py-2">
-      <span className="sr-only">{label}…</span>
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="h-11 rounded-md bg-rule" style={{ opacity: 1 - i * 0.18 }} />
-      ))}
+    <div role="status" aria-live="polite" aria-busy className={cx("flex flex-col items-center justify-center gap-5 text-center", inline ? "py-12" : "min-h-[calc(100dvh-10rem)]")}>
+      <span aria-hidden className={cx("relative block overflow-hidden rounded-md bg-sheet shadow-[0_12px_32px_-14px_rgb(19_33_58/0.4)] ring-1 ring-line", inline ? "h-[92px] w-[70px]" : "h-[124px] w-[94px]")}>
+        <span className={cx("absolute inset-x-[10%] top-[9%] h-[11%] rounded-[2px] bg-mark", inline ? "loader-scan" : "loader-scan-lg")} />
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="absolute left-[14%] h-[2px] rounded-full bg-control" style={{ top: `${13 + i * 10}%`, right: i % 3 === 2 ? "34%" : "14%" }} />)}
+      </span>
+      <p className={cx("font-medium text-muted", inline ? "text-base" : "text-lg")}>{label}…</p>
     </div>
   );
 }

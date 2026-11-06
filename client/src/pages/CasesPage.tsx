@@ -36,7 +36,7 @@ export function CasesPage() {
     <>
       <PageHeader title="Cases" description={cases ? `${cases.length} ${cases.length === 1 ? "case" : "cases"}, most recently active first.` : undefined} actions={<Button onClick={() => setCreating(true)}><Plus aria-hidden className="size-4" />New case</Button>} />
       {error && <Alert title="Your cases couldn't be loaded">{error}</Alert>}
-      {!cases && !error && <Loading />}
+      {!cases && !error && <Loading label="Loading cases" />}
       {cases?.length === 0 && <Empty title="No cases yet" action={<Button onClick={() => setCreating(true)}>New case</Button>}>A case holds the depositions of one matter. Create one, then add its depositions.</Empty>}
       {cases && cases.length > 0 && (
         <Card className="overflow-hidden">

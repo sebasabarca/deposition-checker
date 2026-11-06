@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { isActive } from "./insights";
 import { usePoll } from "./router";
-import type { AnalysisView, CaseDetail, CaseSummary, FindingSummary } from "../types";
+import type { AnalysisView, CaseDetail, CaseRun, CaseSummary, FindingSummary } from "../types";
+import { MOVING_RUN } from "./caseRuns";
 
-export type Workspace = { cases: CaseSummary[]; details: CaseDetail[]; analyses: AnalysisView[]; findings: (FindingSummary & { analysisId: number; caseName: string })[] };
+// caseRuns: the whole-case analyses running now (not estimates); absent from a server that predates them.
+export type Workspace = { cases: CaseSummary[]; details: CaseDetail[]; analyses: AnalysisView[]; findings: (FindingSummary & { analysisId: number; caseName: string })[]; caseRuns?: CaseRun[] };
 export type WorkspaceFinding = FindingSummary & { analysis: AnalysisView; caseName: string };
 
 export function useWorkspace() {
@@ -19,7 +21,7 @@ export function useWorkspace() {
     }).catch((e: Error) => setError(e.message));
   }, []);
   useEffect(load, [load]);
-  usePoll(!!data && data.analyses.some((a) => isActive(a.status)), 3000, load);
+  usePoll(!!data && (data.analyses.some((a) => isActive(a.status)) || !!data.caseRuns?.some((r) => MOVING_RUN.includes(r.status)) || data.details.some((d) => d.depositions.some((x) => x.status === "processing"))), 3000, load);
   return { data, error };
 }
 

@@ -130,6 +130,7 @@ export type NextStep =
   | { kind: "reading"; count: number; depositionId: number }
   | { kind: "check"; witness: string; caseId: number }
   | { kind: "running"; analysisId: number }
+  | { kind: "case_running"; caseId: number; caseName: string }
   | { kind: "decide"; count: number; analysisId: number; findingId: number }
   | { kind: "export"; caseId: number; caseName: string }
   | { kind: "more" };

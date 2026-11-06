@@ -4,30 +4,37 @@
 // stand-in for the model and is labelled as such everywhere its results appear.
 
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, ArrowUpRight, Check, FileUp, Info, LoaderCircle } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, FileUp, Info, LoaderCircle, RotateCcw } from "lucide-react";
 import { api } from "../lib/api";
 import { ACTIVE_RUN, timeLeft, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, reuseAdjusted, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
 import { formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import { useUser } from "../lib/session";
-import type { CaseRun, CaseRunEstimate, CaseRunExecution } from "../types";
+import type { CaseRun, CaseRunEstimate, CaseRunExecution, RunningAnalysis } from "../types";
 import { NO_ACCESS } from "./CheckAgain";
 import { useNow } from "./CheckProgress";
-import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputClass, type Tone } from "./ui";
+import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputClass, Loading, type Tone } from "./ui";
 
 export function useCaseRuns(caseId: number) {
   const [runs, setRuns] = useState<CaseRun[] | null>(null);
   const [stretchAvailable, setStretchAvailable] = useState(false);
   const [paidAvailable, setPaidAvailable] = useState(true); // the server's own report: it has an Anthropic API key (Fast and Economy)
   const [error, setError] = useState<string | null>(null);
+  // An analysis running in another case of the workspace: this one can prepare an estimate but not start until it ends.
+  const [runningElsewhere, setRunningElsewhere] = useState<RunningAnalysis | null>(null);
   const load = useCallback(() => {
-    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setPaidAvailable(r.paidAvailable !== false); setError(null); }, (e: Error) => setError(e.message));
+    api.caseRuns(caseId).then((r) => { setRuns(r.caseRuns); setStretchAvailable(!!r.stretchAvailable); setPaidAvailable(r.paidAvailable !== false); setRunningElsewhere(r.runningElsewhere ?? null); setError(null); }, (e: Error) => setError(e.message));
   }, [caseId]);
   useEffect(load, [load]);
-  usePoll(!!runs?.[0] && MOVING_RUN.includes(runs[0].status), 3000, load);
-  return { runs, stretchAvailable, paidAvailable, error, reload: load };
+  usePoll(!!runs?.some((r) => MOVING_RUN.includes(r.status)), 3000, load); // any run: a resumed one needn't be the newest
+  usePoll(!!runningElsewhere, 10_000, load); // so Start comes back once the other analysis ends
+  return { runs, stretchAvailable, paidAvailable, runningElsewhere, error, reload: load };
 }
+export type CaseRunsState = ReturnType<typeof useCaseRuns>;
+
+// Why a run can't start (or resume) now because another analysis in the workspace is running, or null.
+const elsewhereText = (r: RunningAnalysis | null) => (r ? `An analysis is running in “${r.caseName}”. Veridict runs one analysis at a time, so this one can start when it finishes.` : null);
 
 export const WHOLE_CASE_PANEL = "whole-case-analysis";
 
@@ -41,8 +48,9 @@ const ESTIMATE_DELAY_MS = 900;
 
 // The whole analysis of a case, in one place: one step open at a time, finished steps summarized in a line.
 // depositions: step 1's content (the case page's sessions by witness, with dates and moves); onAdd opens the upload.
-export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId: number; sessions: WorkflowSession[]; depositions: ReactNode; onAdd: () => void }) {
-  const { runs, stretchAvailable, paidAvailable, error, reload } = useCaseRuns(caseId);
+// state: the case's runs (useCaseRuns), loaded by the case page, which also needs them.
+export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { caseId: number; sessions: WorkflowSession[]; depositions: ReactNode; onAdd: () => void; state: CaseRunsState }) {
+  const { runs, stretchAvailable, paidAvailable, runningElsewhere, error, reload } = state;
   const [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<AnalysisScope>("case");
   const [selected, setSelected] = useState<number[]>([]);
@@ -52,7 +60,8 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
   const user = useUser();
   const latest = runs?.[0] ?? null;
   const estimate = latest && isEstimate(latest) ? latest : null;
-  const running = latest && ACTIVE_RUN.includes(latest.status) && !estimate ? latest : null;
+  // The run at work: the newest one, or an earlier one that was resumed.
+  const running = runs?.find((r) => ACTIVE_RUN.includes(r.status) && !isEstimate(r)) ?? null;
   const analysis = runs?.find(isAnalysis) ?? null;
   const ready = sessions.filter((s) => s.status === "ready").length;
   // Runs seen running during this visit: when one finishes, its results stay in view; otherwise the steps start again.
@@ -67,6 +76,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
   };
   const invalid = scopeProblem(scope, selected, sessions);
   const paidBlocked = !user?.emailVerified ? "Verify your email before preparing an analysis." : !user.analysisAccess ? NO_ACCESS : null;
+  const elsewhere = elsewhereText(runningElsewhere);
   const contract = stretch && stretchAvailable ? ("stretch-v2" as const) : undefined;
   const desired = invalid || paidBlocked ? null : scopeKey(scope === "selected" ? selected : null, contract);
   const prepare = () => act(api.startCaseRun(caseId, "live", "standard", contract, scope === "selected" ? [...selected] : undefined));
@@ -197,7 +207,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
       summary: running && !isTestRun(running) && running.cost.budget ? `Spending limit ${formatUsd(running.cost.budget.limitUsd)}, ${EXECUTION[running.execution].label.toLowerCase()}` : shown && !running && step === 4 && shown.cost.budget ? `Spending limit ${formatUsd(shown.cost.budget.limitUsd)}, ${EXECUTION[shown.execution].label.toLowerCase()}` : null,
       content: estimate && (
         <div className="space-y-3">
-          <RunState run={estimate} busy={busy} act={act} paidBlocked={paidBlocked} onBack={() => setChoice("scope")} />
+          <RunState run={estimate} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} onBack={() => setChoice("scope")} />
         </div>
       ),
     },
@@ -208,7 +218,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
         <div className="space-y-3">
           {shown.name && <p className="text-base font-semibold">{shown.name}</p>}
           <p className="text-sm"><span className="text-muted">Analyzed:</span> <span className="font-semibold">{scopeText(shown, sessions)}</span></p>
-          <RunState run={shown} busy={busy} act={act} paidBlocked={paidBlocked} />
+          <RunState run={shown} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} />
           {!running && <Button variant="secondary" onClick={() => { go("scope"); setScope("case"); }}>Start a new analysis</Button>}
         </div>
       ),
@@ -224,12 +234,20 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
         title="Analyze this case"
         description="Follow the steps in order. The cost is estimated as soon as you choose what to analyze; nothing is sent to Veridict's model and nothing is charged until you review the estimate and authorize a spending limit."
       />
+      {runningElsewhere && !running && (
+        <div className="px-5 pt-4">
+          <Alert tone="info" title="Another analysis is running" action={<a href={runningElsewhere.caseRunId ? href.caseRun(runningElsewhere.caseRunId) : href.case(runningElsewhere.caseId)} className={buttonClass("secondary")}>Open it</a>}>
+            {elsewhere} You can still choose what to analyze and see the estimate.
+          </Alert>
+        </div>
+      )}
       {(error || problem) && (
         <div className="space-y-2 px-5 pt-4">
           {error && <Alert title="Analyses couldn't be loaded" action={<Button variant="secondary" onClick={reload}>Try again</Button>}>{error}</Alert>}
           {problem && <Alert title="That didn't work">{problem}</Alert>}
         </div>
       )}
+      {!runs && !error ? <div className="px-5 py-4"><Loading inline label="Loading this case's analyses" /></div> : (
       <ol aria-label="Analysis steps" className="divide-y divide-rule">
         {steps.map((s, i) => {
           const n = (i + 1) as WorkflowStep;
@@ -251,8 +269,9 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd }: { caseId:
           );
         })}
       </ol>
+      )}
     </Card>
-    {previous.length > 0 && <PreviousAnalyses runs={previous} sessions={sessions} />}
+    {previous.length > 0 && <PreviousAnalyses runs={previous} sessions={sessions} resume={(r) => <ResumeControl run={r} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} compact />} />}
     </div>
   );
 }
@@ -372,7 +391,8 @@ function scopeText(run: CaseRun, sessions: WorkflowSession[]): string {
 }
 
 // onBack: at the review step, Cancel goes back one step (the estimate is kept for that choice) instead of stopping a run.
-function RunState({ run, busy, act, paidBlocked, onBack }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; onBack?: () => void }) {
+// elsewhere: why nothing can start now (another analysis in the workspace is running), or null.
+function RunState({ run, busy, act, paidBlocked, elsewhere, onBack }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null; onBack?: () => void }) {
   const s = RUN_STATUS[run.status];
   const test = isTestRun(run);
   const cancel = <Button variant="secondary" disabled={busy || run.cancelRequested} onClick={() => act(api.cancelCaseRun(run.id))}>{run.cancelRequested ? "Cancelling…" : "Cancel"}</Button>;
@@ -393,7 +413,7 @@ function RunState({ run, busy, act, paidBlocked, onBack }: { run: CaseRun; busy:
         </div>
       )}
 
-      {run.status === "awaiting_confirmation" && run.estimate && <Confirm run={run} busy={busy} act={act} paidBlocked={paidBlocked} cancel={onBack ? <Button variant="secondary" disabled={busy} onClick={onBack}>Cancel</Button> : cancel} />}
+      {run.status === "awaiting_confirmation" && run.estimate && <Confirm run={run} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} cancel={onBack ? <Button variant="secondary" disabled={busy} onClick={onBack}>Cancel</Button> : cancel} />}
 
       {run.stretch && run.status !== "queued" && run.status !== "retrieving" && run.status !== "awaiting_confirmation" && (
         <p className="max-w-3xl text-sm text-muted tabular-nums">
@@ -403,7 +423,7 @@ function RunState({ run, busy, act, paidBlocked, onBack }: { run: CaseRun; busy:
 
       {run.status === "adjudicating" && <Working run={run} cancel={cancel} />}
 
-      {!["queued", "retrieving", "awaiting_confirmation", "adjudicating"].includes(run.status) && <Outcome run={run} busy={busy} act={act} paidBlocked={paidBlocked} />}
+      {!["queued", "retrieving", "awaiting_confirmation", "adjudicating"].includes(run.status) && <Outcome run={run} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} />}
     </div>
   );
 }
@@ -490,7 +510,7 @@ function Progress({ run }: { run: CaseRun }) {
 }
 
 // The mode, the estimate, the warning and the explicit authorization: the only way a live run starts spending.
-function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; cancel: ReactNode }) {
+function Confirm({ run, busy, act, paidBlocked, elsewhere, cancel }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null; cancel: ReactNode }) {
   const e = run.estimate!;
   const [execution, setExecution] = useState<CaseRunExecution>("standard");
   // Exact-request reuse: packets an earlier analysis of this case already sent word for word are expected to reuse
@@ -511,7 +531,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   const submit = (ev: FormEvent) => {
     ev.preventDefault();
     // One checkbox: for economy the privacy notice sits under it and describes it, so authorizing acknowledges it too.
-    if (!problem && agreed) act(api.confirmCaseRun(run.id, Number(limit), execution, economy, name.trim() || undefined, canReuse && fresh));
+    if (!problem && agreed && !elsewhere) act(api.confirmCaseRun(run.id, Number(limit), execution, economy, name.trim() || undefined, canReuse && fresh));
   };
   // Two decimals in this step (the shared formatter shows four below $1); amounts under a cent read "under $0.01".
   const usd = (n: number) => (n > 0 && n < 0.005 ? "under $0.01" : `$${n.toFixed(2)}`);
@@ -579,7 +599,6 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
             Economy sends the packets in batches that the provider processes on its own schedule, usually within an hour each. The range above runs from the price with the shared instructions cached to the price with no cache hits, which the provider doesn't guarantee. While a batch is processing, each of its requests holds its largest possible cost against your limit, so a limit close to the estimate means fewer packets at once and a longer run, never a higher charge.
           </p>
         )}
-        {run.candidates.deferred + run.candidates.uncovered > 0 && <p className="mt-1">Retrieval set aside {(run.candidates.deferred + run.candidates.uncovered).toLocaleString()} pairs; they won't be read in this run.</p>}
       </Alert>
       {paidBlocked ? (
         <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{paidBlocked}</p>{cancel}</div>
@@ -620,8 +639,9 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
             </fieldset>
           </div>
           {problem && <p id={`limit-problem-${run.id}`} role="alert" className="text-sm text-conflict">{problem}</p>}
+          {elsewhere && <p className="text-sm text-muted">{elsewhere}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={busy || !!problem || !agreed}>{busy ? "Starting…" : economy ? "Start economy analysis" : "Start fast analysis"}</Button>
+            <Button type="submit" disabled={busy || !!problem || !agreed || !!elsewhere}>{busy ? "Starting…" : economy ? "Start economy analysis" : "Start fast analysis"}</Button>
             {cancel}
           </div>
         </>
@@ -630,15 +650,40 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   );
 }
 
-function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null }) {
-  const c = COVERAGE[run.coverageState];
-  const found = run.findings.reduce((n, f) => n + f.n, 0);
+// Whether a run stopped in a way the server resumes. The control is always shown then; when something prevents it
+// right now (no API key on the server, no access, another analysis running) it is disabled with the reason.
+export const canResume = (run: CaseRun) => RESUMABLE_RUN.includes(run.status);
+
+// Resume a stopped, failed, cancelled or incomplete run: the packets not yet read (and those left unanswered) are
+// queued again, nothing already read is sent again. A run stopped at its spending limit asks for a higher one first.
+// Shown wherever the run is: the case's steps, its row under Previous analyses, and its own page.
+export function ResumeControl({ run, busy, act, paidBlocked, elsewhere, compact }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null; compact?: boolean }) {
   const b = run.cost.budget;
   const [limit, setLimit] = useState(b ? Math.max(b.limitUsd * 2, b.limitUsd + 1).toFixed(2) : "");
-  const resumable = RESUMABLE_RUN.includes(run.status) && run.status !== "blocked_credentials";
+  if (!canResume(run)) return null;
   const needsLimit = run.status === "blocked_budget";
   const problem = needsLimit ? budgetProblem(limit, b?.limitUsd ?? 0) : null;
-  const liveBlocked = !isTestRun(run) && paidBlocked;
+  const blocked = (!isTestRun(run) && (paidBlocked || (run.paidAvailable === false ? "Paid analysis is off on this server: it has no API key (see .env.example)." : null))) || elsewhere;
+  const label = needsLimit ? "Raise the limit and resume" : run.status === "failed" ? "Try again" : "Resume";
+  return (
+    <div className={cx("flex flex-wrap items-end gap-2", compact && "items-center")}>
+      {needsLimit && !blocked && (
+        <Field label="New spending limit (USD)" htmlFor={`resume-${run.id}`}>
+          <input id={`resume-${run.id}`} inputMode="decimal" className={cx(inputClass, "w-40")} value={limit} onChange={(e) => setLimit(e.target.value)} aria-invalid={!!problem} />
+        </Field>
+      )}
+      <Button variant="secondary" disabled={busy || !!problem || !!blocked} title={blocked || "Reads what this analysis hasn't read yet; nothing already read is sent again."} onClick={() => act(api.resumeCaseRun(run.id, needsLimit ? Number(limit) : undefined))}>
+        <RotateCcw aria-hidden className="size-4" />{busy ? "Resuming…" : label}
+      </Button>
+      {!compact && blocked && <p className="basis-full text-sm text-muted">{blocked}</p>}
+      {problem && <p role="alert" className="basis-full text-sm text-conflict">{problem}</p>}
+    </div>
+  );
+}
+
+function Outcome({ run, busy, act, paidBlocked, elsewhere }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null }) {
+  const c = COVERAGE[run.coverageState];
+  const found = run.findings.reduce((n, f) => n + f.n, 0);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -656,18 +701,8 @@ function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean;
       )}
       <div className="flex flex-wrap items-end gap-2">
         {(found > 0 || run.packets.adjudicated > 0) && <a href={href.caseRun(run.id)} className={buttonClass("primary")}>View findings ({found})<ArrowRight aria-hidden className="size-4" /></a>}
-        {resumable && !liveBlocked && (
-          <>
-            {needsLimit && (
-              <Field label="New spending limit (USD)" htmlFor={`resume-${run.id}`}>
-                <input id={`resume-${run.id}`} inputMode="decimal" className={cx(inputClass, "w-40")} value={limit} onChange={(e) => setLimit(e.target.value)} />
-              </Field>
-            )}
-            <Button variant="secondary" disabled={busy || !!problem} onClick={() => act(api.resumeCaseRun(run.id, needsLimit ? Number(limit) : undefined))}>{needsLimit ? "Raise the limit and resume" : "Resume"}</Button>
-          </>
-        )}
+        <ResumeControl run={run} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} />
       </div>
-      {problem && <p role="alert" className="text-sm text-conflict">{problem}</p>}
       {run.packets.uncertain > 0 && <p className="text-xs text-muted">{run.packets.uncertain} packets stopped after a request the provider may have received; resuming doesn't send them again, so they can't be charged twice.</p>}
       {run.batches && run.batches.awaitingImport > 0 && run.batches.resultsExpireAt && <p className="text-xs text-muted">Finished batch results not yet saved are kept by the provider until {formatDate(run.batches.resultsExpireAt)}; resuming saves them.</p>}
     </div>
@@ -676,7 +711,7 @@ function Outcome({ run, busy, act, paidBlocked }: { run: CaseRun; busy: boolean;
 
 // Every analysis of the case, newest first, under the steps: its name, what it covered and how, where it stands,
 // and how far its review has got, each a click from its findings. Shown whenever the case has one.
-function PreviousAnalyses({ runs, sessions }: { runs: CaseRun[]; sessions: WorkflowSession[] }) {
+function PreviousAnalyses({ runs, sessions, resume }: { runs: CaseRun[]; sessions: WorkflowSession[]; resume: (run: CaseRun) => ReactNode }) {
   return (
     <Card className="mt-6 overflow-hidden">
       <CardHeader title="Previous analyses" count={runs.length} description="Every analysis of this case, newest first. Open one to review its findings or download its report." />
@@ -686,8 +721,8 @@ function PreviousAnalyses({ runs, sessions }: { runs: CaseRun[]; sessions: Workf
           const reviewed = Math.min(r.reviewed ?? 0, found);
           const s = RUN_STATUS[r.status];
           return (
-            <li key={r.id}>
-              <a href={href.caseRun(r.id)} className="group flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 transition-colors hover:bg-hover">
+            <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 pr-5 transition-colors hover:bg-hover">
+              <a href={href.caseRun(r.id)} className="group flex min-w-0 flex-1 basis-96 flex-wrap items-center gap-x-6 gap-y-2 py-3 pl-5">
                 <span className="min-w-0 flex-1 basis-72">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold group-hover:underline">{runTitle(r)}</span>
@@ -704,6 +739,7 @@ function PreviousAnalyses({ runs, sessions }: { runs: CaseRun[]; sessions: Workf
                 </span>
                 <ArrowRight aria-hidden className="size-4 text-faint group-hover:text-ink" />
               </a>
+              {canResume(r) && <span className="py-2">{resume(r)}</span>}
             </li>
           );
         })}

@@ -50,7 +50,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
   }, [mark, text]);
 
   if (error) return <Alert title="This deposition couldn't be loaded">{error}</Alert>;
-  if (!d) return <Loading />;
+  if (!d) return <Loading label="Loading the deposition" />;
   const s = DEPOSITION_STATUS[d.status];
   const at = text?.page ?? null;
   const pageIndex = at === null ? -1 : (text?.pages.indexOf(at) ?? -1);
@@ -99,7 +99,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
           {!ready ? (
             <p className="px-5 py-16 text-center text-sm text-muted">{d.status === "processing" ? "The transcript appears here once it has been read." : "No transcript lines were stored for this file."}</p>
           ) : !text ? (
-            <div className="p-5"><Loading rows={8} /></div>
+            <div className="p-5"><Loading inline label="Loading the transcript" /></div>
           ) : text.lines.length === 0 ? (
             <p className="px-5 py-16 text-center text-sm text-muted">No lines were stored for this deposition.</p>
           ) : (

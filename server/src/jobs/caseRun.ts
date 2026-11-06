@@ -1055,7 +1055,13 @@ export async function caseRunFindings(db: Database, id: number) {
     return {
       id: f.id, crossWitness: sides[0]?.witnessId !== sides[1]?.witnessId, type: f.type, priority: f.priority, score: f.score, band: f.band, unscoredReason: f.unscoredReason, evidenceStatus: f.evidenceStatus, reviewState: f.reviewState, reviewNote: f.reviewNote, reviewedAt: f.reviewedAt, evidenceEpochs: Object.fromEntries([c.depositionA, c.depositionB].map((d) => [String(d), epochs[String(d)]])), standing: standing.get(f.id)!,
       // Code's verification: which stored lines each side's citation was found on.
-      verification: { a: { status: checks.source?.a?.status ?? null, lineIds: checks.source?.a?.evidenceLineIds ?? [] }, b: { status: checks.source?.b?.status ?? null, lineIds: checks.source?.b?.evidenceLineIds ?? [] } },
+      // Matched to each passage by the lines it cites: a reply can name the two exchanges in the other order.
+      verification: (() => {
+        const [ca, cb] = [checks.source?.a, checks.source?.b];
+        const holds = (side: (typeof sides)[number] | undefined, c: typeof ca) => !!side && !!c?.evidenceLineIds?.length && c.evidenceLineIds.every((x) => side.lines.some((l) => l.id === x));
+        const [ka, kb] = !holds(sides[0], ca) && !holds(sides[1], cb) && holds(sides[0], cb) && holds(sides[1], ca) ? [cb, ca] : [ca, cb];
+        return { a: { status: ka?.status ?? null, lineIds: ka?.evidenceLineIds ?? [] }, b: { status: kb?.status ?? null, lineIds: kb?.evidenceLineIds ?? [] } };
+      })(),
       a: sides[0], b: sides[1],
       model: { origin: v.origin, model: v.model, promptVersion: v.promptVersion, outcome: checks.outcome ?? null, verdict: v.parsed },
       // verify/safeguards.ts: the code checks that moved a conflict verdict to needs context (empty when none did).

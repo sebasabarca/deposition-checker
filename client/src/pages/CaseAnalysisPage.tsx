@@ -41,7 +41,7 @@ export function CaseAnalysisPage({ id }: { id: number }) {
   }, [id]);
 
   if (error) return <Alert title="The case analysis couldn't be loaded">{error}</Alert>;
-  if (analysis === undefined) return <Loading />;
+  if (analysis === undefined) return <Loading label="Loading the analysis" />;
   const crumbs = [{ label: "Cases", href: href.cases() }, ...(name ? [{ label: name, href: href.case(id) }] : [])];
   if (analysis === null) return (<><PageHeader above={<Breadcrumbs items={crumbs} />} title="Whole case" /><Alert tone="info">This case has no whole-case analysis.</Alert></>);
 

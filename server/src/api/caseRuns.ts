@@ -1,6 +1,6 @@
 // Whole-case runs (jobs/caseRun.ts). Requests only read and write rows and queue the job; the worker runs it.
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import type { PgBoss } from "pg-boss";
 import { z } from "zod";
@@ -35,6 +35,27 @@ export const capabilities = (env: Record<string, string | undefined>) => {
   return { paidAvailable: paid, economyAvailable: paid, economyBlocked: paid ? null : ("paid_off" as const) };
 };
 
+// One analysis at a time per workspace: an analysis running now in the case's organization (a whole-case run that
+// was confirmed, or a test-model run, or a two-session check), other than exceptRunId, or null. An estimate waiting
+// for confirmation isn't running: preparing one stays allowed while another analysis runs.
+// shortcut: checked before the run is queued, not under a lock; two confirmations in the same instant could both pass.
+export type RunningAnalysis = { caseId: number; caseName: string; caseRunId: number | null };
+export async function runningAnalysis(db: Database, caseId: number, exceptRunId = 0): Promise<RunningAnalysis | null> {
+  const [row] = (await db.execute<{ case_id: number; name: string; run_id: number | null }>(sql`
+    with org as (select org_id from cases where id = ${caseId})
+    (select c.id as case_id, c.name, r.id as run_id from case_runs r join cases c on c.id = r.case_id
+      where c.org_id is not distinct from (select org_id from org) and r.id <> ${exceptRunId}
+        and r.status in ('queued', 'retrieving', 'adjudicating', 'reconciling') and (r.confirmed_at is not null or r.mode = 'mock')
+      order by r.id limit 1)
+    union all
+    (select c.id, c.name, null from analyses a join cases c on c.id = a.case_id
+      where c.org_id is not distinct from (select org_id from org) and a.status in ('queued', 'parsing', 'retrieving', 'adjudicating')
+      order by a.id limit 1)
+    limit 1`)).rows;
+  return row ? { caseId: Number(row.case_id), caseName: row.name, caseRunId: row.run_id === null ? null : Number(row.run_id) } : null;
+}
+export const runningConflict = (r: RunningAnalysis) => ({ error: `An analysis is already running in “${r.caseName}”. Veridict runs one analysis at a time: wait for it to finish or cancel it, then start this one.`, code: "analysis_running", running: r });
+
 export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; boss: PgBoss; env?: Record<string, string | undefined> }): Router {
   const router = Router();
   // Every report says whether paid economy runs can be confirmed here, so the UI offers the choice only then.
@@ -62,6 +83,9 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     }
     const [active] = await db.select({ id: caseRuns.id }).from(caseRuns).where(and(eq(caseRuns.caseId, caseId.data), inArray(caseRuns.status, ACTIVE)));
     if (active) return res.status(409).json({ error: `Case run ${active.id} is still running for this case.`, caseRunId: active.id });
+    // A live run only prepares its estimate here (no model call); a test-model run starts reading at once.
+    const busy = body.data.mode === "mock" ? await runningAnalysis(db, caseId.data) : null;
+    if (busy) return res.status(409).json(runningConflict(busy));
     const run = await createCaseRun(db, caseId.data, { mode: body.data.mode, execution: body.data.mode === "mock" ? (body.data.execution ?? "standard") : "standard", contract: body.data.contract, depositionIds: chosen });
     await enqueueCaseRun(boss, { caseRunId: run.id });
     return res.status(202).json({ caseRun: await reportOf(run.id) });
@@ -72,7 +96,9 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     if (!caseId.success) return res.status(400).json({ error: "The case ID must be a positive number." });
     const ids = await db.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, caseId.data)).orderBy(desc(caseRuns.id));
     // stretchAvailable at the top too: a case with no run yet still needs to know whether to offer the option.
-    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))), stretchAvailable: stretchAllowed(env), ...capabilities(env) });
+    // runningElsewhere: an analysis running in another case of this workspace, so the screen can say why it can't start.
+    const busy = await runningAnalysis(db, caseId.data);
+    return res.json({ caseRuns: await Promise.all(ids.map((r) => reportOf(r.id))), stretchAvailable: stretchAllowed(env), ...capabilities(env), runningElsewhere: busy && busy.caseId !== caseId.data ? busy : null });
   });
 
   router.get("/case-runs/:id", async (req, res) => {
@@ -98,6 +124,9 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional(), fresh: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
     if (!analysisKeySet(env)) return res.status(409).json({ error: "Paid analysis isn't set up on this server: add the API key to the server's .env (see .env.example) and restart. Nothing was sent.", code: "paid_unavailable" });
+    const [target] = await db.select({ caseId: caseRuns.caseId }).from(caseRuns).where(eq(caseRuns.id, id.data));
+    const busy = target ? await runningAnalysis(db, target.caseId, id.data) : null;
+    if (busy) return res.status(409).json(runningConflict(busy));
     const outcome = await confirmCaseRun(db, id.data, body.data);
     if (outcome === "not_found") return res.status(404).json({ error: "Case run not found." });
     if (outcome === "no_acknowledgement") return res.status(400).json({ error: "Economy analysis stores the testimony with the AI provider for up to 29 days. Confirm that you understand this to use it.", code: "retention_not_acknowledged" });
@@ -111,8 +140,10 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
     const id = Id.safeParse(req.params.id);
     const body = z.object({ budgetUsd: Budget.optional(), retryUncertain: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: "Invalid resume request." });
-    const [run] = await db.select({ mode: caseRuns.mode }).from(caseRuns).where(eq(caseRuns.id, id.data));
+    const [run] = await db.select({ mode: caseRuns.mode, caseId: caseRuns.caseId }).from(caseRuns).where(eq(caseRuns.id, id.data));
     if (!run) return res.status(404).json({ error: "Case run not found." });
+    const busy = await runningAnalysis(db, run.caseId, id.data);
+    if (busy) return res.status(409).json(runningConflict(busy));
     // A live resume may spend: the same analysis-access rule as every paid check. A mock resume never does.
     if (run.mode === "live" && !(res.locals.user as { analysisAccess?: boolean } | undefined)?.analysisAccess) return res.status(403).json(NO_ACCESS);
     const outcome = await resumeCaseRun(db, id.data, body.data);

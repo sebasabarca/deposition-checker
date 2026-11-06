@@ -1,7 +1,7 @@
 // The v2 API, as the server serves it under /api (Vite proxies it in development). Every error
 // carries the server's own message, so the UI can show it as it is.
 
-import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseRun, CaseRunContract, CaseRunExecution, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
+import type { AnalysisView, CaseAnalysisView, CaseDetail, CaseRun, RunningAnalysis, CaseRunContract, CaseRunExecution, CaseRunFinding, CaseSummary, DepositionLines, DepositionView, FindingDetail, FindingGroups, ReviewDecision } from "../types";
 import type { Workspace } from "./workspace";
 
 export type CheckEstimate = { inputTokens: number; typicalUsd: number; worstUsd: number; fits: boolean; model: string; budgetUsd: number };
@@ -58,7 +58,7 @@ export const api = {
   case: (id: number) => request<CaseDetail>("GET", `/cases/${id}`),
   // Whole-case runs (docs/case-run-api.md). A live run stops after preparation with its estimate; nothing is
   // sent to a model until confirmCaseRun with a budget. A mock run uses the free deterministic test model.
-  caseRuns: (caseId: number) => request<{ caseRuns: CaseRun[]; stretchAvailable?: boolean; economyAvailable?: boolean; paidAvailable?: boolean }>("GET", `/cases/${caseId}/case-runs`),
+  caseRuns: (caseId: number) => request<{ caseRuns: CaseRun[]; stretchAvailable?: boolean; economyAvailable?: boolean; paidAvailable?: boolean; runningElsewhere?: RunningAnalysis | null }>("GET", `/cases/${caseId}/case-runs`),
   caseRun: (id: number) => request<{ caseRun: CaseRun }>("GET", `/case-runs/${id}`),
   // execution: a test run picks fast (standard) or economy (batch) here; a paid run picks it when confirmed.
   // depositionIds: analyze only these depositions (the same pipeline); absent = the whole case.

@@ -7,6 +7,9 @@ import { Download } from "lucide-react";
 import { OPTIONS } from "../components/FindingPanel";
 import { StandingNotice } from "../components/FindingRegister";
 import { TranscriptRows } from "../components/FindingView";
+import { canResume, ResumeControl } from "../components/CaseRuns";
+import { NO_ACCESS } from "../components/CheckAgain";
+import { useUser } from "../lib/session";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, cx, fieldClass, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { COVERAGE, isTestRun, laneOf, LANES, MOVING_RUN, RUN_STATUS, type Lane } from "../lib/caseRuns";
@@ -36,6 +39,9 @@ export function CaseRunPage({ id }: { id: number }) {
   const [lane, setLane] = useState<Lane>("contradictions");
   const [shown, setShown] = useState(PAGE);
   const [filter, setFilter] = useState<Filter>("all");
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const user = useUser();
   const load = useCallback(() => {
     api.caseRun(id)
       .then(async ({ caseRun }) => {
@@ -54,8 +60,14 @@ export function CaseRunPage({ id }: { id: number }) {
   }, [findings]);
 
   if (error) return <Alert title="This whole-case analysis couldn't be loaded">{error}</Alert>;
-  if (!run || !findings) return <Loading />;
+  if (!run || !findings) return <Loading label={run ? "Loading the findings" : "Loading the analysis"} />;
   const test = isTestRun(run);
+  const paidBlocked = !user?.emailVerified ? "Verify your email before resuming an analysis." : !user.analysisAccess ? NO_ACCESS : null;
+  const resume = (p: Promise<unknown>) => {
+    setResuming(true);
+    setResumeError(null);
+    p.then(load, (e: Error) => setResumeError(e.message)).finally(() => setResuming(false));
+  };
   const reused = run.cost.reuse?.requests ?? run.requests.reused ?? 0;
   const s = RUN_STATUS[run.status];
   const c = COVERAGE[run.coverageState];
@@ -103,6 +115,16 @@ export function CaseRunPage({ id }: { id: number }) {
             <ul className="mt-1.5 list-disc space-y-0.5 pl-5">{run.incompleteReasons.map((r) => <li key={r}>{r}</li>)}</ul>
           )}
         </div>
+        {canResume(run) && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule bg-well px-5 py-3">
+            <p className="max-w-2xl text-sm">
+              <span className="font-semibold">{run.status === "failed" ? "This analysis stopped with an error." : run.status === "blocked_budget" ? "This analysis stopped at its spending limit." : "This analysis didn't finish."}</span>{" "}
+              <span className="text-muted">Resuming reads what it hasn't read yet, including pairs left without a verdict. Nothing already read is sent or charged again.</span>
+            </p>
+            <ResumeControl run={run} busy={resuming} act={resume} paidBlocked={paidBlocked} elsewhere={null} />
+          </div>
+        )}
+        {resumeError && <div className="border-t border-rule px-5 py-3"><Alert title="The analysis couldn't be resumed">{resumeError}</Alert></div>}
       </Card>
 
       <Card className="overflow-hidden">
@@ -127,22 +149,24 @@ export function CaseRunPage({ id }: { id: number }) {
             </div>
           </div>
         )}
-        {list.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-muted">
-            {findings.length === 0 ? (MOVING_RUN.includes(run.status) && run.status !== "reconciling" ? "No findings yet. This page updates as packets are read." : "This run has no findings.") : inLane.length === 0 ? "No findings in this lane." : filter === "todo" ? "Every finding in this lane has a decision." : `No findings marked ${FILTERS.find((x) => x.id === filter)!.label.toLowerCase()} in this lane.`}
-          </p>
-        ) : (
-          <div className="divide-y divide-rule">
-            {list.slice(0, shown).map((f) => <FindingRow key={f.id} f={f} test={test} onDecided={onDecided} />)}
-          </div>
-        )}
-        {list.length > shown && (
-          <div className="flex items-center justify-between gap-3 border-t border-rule px-5 py-3">
-            <span className="text-sm text-muted tabular-nums">Showing {shown} of {list.length.toLocaleString()}</span>
-            <Button variant="secondary" onClick={() => setShown((n) => n + PAGE)}>Show {Math.min(PAGE, list.length - shown)} more</Button>
-          </div>
-        )}
       </Card>
+
+      {list.length === 0 ? (
+          <Card><p className="px-5 py-6 text-sm text-muted">
+            {findings.length === 0 ? (MOVING_RUN.includes(run.status) && run.status !== "reconciling" ? "No findings yet. This page updates as packets are read." : "This run has no findings.") : inLane.length === 0 ? "No findings in this lane." : filter === "todo" ? "Every finding in this lane has a decision." : `No findings marked ${FILTERS.find((x) => x.id === filter)!.label.toLowerCase()} in this lane.`}
+          </p></Card>
+        ) : (
+          // Each finding its own card on the page, apart from the next.
+          <ol aria-label="Findings" className="space-y-5">
+            {list.slice(0, shown).map((f) => <li key={f.id}><FindingRow f={f} test={test} onDecided={onDecided} /></li>)}
+          </ol>
+        )}
+      {list.length > shown && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted tabular-nums">Showing {shown} of {list.length.toLocaleString()}</span>
+          <Button variant="secondary" onClick={() => setShown((n) => n + PAGE)}>Show {Math.min(PAGE, list.length - shown)} more</Button>
+        </div>
+      )}
     </>
   );
 }
@@ -171,14 +195,15 @@ function ReportDownload({ runId, findings }: { runId: number; findings: CaseRunF
 }
 
 // The decision's colour on the finding's left edge, so a reviewed list reads at a glance.
-const EDGE: Record<ShownDecision, string> = { unreviewed: "border-l-transparent", confirmed: "border-l-ok", needs_context: "border-l-context", dismissed: "border-l-control", quarantined: "border-l-transparent" };
+const EDGE: Record<ShownDecision, string> = { unreviewed: "border-l-line", confirmed: "border-l-ok", needs_context: "border-l-context", dismissed: "border-l-control", quarantined: "border-l-line" };
 
 function FindingRow({ f, test, onDecided }: { f: CaseRunFinding; test: boolean; onDecided: (id: number, review: Pick<CaseRunFinding, "reviewState" | "reviewNote" | "reviewedAt">) => void }) {
   const explanation = (f.model.verdict as { explanation?: unknown } | null)?.explanation;
   const kind = CLASSIFICATION[f.type as keyof typeof CLASSIFICATION] ?? f.type;
   const setAside = f.standing?.state === "quarantined";
   return (
-    <article className={cx("space-y-3 border-l-4 px-5 py-5", EDGE[shownDecision(f)])}>
+    // Its own block, with space above and below it, so one finding never runs into the next.
+    <article className={cx("space-y-3 rounded-lg border border-l-4 border-line bg-sheet px-5 py-5", EDGE[shownDecision(f)])}>
       <header className="flex flex-wrap items-center gap-2">
         {setAside ? (
           <><h3 className="font-semibold">Needs revalidation</h3><Badge tone="neutral">Earlier verdict: {kind}</Badge></>
@@ -262,7 +287,9 @@ function DecisionBar({ f, onDecided }: { f: CaseRunFinding; onDecided: (id: numb
 
 function Side({ side, cited, status }: { side: CaseRunSide; cited: number[]; status: string | null }) {
   const lines = side.lines.map((l) => ({ id: l.id, ref: l.at, text: l.text, ocrConfidence: null, highlighted: cited.includes(l.id) }));
-  const first = side.lines.find((l) => cited.includes(l.id)) ?? side.lines[0];
+  // Only cited lines inside this passage count: a citation elsewhere marks nothing here (and never breaks the page).
+  const marked = side.lines.filter((l) => cited.includes(l.id));
+  const first = marked[0] ?? side.lines[0];
   const page = first ? Number(first.at.split(":")[0]) : null;
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-line bg-sheet">
@@ -281,7 +308,7 @@ function Side({ side, cited, status }: { side: CaseRunSide; cited: number[]; sta
       </div>
       {page !== null && Number.isFinite(page) && (
         <footer className="border-t border-rule px-4 py-2 text-right text-xs">
-          <a href={href.deposition(side.depositionId, { page, mark: cited.length ? `${side.lines.find((l) => cited.includes(l.id))!.at}-${[...side.lines].reverse().find((l) => cited.includes(l.id))!.at}` : undefined })} className="font-medium text-info hover:underline">Read in full</a>
+          <a href={href.deposition(side.depositionId, { page, mark: marked.length ? `${marked[0].at}-${marked[marked.length - 1].at}` : undefined })} className="font-medium text-info hover:underline">Read in full</a>
         </footer>
       )}
     </section>

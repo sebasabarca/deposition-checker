@@ -28,7 +28,7 @@ export function FindingsPage() {
   return (
     <>
       <PageHeader title="Findings" description={findings ? `${findings.length} across ${new Set(findings.map((f) => f.analysis.id)).size} analyses. Leads for your review, not conclusions.` : undefined} />
-      {!findings ? <Loading /> : findings.length === 0 ? (
+      {!findings ? <Loading label="Loading findings" /> : findings.length === 0 ? (
         <Empty title="No findings yet">Findings appear here once a check of two sessions finishes.</Empty>
       ) : (
         <Card className="overflow-hidden">

@@ -5,13 +5,14 @@ import { useCallback, useEffect, useState, type FormEvent, type KeyboardEvent } 
 import { ArrowRightLeft, FileText, GripVertical, Pencil } from "lucide-react";
 import { CaseAnalysisAction, CaseAnalysisSummary, useCaseAnalysis } from "../components/CaseAnalysis";
 import { CaseFindings } from "../components/CaseFindings";
-import { CaseRunPanel } from "../components/CaseRuns";
+import { CaseRunPanel, useCaseRuns } from "../components/CaseRuns";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, CardHeader, cx, Dialog, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
 import { analysesOf, dateAction, moveTargets } from "../components/sessionActions";
 import { api, DEPOSITION_ADDED } from "../lib/api";
+import { MOVING_RUN } from "../lib/caseRuns";
 import { isActive } from "../lib/insights";
 import { analysisTitle, ANALYSIS_STATUS, DEPOSITION_STATUS, formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
@@ -30,6 +31,7 @@ export function CasePage({ id }: { id: number }) {
   const [move, setMove] = useState<{ d: DepositionRow; to: number | null } | null>(null);
   const add = useAddDeposition();
   const caseAnalysis = useCaseAnalysis(id);
+  const runs = useCaseRuns(id);
   const load = useCallback(() => {
     api.case(id)
       .then(async (d) => {
@@ -50,7 +52,13 @@ export function CasePage({ id }: { id: number }) {
   usePoll(busy, 3000, load);
 
   if (error) return <Alert title="This case couldn't be loaded">{error}</Alert>;
-  if (!detail) return <Loading />;
+  if (!detail) return <Loading label="Loading the case" />;
+  // Nothing in the case may be deleted from under work in progress: an analysis (preparing or reading), a two-session
+  // check, or a deposition still being read. The server refuses a running analysis too.
+  const working = (runs.runs ?? []).some((r) => MOVING_RUN.includes(r.status)) ? "an analysis is running"
+    : detail.analyses.some((a) => isActive(a.status)) ? "a check is running"
+    : detail.depositions.some((d) => d.status === "processing") ? "a deposition is still being read" : null;
+  const deleteBlocked = !runs.runs && !runs.error ? "Checking whether this case is being processed…" : working ? `This case can't be deleted while ${working}. Wait for it to finish, or cancel it, then delete the case.` : null;
   // The report covers finished analyses only (api/report.ts), so it is offered once one exists.
   const witnessName = (w: number) => detail.witnesses.find((x) => x.id === w)?.name ?? "Unknown witness";
   const workflowSessions = [...detail.depositions]
@@ -128,7 +136,7 @@ export function CasePage({ id }: { id: number }) {
         actions={<>{caseAnalysis && <CaseAnalysisAction caseId={id} detail={detail} analysis={caseAnalysis} />}{detail.analyses.some((a) => a.status === "completed") && <a href={href.report(id)} className={buttonClass("secondary")}><FileText aria-hidden className="size-4" />Export report</a>}</>}
       />
 
-      <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} />
+      <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} state={runs} />
 
       <CaseAnalysisSummary caseId={id} analysis={caseAnalysis} />
 
@@ -145,6 +153,7 @@ export function CasePage({ id }: { id: number }) {
         what="case"
         name={detail.case.name}
         typeToConfirm
+        blocked={deleteBlocked}
         consequence={`Deletes the case, its ${detail.depositions.length} ${detail.depositions.length === 1 ? "deposition" : "depositions"} and ${analyses.length} ${analyses.length === 1 ? "analysis" : "analyses"}, with every finding, decision and note. Cost records are kept.`}
         onDelete={async () => {
           await api.deleteCase(id);

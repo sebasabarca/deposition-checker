@@ -16,6 +16,8 @@ import { cardSummary, latestMapVersion, mapMembers, topicReport } from "../claim
 import { hasPhysicalLines } from "../ingest";
 import { sessionCoverage } from "../verify";
 import { caseDetail, caseSummaries } from "./cases";
+import { runningAnalysis, runningConflict, type RunningAnalysis } from "./caseRuns";
+import { caseRunReport } from "../jobs/caseRun";
 import { estimateCrossDiscovery, estimateDiscovery } from "../adjudicate/estimateDiscovery";
 import { CROSS_DISCOVERY_MODEL, CROSS_DISCOVERY_PROMPT_VERSION, CROSS_FALLBACK_MODEL, crossSidesOf } from "../adjudicate/discoverCross";
 import { isEvidenceOnHold, standingOf, type Standing } from "../evidence/correction";
@@ -422,6 +424,9 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
         .from(analyses)
         .where(and(eq(analyses.depositionA, first.id), eq(analyses.depositionB, second.id), eq(analyses.mode, b.mode), eq(analyses.retrieval, method), inArray(analyses.status, [...ACTIVE])));
       if (active) return { id: active.id, created: false };
+      // One analysis at a time per workspace (api/caseRuns.ts runningAnalysis).
+      const busy = await runningAnalysis(db, caseId.data);
+      if (busy) return { busy };
       const [a] = await tx
         .insert(analyses)
         .values({ caseId: caseId.data, kind: cross ? "cross_witness" : "same_witness", witnessId: first.witnessId, witnessBId: cross ? second.witnessId : null, depositionA: first.id, depositionB: second.id, mode: b.mode, retrieval: method, promptVersion: cross ? CROSS_DISCOVERY_PROMPT_VERSION : method === DIRECT_FABLE ? DISCOVERY_PROMPT_VERSION : b.promptVersion, effort: method === DIRECT_FABLE ? DISCOVERY_EFFORT : b.effort, maxCandidates: b.maxCandidates, budgetUsd, strategy: strategy.id, candidatesPerRequest: strategy.candidatesPerRequest, maxConcurrency })
@@ -431,6 +436,7 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
       await enqueueAnalysis(boss, { analysisId: a.id }, { client });
       return { id: a.id, created: true };
     });
+    if ("busy" in outcome) return res.status(409).json(runningConflict(outcome.busy as RunningAnalysis));
     return res.status(outcome.created ? 202 : 200).json({ created: outcome.created, analysis: await analysisView(db, outcome.id) });
   });
 
@@ -455,7 +461,11 @@ export function analysisRoutes({ db, pool, boss }: { db: Database; pool: Pool; b
       const { groups } = await analysisFindings(db, v.id);
       return groups.flatMap((g) => g.findings.map((f) => ({ ...f, analysisId: v.id, caseName: caseName.get(v.caseId) ?? "Unknown case" })));
     }))).flat();
-    return res.json({ cases: summaries, details, analyses: views.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()), findings });
+    // Whole-case analyses running now (confirmed or test-model, not estimates), so every screen can show a case at work.
+    const caseIds = summaries.map((c) => c.id);
+    const running = caseIds.length ? (await db.execute<{ id: number }>(sql`select id from case_runs where case_id in (${sql.join(caseIds.map((x) => sql`${x}`), sql`, `)}) and status in ('queued', 'retrieving', 'adjudicating', 'reconciling') and (confirmed_at is not null or mode = 'mock') order by id`)).rows : [];
+    const caseRuns = (await Promise.all(running.map((r) => caseRunReport(db, Number(r.id))))).filter((r) => r !== null);
+    return res.json({ cases: summaries, details, analyses: views.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()), findings, caseRuns });
   });
 
   router.get("/analyses/:id", async (req, res) => {

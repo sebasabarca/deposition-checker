@@ -12,7 +12,9 @@ import { analysisTitle, DEPOSITION_STATUS, findingHeadline, formatDate } from ".
 import { shownDecision } from "../lib/review";
 import { href } from "../lib/router";
 import { useUser } from "../lib/session";
-import { useWorkspace, useWorkspaceFindings, type WorkspaceFinding } from "../lib/workspace";
+import { useWorkspace, useWorkspaceFindings, type Workspace, type WorkspaceFinding } from "../lib/workspace";
+import { runTitle } from "../components/CaseRuns";
+import { EXECUTION, MOVING_RUN, RUN_STATUS } from "../lib/caseRuns";
 
 const RANK = { high: 0, medium: 1, needs_context: 2, low: 3, unverified: 4 } as const;
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -28,24 +30,29 @@ export function OverviewPage() {
   const first = user?.name.trim().split(/\s+/)[0] ?? "";
 
   if (error) return <Alert title="The overview couldn't be loaded">{error}</Alert>;
-  if (!data || findings === null) return <><Welcome first={first} line="Getting your cases ready…" /><Loading /></>;
+  if (!data || findings === null) return <><Welcome first={first} line="Getting your cases ready…" /><Loading inline label="Loading your cases" /></>;
 
   const waiting = findings.filter((f) => (f.group === "contradictions" || f.group === "needs_context") && shownDecision(f) === "unreviewed").sort((a, b) => RANK[a.priority] - RANK[b.priority] || a.rank - b.rank);
   // A finding that needs revalidation has no current decision, whatever was decided before.
   const kept = findings.filter((f) => shownDecision(f) === "confirmed");
   const decided = findings.filter((f) => !["unreviewed", "quarantined"].includes(shownDecision(f)));
   const running = data.analyses.filter((a) => isActive(a.status));
+  const work = workInProgress(data);
+  const analysesRunning = running.length + (data.caseRuns ?? []).length;
   const depositions = data.details.flatMap((d) => d.depositions.map((x) => ({ ...x, caseName: d.case.name, witness: d.witnesses.find((w) => w.id === x.witnessId)?.name ?? "Unknown witness" })));
   const failed = depositions.filter((d) => d.status === "failed" || d.status === "unsupported" || d.status === "needs_review");
-  const step = nextStep(data.details, running, waiting.map((f) => ({ id: f.id, analysisId: f.analysis.id })), kept.map((f) => ({ caseId: f.analysis.caseId })));
+  const computed = nextStep(data.details, running, waiting.map((f) => ({ id: f.id, analysisId: f.analysis.id })), kept.map((f) => ({ caseId: f.analysis.caseId })));
+  // A whole-case analysis at work: one runs at a time, so the next step is to follow it, unless findings or reading wait.
+  const runningCase = work.find((w) => w.kind === "analysis");
+  const step: NextStep = runningCase && !["decide", "reading", "running", "first_deposition"].includes(computed.kind) ? { kind: "case_running", caseId: runningCase.caseId, caseName: runningCase.caseName } : computed;
 
   // Where things stand, in one sentence.
   const line = depositions.length === 0
     ? "Veridict reads every session of a witness's deposition and shows where the testimony may conflict, cited to page and line."
     : waiting.length
       ? `${plural(waiting.length, "finding")} ${waiting.length === 1 ? "is" : "are"} waiting for your decision.`
-      : running.length
-        ? `${plural(running.length, "check")} ${running.length === 1 ? "is" : "are"} running. Nothing needs you right now.`
+      : analysesRunning
+        ? `${plural(analysesRunning, "analysis", "analyses")} ${analysesRunning === 1 ? "is" : "are"} running. Nothing needs you right now.`
         : "You're all caught up. Nothing is waiting for your decision.";
 
   const checklist = [
@@ -61,7 +68,7 @@ export function OverviewPage() {
       <Welcome first={first} line={line} step={<NextStepCard step={step} />} stats={depositions.length > 0 ? [
         ["Waiting for you", waiting.length, waiting.length > 0],
         ["Kept for follow-up", kept.length, false],
-        ["Checks running", running.length, false],
+        ["Analyses running", analysesRunning, false],
         ["Depositions", depositions.length, false],
       ] : undefined} />
 
@@ -71,6 +78,8 @@ export function OverviewPage() {
         </Alert>
       )}
 
+      {work.length > 0 && <InProgress work={work} />}
+
       <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
           {starting && <GettingStarted items={checklist} />}
@@ -79,7 +88,7 @@ export function OverviewPage() {
         <Activity details={data.details} />
       </div>
 
-      {data.cases.length > 0 && <CasesTable cases={data.cases} />}
+      {data.cases.length > 0 && <CasesTable cases={data.cases} work={work} />}
     </>
   );
 }
@@ -123,6 +132,7 @@ function NextStepCard({ step }: { step: NextStep }) {
       case "second_session": return { icon: <FileUp className="size-5" />, title: `Add another session of ${step.witness}`, text: "A check compares two sessions of the same witness.", action: upload("Add deposition", step.caseId) };
       case "reading": return { icon: <FileText className="size-5" />, title: `Reading ${plural(step.count, "deposition")}`, text: "Veridict is turning them into page and line references. Scans take a few minutes.", action: go(href.deposition(step.depositionId), "See progress") };
       case "check": return { icon: <ListChecks className="size-5" />, title: `Check ${step.witness}'s sessions`, text: "Two sessions are ready to compare. You'll see the estimated cost before anything starts.", action: go(href.case(step.caseId), "Open the case") };
+      case "case_running": return { icon: <ListChecks className="size-5" />, title: `${step.caseName} is being analyzed`, text: "Veridict runs one analysis at a time. Its findings appear as it reads; you can keep working.", action: go(href.case(step.caseId), "View progress") };
       case "running": return { icon: <ListChecks className="size-5" />, title: "A check is running", text: "It usually takes 4 to 10 minutes. You can keep working.", action: go(href.analysis(step.analysisId), "View progress") };
       case "decide": return { icon: <Highlighter className="size-5" />, title: `Review ${plural(step.count, "finding")}`, text: "Read both passages side by side and decide: Keep, Needs context or Dismiss.", action: go(href.analysis(step.analysisId, step.findingId), "Start reviewing") };
       case "export": return { icon: <Download className="size-5" />, title: `Export the ${step.caseName} report`, text: "Every finding you kept, with citations and your notes, ready to download as a PDF.", action: go(href.report(step.caseId), "Open the report") };
@@ -246,19 +256,20 @@ function Activity({ details }: { details: Parameters<typeof recentActivity>[0] }
   );
 }
 
-function CasesTable({ cases }: { cases: { id: number; name: string; witnessNames: string[]; depositions: number; needsReview: number; lastActivity: string }[] }) {
+function CasesTable({ cases, work }: { cases: { id: number; name: string; witnessNames: string[]; depositions: number; needsReview: number; lastActivity: string }[]; work: Work[] }) {
   const now = Date.now();
   return (
     <Card className="overflow-hidden">
       <CardHeader title="Cases" count={cases.length} action={<a href={href.cases()} className="text-sm font-medium text-info hover:underline">All cases</a>} />
       <div className="overflow-x-auto">
         <table className="w-full min-w-[40rem] text-sm">
-          <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>To decide</th><th className={cx(thClass, "text-right")}>Last activity</th></tr></thead>
+          <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={thClass}>Status</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>To decide</th><th className={cx(thClass, "text-right")}>Last activity</th></tr></thead>
           <tbody>
             {cases.slice(0, 5).map((c) => (
               <tr key={c.id} className={rowClass}>
                 <td className={tdClass}><a href={href.case(c.id)} className="font-medium hover:underline">{c.name}</a></td>
                 <td className={cx(tdClass, "text-muted")}>{c.witnessNames.join(", ") || "–"}</td>
+                <td className={tdClass}>{(() => { const w = work.find((x) => x.caseId === c.id); return w ? <Badge tone="active" dot>{w.kind === "reading" ? "Reading depositions" : "Being analyzed"}</Badge> : <span className="text-faint">–</span>; })()}</td>
                 <td className={cx(tdClass, "text-right tabular-nums")}>{c.depositions}</td>
                 <td className={cx(tdClass, "text-right tabular-nums", c.needsReview > 0 && "font-semibold text-conflict")}>{c.needsReview}</td>
                 <td className={cx(tdClass, "text-right text-muted tabular-nums")}>{relativeTime(c.lastActivity, now)}</td>
@@ -267,6 +278,56 @@ function CasesTable({ cases }: { cases: { id: number; name: string; witnessNames
           </tbody>
         </table>
       </div>
+    </Card>
+  );
+}
+
+// What is being processed right now, case by case: an analysis reading the testimony (with how far it has got), or
+// depositions still being read. Computed from the workspace's own rows.
+type Work = { key: string; caseId: number; caseName: string; kind: "analysis" | "check" | "reading"; title: string; status: string; detail: string; pct: number | null; link: string };
+function workInProgress(data: Workspace): Work[] {
+  const name = new Map(data.cases.map((c) => [c.id, c.name]));
+  const runs: Work[] = (data.caseRuns ?? []).filter((r) => MOVING_RUN.includes(r.status)).map((r) => ({
+    key: `run-${r.id}`, caseId: r.caseId, caseName: name.get(r.caseId) ?? "Case", kind: "analysis", title: runTitle(r), status: RUN_STATUS[r.status].label,
+    detail: `${EXECUTION[r.execution].label} · ${r.packets.adjudicated.toLocaleString()} of ${r.packets.total.toLocaleString()} evidence packets read`,
+    pct: r.status === "adjudicating" && r.packets.total ? Math.min(100, Math.floor((r.packets.adjudicated / r.packets.total) * 100)) : null, link: href.case(r.caseId),
+  }));
+  const checks: Work[] = data.analyses.filter((a) => isActive(a.status)).map((a) => ({
+    key: `check-${a.id}`, caseId: a.caseId, caseName: name.get(a.caseId) ?? "Case", kind: "check", title: analysisTitle(a), status: "Checking", detail: "Two-session check", pct: null, link: href.analysis(a.id),
+  }));
+  const reading: Work[] = data.details.flatMap((d) => {
+    const n = d.depositions.filter((x) => x.status === "processing").length;
+    return n ? [{ key: `reading-${d.case.id}`, caseId: d.case.id, caseName: d.case.name, kind: "reading" as const, title: `Reading ${plural(n, "deposition")}`, status: "Reading", detail: "Turning each page into page and line references", pct: null, link: href.case(d.case.id) }] : [];
+  });
+  return [...runs, ...checks, ...reading];
+}
+
+function InProgress({ work }: { work: Work[] }) {
+  return (
+    <Card>
+      <CardHeader title="In progress" count={work.length} description="Cases being processed right now. Each keeps running on the server; you can leave this page." />
+      <ul>
+        {work.map((w) => (
+          <li key={w.key} className="border-t border-rule first:border-t-0">
+            <a href={w.link} className="group grid grid-cols-1 items-center gap-x-6 gap-y-2 px-5 py-3.5 hover:bg-hover sm:grid-cols-[minmax(0,1fr)_16rem]">
+              <span className="min-w-0">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold group-hover:underline">{w.caseName}</span>
+                  <Badge tone="active" dot>{w.status}</Badge>
+                </span>
+                <span className="mt-0.5 block truncate text-sm text-muted">{w.title} · {w.detail}</span>
+              </span>
+              <span className="flex items-center gap-3 text-xs text-muted tabular-nums">
+                <span aria-hidden className="relative block h-1.5 flex-1 overflow-hidden rounded-full bg-rule">
+                  {w.pct === null ? <span className="progress-sweep absolute inset-y-0 left-0 w-1/3 rounded-full bg-slate" /> : <span className="block h-full rounded-full bg-navy transition-[width] duration-700" style={{ width: `${Math.max(w.pct, 2)}%` }} />}
+                </span>
+                <span className="w-16 text-right">{w.pct === null ? "Working" : `${w.pct}% read`}</span>
+                <ArrowRight aria-hidden className="size-4 flex-none text-faint group-hover:text-ink" />
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

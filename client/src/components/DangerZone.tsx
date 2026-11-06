@@ -5,7 +5,8 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Alert, Button, Dialog, inputClass } from "./ui";
 
-export function DangerZone({ what, name, consequence, typeToConfirm, onDelete }: { what: string; name: string; consequence: string; typeToConfirm?: boolean; onDelete: () => Promise<void> }) {
+// blocked: why it can't be deleted right now (it is still being processed), shown in place of the button's effect.
+export function DangerZone({ what, name, consequence, typeToConfirm, blocked, onDelete }: { what: string; name: string; consequence: string; typeToConfirm?: boolean; blocked?: string | null; onDelete: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,8 +27,9 @@ export function DangerZone({ what, name, consequence, typeToConfirm, onDelete }:
       <div className="min-w-0 flex-1 basis-72">
         <h2 className="font-semibold">Delete this {what}</h2>
         <p className="mt-0.5 text-sm text-muted">{consequence}</p>
+        {blocked && <p id="delete-blocked" className="mt-1.5 text-sm font-medium text-ink">{blocked}</p>}
       </div>
-      <Button variant="danger" onClick={() => setOpen(true)}><Trash2 aria-hidden className="size-4" />Delete {what}</Button>
+      <Button variant="danger" disabled={!!blocked} aria-describedby={blocked ? "delete-blocked" : undefined} onClick={() => setOpen(true)} className="disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-sheet"><Trash2 aria-hidden className="size-4" />Delete {what}</Button>
       <Dialog open={open} onClose={() => { setOpen(false); setTyped(""); }} title={`Delete “${name}”?`}>
         <div className="space-y-4 px-6 py-5">
           <p className="leading-6">{consequence} This can't be undone.</p>
@@ -41,7 +43,7 @@ export function DangerZone({ what, name, consequence, typeToConfirm, onDelete }:
         </div>
         <div className="flex justify-end gap-2 border-t border-rule px-6 py-3.5">
           <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-          <button type="button" disabled={!confirmed || busy} onClick={() => void run()} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-conflict px-3 text-sm font-semibold text-white hover:bg-[#7f1d1d] disabled:cursor-not-allowed disabled:bg-control disabled:text-muted">
+          <button type="button" disabled={!confirmed || busy || !!blocked} onClick={() => void run()} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-conflict px-3 text-sm font-semibold text-white hover:bg-[#7f1d1d] disabled:cursor-not-allowed disabled:bg-control disabled:text-muted">
             {busy ? "Deleting…" : `Delete ${what}`}
           </button>
         </div>

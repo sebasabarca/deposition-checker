@@ -64,7 +64,7 @@ export function ReportPage({ id }: { id: number }) {
   }, [chosen, entries]);
 
   if (error) return <Alert title="This report couldn't be prepared">{error}</Alert>;
-  if (!detail || !checks || !summaries) return <Loading />;
+  if (!detail || !checks || !summaries) return <Loading label="Loading the report" />;
   const ready: Entry[] = chosen.flatMap((s) => (entries.has(s.id) ? [{ summary: s, detail: entries.get(s.id)! }] : []));
   const loading = ready.length < chosen.length;
   const kept = summaries.filter((f) => decisionOf(f.reviewState) === "confirmed").length;
@@ -141,7 +141,7 @@ export function ReportPage({ id }: { id: number }) {
         {chosen.length === 0 ? (
           <p className="mt-10 rounded-md border border-dashed border-control px-6 py-10 text-center text-sm text-muted print:hidden">{picked.size === 0 && checks.length > 0 ? "Choose at least one analysis above." : <>No findings are marked Keep in {picked.size === 1 ? "this analysis" : "these analyses"} yet. Open an analysis and choose <strong>Keep</strong> on the findings to include them here.</>}</p>
         ) : loading ? (
-          <div className="mt-8"><Loading rows={3} label="Preparing the report" /></div>
+          <div className="mt-8"><Loading inline label="Preparing the report" /></div>
         ) : (
           <ol className="mt-4">{ready.map((e, i) => <Item key={e.summary.id} n={i + 1} e={e} />)}</ol>
         )}

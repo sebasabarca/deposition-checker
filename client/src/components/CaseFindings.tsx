@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, CircleAlert } from "lucide-react";
-import { Card, CardHeader, cx } from "./ui";
+import { Card, CardHeader, cx, Loading } from "./ui";
 import { DECISION_DOT, shortRef, StandingNotice } from "./FindingRegister";
 import { api } from "../lib/api";
 import { evidenceCheck, prioritySections, type PrioritySection } from "../lib/findingFilters";
@@ -49,7 +49,7 @@ export function CaseFindings({ analyses }: { analyses: AnalysisView[] }) {
         count={rows?.length}
         description={`${toReview} to review${compatible.length ? ` · ${compatible.length} compatible` : ""}${quarantined.length ? ` · ${quarantined.length} need revalidation` : ""} · leads, not conclusions${examples ? " · example findings, written by hand" : ""}`}
       />
-      {error ? <p className="px-5 py-4 text-sm text-conflict" role="alert">The findings couldn't be loaded: {error}</p> : !rows ? <p className="px-5 py-4 text-sm text-muted">Loading findings…</p> : (
+      {error ? <p className="px-5 py-4 text-sm text-conflict" role="alert">The findings couldn't be loaded: {error}</p> : !rows ? <div className="px-5 py-3"><Loading inline label="Loading findings" /></div> : (
         <div className="divide-y divide-rule">
           {sections.filter((s) => s.findings.length > 0).map((s) => <Section key={s.id} id={s.id} title={PRIORITY[s.id]} help={HELP[s.id]} findings={s.findings} />)}
           {toReview === 0 && <p className="px-5 py-4 text-sm text-muted">Nothing to review: every {quarantined.length ? "current " : ""}finding of these analyses was assessed as compatible.</p>}

@@ -92,7 +92,7 @@ export function AnalysisPage({ id, findingId }: { id: number; findingId: number 
   }, []);
 
   if (error) return <Alert title="This analysis couldn't be loaded">{error}</Alert>;
-  if (!analysis) return <Loading />;
+  if (!analysis) return <Loading label="Loading the check" />;
   const [a, b] = analysis.depositions;
   const cross = analysis.kind === "cross_witness";
   const done = analysis.status === "completed";

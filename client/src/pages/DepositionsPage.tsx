@@ -27,7 +27,7 @@ export function DepositionsPage({ caseId }: { caseId: number | null }) {
   return (
     <>
       <PageHeader title="Depositions" description={data ? `${total} ${total === 1 ? "session" : "sessions"} across ${data.cases.length} ${data.cases.length === 1 ? "case" : "cases"}.` : undefined} actions={<Button onClick={() => add.open(caseId ?? undefined)}><FileUp aria-hidden className="size-4" />Add deposition</Button>} />
-      {!data ? <Loading /> : total === 0 ? (
+      {!data ? <Loading label="Loading depositions" /> : total === 0 ? (
         <Empty title="No depositions yet" action={<Button onClick={() => add.open()}>Add deposition</Button>}>Add a PDF or text transcript. Veridict reads it into page and line references you can search and cite.</Empty>
       ) : (
         <Card className="overflow-hidden">

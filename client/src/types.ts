@@ -347,3 +347,7 @@ export type CaseRunFinding = {
   model: { origin: "model" | "fixture"; model: string; promptVersion: string; outcome: string | null; verdict: unknown };
   safeguards: { rule: string; side: "a" | "b" | null; detail: string }[]; // code checks that moved a conflict verdict to needs context
 };
+
+// An analysis running now somewhere in the workspace (server/src/api/caseRuns.ts runningAnalysis). Veridict runs one
+// at a time: a whole-case run (caseRunId) or an earlier two-session check (caseRunId null).
+export type RunningAnalysis = { caseId: number; caseName: string; caseRunId: number | null };
