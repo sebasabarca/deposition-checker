@@ -3,10 +3,11 @@
 // run says so on every finding. Unread pairs are counted in the coverage, never listed as cleared.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { OPTIONS } from "../components/FindingPanel";
 import { StandingNotice } from "../components/FindingRegister";
 import { TranscriptRows } from "../components/FindingView";
-import { Alert, Badge, Breadcrumbs, Button, Card, cx, fieldClass, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
+import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, cx, fieldClass, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { COVERAGE, isTestRun, laneOf, LANES, MOVING_RUN, RUN_STATUS, type Lane } from "../lib/caseRuns";
 import { displayRef } from "../lib/insights";
@@ -70,6 +71,7 @@ export function CaseRunPage({ id }: { id: number }) {
       <PageHeader
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }, { label: caseName ?? "Case", href: href.case(run.caseId) }]} />}
         title={run.name ?? "Whole-case analysis"}
+        actions={<ReportDownload runId={run.id} findings={findings} />}
         description={`Started ${formatDate(run.createdAt)} · ${run.candidates.sameWitness.toLocaleString()} same-witness and ${run.candidates.crossWitness.toLocaleString()} cross-witness candidate pairs`}
       />
 
@@ -142,6 +144,29 @@ export function CaseRunPage({ id }: { id: number }) {
         )}
       </Card>
     </>
+  );
+}
+
+// The report of this run: the findings kept (and, if chosen, those marked Needs context), from the decisions made
+// on this page. Offered once there's something to put in it.
+function ReportDownload({ runId, findings }: { runId: number; findings: CaseRunFinding[] }) {
+  const [withContext, setWithContext] = useState(false);
+  const kept = findings.filter((f) => shownDecision(f) === "confirmed").length;
+  const context = findings.filter((f) => shownDecision(f) === "needs_context").length;
+  const included = kept + (withContext ? context : 0);
+  return (
+    <div className="flex flex-col items-start gap-1.5 lg:items-end">
+      {included > 0
+        ? <a href={api.caseRunReportUrl(runId, withContext)} download className={buttonClass("primary")}><Download aria-hidden className="size-4" />Download report<span className="font-normal text-navy-ink tabular-nums">· {included} {included === 1 ? "finding" : "findings"}</span></a>
+        : <Button disabled title="Mark findings Keep to include them in the report"><Download aria-hidden className="size-4" />Download report</Button>}
+      {context > 0 && (
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={withContext} onChange={(e) => setWithContext(e.target.checked)} className="size-4 accent-navy" />
+          Include Needs context ({context})
+        </label>
+      )}
+      {included === 0 && <p className="text-xs text-faint">Mark findings Keep to include them.</p>}
+    </div>
   );
 }
 

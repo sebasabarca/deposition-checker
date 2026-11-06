@@ -17,6 +17,9 @@ import type { CaseDetail, FindingDetail, FindingSummary } from "../types";
 
 type Entry = { summary: FindingSummary; detail: FindingDetail };
 
+// The first few witnesses by name, then a count, as in the PDF (server/src/api/report.ts).
+const witnessSummary = (names: string[], shown = 3) => (names.length === 0 ? "–" : names.length <= shown + 1 ? names.join(", ") : `${names.slice(0, shown).join(", ")} and ${names.length - shown} more`);
+
 export function ReportPage({ id }: { id: number }) {
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   // Each finished analysis, newest first, with its findings.
@@ -127,7 +130,7 @@ export function ReportPage({ id }: { id: number }) {
           <p className="mt-1 font-serif text-lg text-muted">Potential contradictions kept for follow-up</p>
           <dl className="mt-5 grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-4">
             <Meta label="Prepared">{formatDate(new Date().toISOString())}</Meta>
-            <Meta label="Witnesses">{detail.witnesses.map((w) => w.name).join(", ") || "–"}</Meta>
+            <Meta label="Witnesses">{witnessSummary(detail.witnesses.map((w) => w.name))}</Meta>
             <Meta label="Kept">{kept}</Meta>
             <Meta label="Needs context">{withContext ? context : `${context} (not included)`}</Meta>
           </dl>
@@ -182,8 +185,9 @@ function Item({ n, e }: { n: number; e: Entry }) {
       </div>
       <p className="mt-3 font-mono text-[13px] leading-5 break-words">{pinpointCitation(f.a, f.b)}</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
-        {side("Earlier session", f.a)}
-        {side("Later session", f.b)}
+        {/* A whole-case finding keeps its sides in retrieval order: the earlier session first. */}
+        {side("Earlier session", (f.b.deposition.takenOn ?? "") < (f.a.deposition.takenOn ?? "") ? f.b : f.a)}
+        {side("Later session", (f.b.deposition.takenOn ?? "") < (f.a.deposition.takenOn ?? "") ? f.a : f.b)}
       </div>
       <div className="mt-4 space-y-3 text-sm leading-6">
         <div>

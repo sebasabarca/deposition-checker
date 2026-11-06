@@ -4,12 +4,13 @@
 // stored replies and restarts follow the live path. See tests/db/database.ts for when these run.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import express from "express";
 import type { Pool } from "pg";
 import type { PgBoss } from "pg-boss";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { caseRunRoutes } from "../../server/src/api";
+import { caseRunRoutes, reportRoutes } from "../../server/src/api";
+import { caseRunReportData } from "../../server/src/api/report";
 import { PACKET_MODEL, type IssuePacket } from "../../server/src/adjudicate/packetPrompt";
 import type { Database } from "../../server/src/db/client";
 import { adjudicationRequests, candidates, caseRuns, depositions, findings, llmCalls, screeningEntries, screeningRuns, verdicts } from "../../server/src/db/schema";
@@ -137,6 +138,32 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run", () => {
     expect(found).toEqual(expect.arrayContaining([lost, neverClaimed]));
     for (const id of [working, justQueued, economy, waiting]) expect(found).not.toContain(id);
     await db.delete(caseRuns).where(sql`${caseRuns.id} in (${sql.join([lost, neverClaimed, working, justQueued, economy, waiting].map((x) => sql`${x}`), sql`, `)})`);
+  });
+
+  it("reports the findings kept from a run, with Needs context only when asked, as a PDF", async () => {
+    const ids = (await db.select({ id: findings.id }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.candidateSet, caseRunSetOf(mockRun))).orderBy(findings.id)).map((r) => r.id);
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    await db.update(findings).set({ reviewState: "confirmed", reviewNote: "Ask about the date." }).where(eq(findings.id, ids[0]));
+    await db.update(findings).set({ reviewState: "needs_context" }).where(eq(findings.id, ids[1]));
+    try {
+      const kept = await caseRunReportData(db, mockRun, false);
+      expect(kept).toMatchObject({ kept: 1, context: 1, withContext: false });
+      expect(kept!.entries.map((e) => [e.id, e.reviewNote])).toEqual([[ids[0], "Ask about the date."]]);
+      expect(kept!.entries[0].a.lines.length).toBeGreaterThan(0); // the stored testimony, at page:line
+      expect((await caseRunReportData(db, mockRun, true))!.entries.map((e) => e.id)).toEqual([ids[0], ids[1]]);
+      const app = express();
+      app.use("/api", reportRoutes({ db }));
+      const server = await listen(app);
+      try {
+        const res = await fetch(`${server.url}/api/case-runs/${mockRun}/report.pdf`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("application/pdf");
+        expect(new TextDecoder().decode((await res.arrayBuffer()).slice(0, 5))).toBe("%PDF-");
+        expect((await fetch(`${server.url}/api/case-runs/999999/report.pdf`)).status).toBe(404);
+      } finally { await server.close(); }
+    } finally {
+      await db.update(findings).set({ reviewState: "unreviewed", reviewNote: null }).where(inArray(findings.id, ids.slice(0, 2)));
+    }
   });
 
   it("does nothing more when run again", async () => {

@@ -223,7 +223,8 @@ async function firstLineRefs(db: Database, partIds: number[]) {
   return new Map(rows.rows.map((r) => [Number(r.exchange_id), ref(r.page, r.line)]));
 }
 
-type PacketSide = { id: string; session: "A" | "B"; depositionId: number; groupId: number; partIds: number[]; lineIds: number[]; contextLineIds: number[]; gapBefore?: boolean; gapAfter?: boolean };
+// contextLineIds: absent on whole-case packets, which carry only the cited exchanges.
+type PacketSide = { id: string; session?: "A" | "B"; depositionId: number; groupId: number; partIds?: number[]; lineIds: number[]; contextLineIds?: number[]; gapBefore?: boolean; gapAfter?: boolean };
 
 // One finding with both passages as stored: every line's page:line and text from the transcript,
 // the lines code found the cited phrase on, and the context shown to the adjudicator.
@@ -255,13 +256,13 @@ export async function findingDetail(db: Database, id: number) {
   const direct = (f.checks as { direct?: DirectChecks }).direct ?? null;
   const cross = (f.checks as { cross?: CrossChecks }).cross ?? null;
   const usedFallback = direct !== null && v.model === (cross ? CROSS_FALLBACK_MODEL : DISCOVERY_FALLBACK_MODEL);
-  const allIds = packet.sides.flatMap((s) => [...s.lineIds, ...s.contextLineIds]);
+  const allIds = packet.sides.flatMap((s) => [...s.lineIds, ...(s.contextLineIds ?? [])]);
   const stored = new Map(
     (allIds.length ? await db.select({ id: lines.id, page: lines.printedPage, line: lines.lineNo, text: lines.rawText, speaker: lines.speakerRole, ocrConfidence: lines.ocrConfidence, pdfPage: lines.pdfPage }).from(lines).where(inArray(lines.id, allIds)) : []).map((l) => [l.id, l]),
   );
   const roles = new Map(
     (allIds.length
-      ? await db.select({ lineId: exchangeLines.lineId, role: exchangeLines.role }).from(exchangeLines).where(inArray(exchangeLines.exchangeId, packet.sides.flatMap((s) => s.partIds)))
+      ? await db.select({ lineId: exchangeLines.lineId, role: exchangeLines.role }).from(exchangeLines).where(inArray(exchangeLines.exchangeId, packet.sides.flatMap((s) => s.partIds ?? [])))
       : []
     ).map((r) => [r.lineId, r.role]),
   );
@@ -272,7 +273,8 @@ export async function findingDetail(db: Database, id: number) {
     .where(inArray(depositions.id, [c.depositionA, c.depositionB]));
 
   const side = (which: "a" | "b") => {
-    const p = packet.sides.find((s) => s.session === (which === "a" ? "A" : "B"))!;
+    // Whole-case packets keep the two sides in order, without a session letter.
+    const p = packet.sides.find((s) => s.session === (which === "a" ? "A" : "B")) ?? packet.sides[which === "a" ? 0 : 1];
     const source = checks.source[which];
     const highlight = new Set(source.evidenceLineIds);
     const validation = docs.find((d) => d.id === p.depositionId)?.validation;
@@ -282,8 +284,8 @@ export async function findingDetail(db: Database, id: number) {
     const exchangeLineIds = new Set(p.lineIds);
     const firstId = p.lineIds[0];
     const lastId = p.lineIds[p.lineIds.length - 1];
-    const before = p.contextLineIds.filter((lid) => !exchangeLineIds.has(lid) && (stored.get(lid)?.page ?? 0) * 100 + (stored.get(lid)?.line ?? 0) < (stored.get(firstId)?.page ?? 0) * 100 + (stored.get(firstId)?.line ?? 0));
-    const after = p.contextLineIds.filter((lid) => !before.includes(lid));
+    const before = (p.contextLineIds ?? []).filter((lid) => !exchangeLineIds.has(lid) && (stored.get(lid)?.page ?? 0) * 100 + (stored.get(lid)?.line ?? 0) < (stored.get(firstId)?.page ?? 0) * 100 + (stored.get(firstId)?.line ?? 0));
+    const after = (p.contextLineIds ?? []).filter((lid) => !before.includes(lid));
     const doc = docs.find((d) => d.id === p.depositionId)!;
     const att = checks.attribution[which];
     return {
