@@ -1289,3 +1289,60 @@ An analysis of selected depositions is a case run whose `config.scope.deposition
 (`buildCasePool` `depositionIds`) to those depositions. Every other part is the whole-case pipeline: the same model,
 prompt, checks, scoring, estimate, budget, fast or economy execution, and recovery. The API refuses a selection
 outside the case, one with an unready or excluded deposition, or one with fewer than two sessions.
+
+## Implementation note: exact-request reuse (November 5, on `experiment/orchestrator-evaluator`, approved for the branch)
+
+**What it is.** A case run reuses a recorded provider response instead of sending a request again, but only when the
+request it would send is the *same request*: byte for byte what the provider would see, read from the same
+evidence. It is automatic and case-scoped. The worker turns it on for every live run, and a server can switch it off with
+`REQUEST_REUSE=off`. Scripts and tests that don't ask for it send every request, as before.
+Lawyers configure nothing. Carried-forward reuse (reusing a verdict for an unchanged pair in a *different* request)
+is **not** part of this note. It was rejected as unrestricted, and is not enabled (`docs/verdict-reuse-validation.md`).
+
+**The cache key** (`server/src/adjudicate/requestReuse.ts`, pure):
+- **Request fingerprint:** SHA-256 of the canonical JSON of the provider-visible request, as
+  `packetRequestParams` builds it for both standard and batch transport: model, max_tokens, system prompt with its
+  cache control, effort, output schema and the packet text. It adds the adjudicator's own model id and effort, and
+  the contract. Any change to the prompt, schema, model, effort, output cap or a single character of the evidence
+  text changes it.
+- **Evidence key:** SHA-256 of every deposition the packet shows, with its witness, parser version and current
+  evidence epoch, and of every stored line id each passage shows. Identical text from re-ingested, corrected,
+  re-attributed or re-parsed evidence therefore misses.
+- A hit needs **both** to match.
+
+**What can be reused:**
+- a request of a live run **of the same case**;
+- status `completed`: answered, not cut off at max_tokens, no error kind such as a refusal;
+- with a recorded `llm_calls` row holding its raw text;
+- with the same fingerprint and evidence key.
+
+Requests that are sent, failed, partial, uncertain, aborted, not submitted, or still in an unimported batch are
+never sources, and neither is a reused request (it has no call of its own). Mock and test-model runs neither use
+nor provide reuse. Nothing is shared across cases or organisations.
+
+**What a hit does:**
+- Records an `adjudication_requests` row with status `reused`, `reused_from_request_id`, the fingerprint and
+  evidence key, `max_cost_usd = 0`, no reservation and **no `llm_calls` row**, so the hit is never counted as
+  billed.
+- Stores an **estimate** of the cost avoided: the source call's recorded cost, converted to this run's mode at the
+  Batch API's 50% rate when the modes differ.
+- Points the ledger entry's stored-reply pointer at the source call, then parses that raw text through the normal
+  path (`applyReply`). Current verification, attribution safeguards, consistency checks and scoring run again, and
+  write verdicts and findings for this run's candidates. Each verdict has `origin = model`, the source
+  `llm_call_id` (the call that produced the text) and this run's `request_id` (the reused row).
+- A crash after the pointer is set is recovered exactly like a paid reply that wasn't parsed yet.
+
+**Unchanged:**
+- retrieval, packets, prompts, adjudication and recovery rounds (a recovery request is a new request, sent unless
+  it too is identical);
+- budgets and reservations (a hit reserves nothing);
+- evidence epochs (the fenced connection and the database guard still check every write);
+- Batch reconciliation, coverage accounting, citations and finding provenance;
+- human reviews: they belong to the earlier run's findings and are not touched.
+
+**Reporting:**
+- the run report counts `requests.reused`, and `cost.reuse = { requests, avoidedUsdEstimate }` beside the actual
+  cost;
+- actual cost and calls still come only from `llm_calls`;
+- the result page shows reused requests and the estimated cost avoided, labelled as an estimate, never as a
+  charge.

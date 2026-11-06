@@ -42,6 +42,7 @@ export function CaseRunPage({ id }: { id: number }) {
   if (error) return <Alert title="This whole-case analysis couldn't be loaded">{error}</Alert>;
   if (!run || !findings) return <Loading />;
   const test = isTestRun(run);
+  const reused = run.cost.reuse?.requests ?? run.requests.reused ?? 0;
   const s = RUN_STATUS[run.status];
   const c = COVERAGE[run.coverageState];
   const list = byLane.get(lane)!;
@@ -65,7 +66,15 @@ export function CaseRunPage({ id }: { id: number }) {
           <div className="px-5 py-4"><dt className="text-xs text-faint">Status</dt><dd className="mt-1"><Badge tone={s.tone} dot>{s.label}</Badge></dd></div>
           <div className="px-5 py-4"><dt className="text-xs text-faint">Coverage</dt><dd className="mt-1"><Badge tone={c.tone} dot>{c.label}</Badge></dd></div>
           <div className="px-5 py-4"><dt className="text-xs text-faint">Candidate pairs with a verdict</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{run.candidates.adjudicated.toLocaleString()} <span className="text-sm font-normal text-faint">of {run.candidates.total.toLocaleString()}</span></dd></div>
-          <div className="px-5 py-4"><dt className="text-xs text-faint">Cost</dt><dd className="mt-1 text-lg font-semibold tabular-nums">{test ? "$0" : formatUsd(run.cost.costUsd)}{!test && run.cost.budget && <span className="text-sm font-normal text-faint"> of {formatUsd(run.cost.budget.limitUsd)}</span>}</dd></div>
+          <div className="px-5 py-4">
+            <dt className="text-xs text-faint">Cost</dt>
+            <dd className="mt-1 text-lg font-semibold tabular-nums">{test ? "$0" : formatUsd(run.cost.costUsd)}{!test && run.cost.budget && <span className="text-sm font-normal text-faint"> of {formatUsd(run.cost.budget.limitUsd)}</span>}</dd>
+            {!test && reused > 0 && (
+              <dd className="mt-1 text-xs leading-snug text-muted">
+                {reused.toLocaleString()} identical {reused === 1 ? "request" : "requests"} answered from an earlier run of this case, not charged again. About {formatUsd(run.cost.reuse?.avoidedUsdEstimate ?? 0)} saved (estimate).
+              </dd>
+            )}
+          </div>
         </dl>
         <div className="border-t border-rule px-5 py-3 text-sm text-muted">
           {c.help}

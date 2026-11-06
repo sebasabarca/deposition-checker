@@ -825,7 +825,9 @@ export const findings = pgTable(
 // needs credentials and ALLOW_PAID_CALLS; `demo` never calls a model, replaying stored verdicts.
 // One request to the adjudication model: one candidate or a batch. The charge lives once in llm_calls
 // (null when no response came back); a candidate's share is an allocation of it, never a second charge.
-export const adjudicationRequestStatus = pgEnum("adjudication_request_status", ["sent", "completed", "partial", "failed", "rate_limited", "aborted", "oversize"]);
+// reused: no request was sent; a recorded response to an identical request was reused (exact-request reuse,
+// DESIGN.md). It has no llm_calls row and no reservation, so it is never counted as billed.
+export const adjudicationRequestStatus = pgEnum("adjudication_request_status", ["sent", "completed", "partial", "failed", "rate_limited", "aborted", "oversize", "reused"]);
 export const adjudicationRequests = pgTable(
   "adjudication_requests",
   {
@@ -863,15 +865,24 @@ export const adjudicationRequests = pgTable(
     screeningEntryId: ref("screening_entry_id").references(() => screeningEntries.id),
     round: integer("round"),
     retryOf: ref("retry_of"),
+    // Exact-request reuse (adjudicate/requestReuse.ts): the provider-visible request's fingerprint and the evidence
+    // key it was built from, on every case-run request; on a `reused` row, the request whose response it reused and
+    // the estimated cost that avoided (an estimate, never a charge).
+    requestFingerprint: text("request_fingerprint"),
+    evidenceKey: text("evidence_key"),
+    reusedFromRequestId: ref("reused_from_request_id"),
+    avoidedCostUsd: numeric("avoided_cost_usd", { precision: 14, scale: 8, mode: "number" }),
     startedAt: createdAt(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (t) => [
     index("adjudication_requests_set_idx").on(t.candidateSet),
+    index("adjudication_requests_fingerprint_idx").on(t.requestFingerprint),
     index("adjudication_requests_analysis_idx").on(t.analysisId),
     uniqueIndex("adjudication_requests_custom_id_unique").on(t.customId),
     index("adjudication_requests_batch_idx").on(t.caseRunBatchId),
     index("adjudication_requests_entry_idx").on(t.screeningEntryId),
+    check("adjudication_requests_reused_check", sql`(${t.status}::text = 'reused') = (${t.reusedFromRequestId} is not null) and (${t.status}::text <> 'reused' or (${t.llmCallId} is null and ${t.reservationId} is null and ${t.maxCostUsd} = 0))`),
   ],
 );
 

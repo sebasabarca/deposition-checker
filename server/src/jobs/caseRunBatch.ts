@@ -39,6 +39,7 @@ import type { Database } from "../db/client";
 import { adjudicationRequests, caseRunBatches, caseRuns, screeningEntries, witnesses } from "../db/schema";
 import { claimNext, markFailed } from "../screen/ledger";
 import { MAX_RECOVERY_ROUNDS } from "../verify/packet";
+import { findReusable, recordReuse, requestKeys, reuseApplies } from "./requestReuse";
 import { applyReply, caseRunSetOf, contractOf, entryContext, finish, markIncomplete, MOCK_MODEL, nextStep, type CaseRun, type CaseRunStatus, type Entry, type EntryContext, type ItemIndex } from "./caseRun";
 
 export type BatchSettings = { batchSize: number; maxBytes: number; inFlight: number; pollSeconds: number; reconcileWindowMs: number };
@@ -77,6 +78,7 @@ export type BatchDeps = {
   settings?: Partial<BatchSettings>;
   now?: () => number;
   faults?: { afterBatchWritten?: (seq: number) => void; afterResultRecorded?: (customId: string) => void; afterSubmitted?: (seq: number) => void };
+  reuse?: boolean; // exact-request reuse (jobs/requestReuse.ts): only when true
 };
 
 type Batch = typeof caseRunBatches.$inferSelect;
@@ -122,7 +124,7 @@ export async function runBatchTick(db: Database, run: CaseRun, ledgerId: number,
   for (const entry of waiting) {
     const last = latest.get(entry.id) ?? null;
     if (last?.status === "sent") continue;
-    const send = await advance(db, run, ledgerId, entry, last, await contextOf(db, entry), model, pending, cancelling);
+    const send = await advance(db, run, ledgerId, entry, last, await contextOf(db, entry), model, pending, cancelling, deps.reuse);
     if (send) sends.push(send);
   }
 
@@ -162,7 +164,8 @@ async function latestRequests(db: Database, entryIds: number[]) {
 }
 
 // What an entry needs after its last request (or with none: a fresh claim). Returns the request to send, if any.
-async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entry, last: Request | null, ctx: EntryContext | string, model: Model, pending: Map<number, string | null>, cancelling: boolean): Promise<Send | null> {
+async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entry, lastIn: Request | null, ctx: EntryContext | string, model: Model, pending: Map<number, string | null>, cancelling: boolean, reuse?: boolean): Promise<Send | null> {
+  let last = lastIn;
   if (typeof ctx === "string") {
     await failEntry(db, ledgerId, entry, ctx, false);
     return null;
@@ -184,21 +187,41 @@ async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entr
       continue;
     }
     const send = (round: number, retryOf: number | null): Send => ({ entry: at.entry, packet: step.packet, sentIds: step.sentIds, round, retryOf });
+    // Exact-request reuse, wherever a request would go to a batch: the same provider-visible request from the same
+    // evidence, already answered in a live run of this case, is parsed again instead of being submitted.
+    const reused = async (round: number): Promise<boolean> => {
+      if (cancelling || !reuseApplies(run, reuse)) return false;
+      const keys = await requestKeys(db, contractOf(run), step.packet, model);
+      const source = await findReusable(db, run.caseId, keys);
+      if (!source) return false;
+      const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round, strategy: "packet-batch", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: maxOutputTokensFor(step.packet.pairs.length) });
+      at.entry = await applyReply(db, run, { ...at.entry, requestId: hit.request.id, llmCallId: source.llmCallId }, step.packet, step.sentIds, hit.reply, model);
+      last = hit.request;
+      mock = undefined;
+      return true;
+    };
     // Cancelling: nothing more is sent. Unread pairs go back to the queue; a possibly billed request stays visible.
     if (cancelling && last?.errorKind !== "uncertain") {
       await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: cancelled", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
       return null;
     }
-    if (!last) return send(1, null);
-    if (last.status === "completed" || last.status === "partial") {
+    if (!last) {
+      if (await reused(1)) continue;
+      return send(1, null);
+    }
+    if (last.status === "completed" || last.status === "partial" || last.status === "reused") {
       if ((last.round ?? 1) >= 1 + MAX_RECOVERY_ROUNDS) {
         await markIncomplete(db, at.entry, step.remaining, ctx);
         return null;
       }
+      if (await reused((last.round ?? 1) + 1)) continue;
       return send((last.round ?? 1) + 1, null);
     }
     // Errored (not a bad request) or expired: not billed, so retried once in a later batch.
-    if ((last.errorKind === "batch_errored" || last.errorKind === "expired") && last.retryOf === null) return send(last.round ?? 1, last.id);
+    if ((last.errorKind === "batch_errored" || last.errorKind === "expired") && last.retryOf === null) {
+      if (await reused(last.round ?? 1)) continue;
+      return send(last.round ?? 1, last.id);
+    }
     if (last.errorKind === "canceled" || last.errorKind === "test_batch_lost") {
       await db.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: its batch was cancelled", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
       return null;
@@ -254,7 +277,7 @@ async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[
         const [entry] = await claimNext(tx, ledgerId, 1);
         if (!entry) break;
         const ctx = await contextOf(tx, entry);
-        const send = await advance(tx, run, ledgerId, entry, null, ctx, model, new Map(), false);
+        const send = await advance(tx, run, ledgerId, entry, null, ctx, model, new Map(), false, deps.reuse);
         if (!send) continue; // done already, or failed: nothing to send
         if (!(await take(send, true))) {
           await tx.update(screeningEntries).set({ adjudicationStatus: "not_started", adjudicationNote: "returned to the queue: budget or batch size", updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
@@ -268,7 +291,8 @@ async function submit(db: Database, run: CaseRun, ledgerId: number, sends: Send[
       for (const i of items) {
         const chars = requestChars(i.send.packet, contractOf(run));
         const id = await openRequest(tx, context, { candidateIds: i.send.sentIds, model: model.model, promptVersion: model.promptVersion, estimatedInputTokens: inputTokenBound(chars), maxOutputTokens: maxOutputTokensFor(i.send.packet.pairs.length), maxCostUsd: i.maxCostUsd, reservationId: i.reservationId });
-        await tx.update(adjudicationRequests).set({ caseRunBatchId: batch.id, customId: i.request.customId, screeningEntryId: i.send.entry.id, round: i.send.round, retryOf: i.send.retryOf }).where(eq(adjudicationRequests.id, id));
+        const keys = await requestKeys(tx, contractOf(run), i.send.packet, model); // so an identical later request can reuse this response once imported
+        await tx.update(adjudicationRequests).set({ caseRunBatchId: batch.id, customId: i.request.customId, screeningEntryId: i.send.entry.id, round: i.send.round, retryOf: i.send.retryOf, requestFingerprint: keys.fingerprint, evidenceKey: keys.evidenceKey }).where(eq(adjudicationRequests.id, id));
       }
       // Nothing is sent from evidence that has changed: the guard (migration 0039) checks every epoch this run
       // declared, under the lock a correction must wait for, and refuses (VE002) before the provider is called. A

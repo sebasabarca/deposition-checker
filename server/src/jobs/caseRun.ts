@@ -61,6 +61,7 @@ import { VERIFICATION_VERSION } from "../verify/version";
 import { Aborted, ProviderLimiter, realClock, UNLIMITED, type Clock } from "./limiter";
 import { BATCH_DEFAULTS, reconcileStaleBatchRun, runBatchTick, STALE_BATCH_RECONCILING, type BatchDeps } from "./caseRunBatch";
 import { BATCH_MULTIPLIER } from "../costs/pricing";
+import { findReusable, recordReuse, requestKeys, reuseApplies, storeKeys, type RequestKeys } from "./requestReuse";
 
 export const CASE_RUN_STATUSES = ["queued", "retrieving", "awaiting_confirmation", "adjudicating", "completed", "incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted", "reconciling"] as const;
 export type CaseRunStatus = (typeof CASE_RUN_STATUSES)[number];
@@ -92,7 +93,9 @@ export type CaseRunDeps = {
   minilm?: "auto" | "off";
   packetLimits?: PacketLimits; // default PACKET_LIMITS (8 pairs, about 9,000 input tokens)
   // afterRequestSent: the provider has the request, and the process dies before any response is saved.
-  faults?: { afterReplyRecorded?: (packetId: string) => void; afterRequestSent?: (packetId: string) => void };
+  faults?: { afterReplyRecorded?: (packetId: string) => void; afterRequestSent?: (packetId: string) => void; afterReuseRecorded?: (packetId: string) => void };
+  // Exact-request reuse (jobs/requestReuse.ts): only when true; the worker sets it from REQUEST_REUSE (on unless "off").
+  reuse?: boolean;
   // Economy execution (caseRunBatch.ts): the batch provider for a run, or null when this server can't use it.
   batch?: (run: CaseRun) => BatchDeps | null;
 };
@@ -277,7 +280,7 @@ async function runFenced(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDe
       await update(db, run.id, { status: "adjudicating", startedAt: run.startedAt ?? new Date(), finishedAt: null, error: null });
       await db.update(caseRuns).set({ config: sql`${caseRuns.config} || ${JSON.stringify({ execution: { mode: "batch", ...BATCH_DEFAULTS, ...batch.settings } })}::jsonb` }).where(eq(caseRuns.id, run.id));
     }
-    return runBatchTick(db, run, ledger.id, batch);
+    return runBatchTick(db, run, ledger.id, { ...batch, reuse: batch.reuse ?? deps.reuse });
   }
   const model = run.mode === "mock" ? mockCaseModel(MOCK_MODEL, contractOf(run)) : deps.adjudicator(run);
   if (!model) {
@@ -575,7 +578,19 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
         await markIncomplete(db, at.entry, step.remaining, ctx);
         return { kind: "incomplete" };
       }
-      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex);
+      // Exact-request reuse: the same provider-visible request, from the same evidence, already answered in a live
+      // run of this case. Its recorded response is parsed again below instead of paying for a new one.
+      const keys = await requestKeys(db, contractOf(run), step.packet, model);
+      const source = reuseApplies(run, deps.reuse) ? await findReusable(db, run.caseId, keys) : null;
+      if (source) {
+        const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round: replies.made + 1, strategy: "packet", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: maxOutputTokensFor(step.packet.pairs.length) });
+        replies.made++;
+        reply = hit.reply;
+        deps.faults?.afterReuseRecorded?.(at.entry.packetId);
+        at.entry = await applyReply(db, run, at.entry, step.packet, step.sentIds, reply, model);
+        continue;
+      }
+      const call = await callModel(db, run, at.entry, step.packet, step.sentIds, model, deps, ex, keys);
       if (call.kind === "halted") return call; // nothing sent: the interrupt returns the packet to the queue
       if (call.kind !== "reply") return call.kind === "budget" ? releaseForBudget(db, at.entry, call.message) : fail(db, ledgerId, at.entry, call.message, call.billable, call.fatal);
       replies.made++;
@@ -597,7 +612,7 @@ async function storedReply(db: Database, requestId: number, llmCallId: number) {
 // or 529 pauses every request in the process for its retry-after (or reset), then this one is retried a bounded
 // number of times; any other failure ends the attempt, with whether it may have been billed. A request whose
 // outcome is unknown is never sent again here.
-async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec) {
+async function callModel(db: Database, run: CaseRun, entry: Entry, packet: IssuePacket, sentIds: number[], model: CasePacketModel, deps: CaseRunDeps, { limiter, shared }: Exec, keys: RequestKeys) {
   const live = run.mode === "live";
   const maxOutputTokens = maxOutputTokensFor(packet.pairs.length);
   const chars = requestChars(packet, contractOf(run));
@@ -632,6 +647,7 @@ async function callModel(db: Database, run: CaseRun, entry: Entry, packet: Issue
       }
     }
     const requestId = await openRequest(db, context, { candidateIds: sentIds, model: model.model, promptVersion: model.promptVersion, estimatedInputTokens: inputTokens, maxOutputTokens, maxCostUsd, reservationId });
+    await storeKeys(db, requestId, keys); // so an identical later request can reuse this one's response once it completes
     deps.faults?.afterRequestSent?.(entry.packetId);
     try {
       const reply = await model.adjudicate(packet, { signal: deps.signal });
@@ -857,11 +873,14 @@ export async function caseRunReport(db: Database, id: number) {
   const lanes = await db.select({ type: findings.type, priority: findings.priority, scored: sql<boolean>`${findings.score} is not null`, n: sql<number>`count(*)::int` }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.candidateSet, set)).groupBy(findings.type, findings.priority, sql`${findings.score} is not null`);
   // Requests by what is known about them: answered (a reply was recorded), failed and not billed (rejected,
   // or a released reservation), uncertain (may have been billed: counted in full, never retried automatically).
-  const [req] = await db.execute<{ requests: number; answered: number; unbilled: number; uncertain: number; open: number; calls: number; cost: string | null; input: number; output: number }>(sql`
+  // Reused requests (exact-request reuse) were never sent: no call, no reservation, no charge; counted apart, with
+  // the estimated cost they avoided, never in the actual cost.
+  const [req] = await db.execute<{ requests: number; answered: number; unbilled: number; uncertain: number; open: number; calls: number; cost: string | null; input: number; output: number; reused: number; avoided: string | null }>(sql`
     select count(*)::int as requests,
       count(*) filter (where r.status in ('completed', 'partial'))::int as answered,
-      count(*) filter (where r.status not in ('completed', 'partial', 'sent') and (b.status is null or b.status = 'released') and coalesce(r.error_kind, '') <> 'uncertain')::int as unbilled,
-      count(*) filter (where r.status not in ('completed', 'partial', 'sent') and (b.status = 'uncertain' or r.error_kind = 'uncertain'))::int as uncertain,
+      count(*) filter (where r.status not in ('completed', 'partial', 'sent', 'reused') and (b.status is null or b.status = 'released') and coalesce(r.error_kind, '') <> 'uncertain')::int as unbilled,
+      count(*) filter (where r.status not in ('completed', 'partial', 'sent', 'reused') and (b.status = 'uncertain' or r.error_kind = 'uncertain'))::int as uncertain,
+      count(*) filter (where r.status = 'reused')::int as reused, sum(r.avoided_cost_usd) filter (where r.status = 'reused')::text as avoided,
       count(*) filter (where r.status = 'sent')::int as open,
       count(l.id)::int as calls, sum(l.cost_usd)::text as cost,
       coalesce(sum(l.input_tokens + l.cache_write_5m_tokens + l.cache_write_1h_tokens + l.cache_read_tokens), 0)::int as input, coalesce(sum(l.output_tokens), 0)::int as output
@@ -924,8 +943,12 @@ export async function caseRunReport(db: Database, id: number) {
     },
     unresolved,
     findings: lanes,
-    requests: { total: req.requests, answered: req.answered, failedNotBilled: req.unbilled, uncertain: req.uncertain, open: req.open },
-    cost: { recordedCalls: req.calls, costUsd: req.cost === null ? 0 : Number(req.cost), inputTokens: req.input, outputTokens: req.output, budget: budget ? { limitUsd: Number(budget.limit_usd), spentUsd: Number(budget.spent_usd), reservedUsd: Number(budget.reserved_usd) } : null },
+    requests: { total: req.requests, answered: req.answered, failedNotBilled: req.unbilled, uncertain: req.uncertain, open: req.open, reused: req.reused },
+    cost: {
+      recordedCalls: req.calls, costUsd: req.cost === null ? 0 : Number(req.cost), inputTokens: req.input, outputTokens: req.output, budget: budget ? { limitUsd: Number(budget.limit_usd), spentUsd: Number(budget.spent_usd), reservedUsd: Number(budget.reserved_usd) } : null,
+      // An estimate: each reused request's source call cost, in this run's mode. Not a charge, not a refund.
+      reuse: { requests: req.reused, avoidedUsdEstimate: req.avoided === null ? 0 : Math.round(Number(req.avoided) * 1e4) / 1e4 },
+    },
   };
 }
 export type CaseRunReport = NonNullable<Awaited<ReturnType<typeof caseRunReport>>>;

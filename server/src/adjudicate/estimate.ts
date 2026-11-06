@@ -4,10 +4,10 @@
 // max_tokens, which bounds thinking and the verdict together. Actual cost always comes from the
 // provider's usage on each recorded call.
 
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { callCost, type CallTokens } from "../costs";
 import type { Database } from "../db/client";
-import { llmCalls, verdicts } from "../db/schema";
+import { adjudicationRequests, llmCalls, verdicts } from "../db/schema";
 import { formatPacket, loadPacket } from "./packet";
 
 export const MIN_MEASURED_CALLS = 4;
@@ -66,7 +66,9 @@ export async function measuredSamples(db: Database, model: string, promptVersion
     .select({ candidateId: verdicts.candidateId, input: llmCalls.inputTokens, output: llmCalls.outputTokens, cacheRead: llmCalls.cacheReadTokens, cacheWrite5m: llmCalls.cacheWrite5mTokens })
     .from(verdicts)
     .innerJoin(llmCalls, eq(llmCalls.id, verdicts.llmCallId))
-    .where(and(eq(llmCalls.model, model), eq(verdicts.promptVersion, promptVersion), isNotNull(llmCalls.costUsd)));
+    // A verdict from a reused response (exact-request reuse) points at the call it reused: not a new sample.
+    .leftJoin(adjudicationRequests, eq(adjudicationRequests.id, verdicts.requestId))
+    .where(and(eq(llmCalls.model, model), eq(verdicts.promptVersion, promptVersion), isNotNull(llmCalls.costUsd), or(isNull(adjudicationRequests.id), ne(adjudicationRequests.status, "reused"))));
   const samples: CallSample[] = [];
   for (const r of rows) samples.push({ ...r, packetChars: formatPacket(await loadPacket(db, r.candidateId)).length });
   return samples;

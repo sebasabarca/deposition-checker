@@ -11,6 +11,7 @@ import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
 import { anthropicPacketBatches } from "./adjudicate/packetBatch";
 import { FakeBatchProvider } from "./eval/mockPacketBatch";
 import { batchSettings } from "./jobs/caseRunBatch";
+import { reuseAllowed } from "./jobs/requestReuse";
 import { analysisKeySet, contractOf, createAnalysisQueues, createCaseRunQueues, createIngestQueues, fromPacketAdjudicator, paidCallsAllowed, startAnalysisWorkers, startBoss, startCaseRunWorkers, startIngestWorkers } from "./jobs";
 
 const SHUTDOWN_GRACE_MS = 60_000;
@@ -49,6 +50,8 @@ async function main() {
       // A live run sends its own contract (packet-v1, or the experimental stretch-v2 when the run was created with it).
       adjudicator: (run) => (analysisKeySet(process.env) ? fromPacketAdjudicator(anthropicPacketAdjudicator(undefined, contractOf(run))) : null),
       batch: (run) => (run.mode === "mock" ? { provider: fake, settings: batches } : live ? { provider: live, settings: batches } : null),
+      // Exact-request reuse (jobs/requestReuse.ts): automatic for live runs; REQUEST_REUSE=off turns it off.
+      reuse: reuseAllowed(process.env),
     },
     { maxCases: caseRuns.maxCases, batchPollSeconds: batches.pollSeconds },
   );

@@ -115,10 +115,19 @@ type CaseRunReport = {
   packets: { total; adjudicated; incomplete; failed; notStarted; inProgress; uncertain; retryable; storedRepliesNotParsed; modelReplies: number };
   unresolved: { packetId: string; status: "incomplete" | "failed"; pairs: { a: string; b: string; status: string }[] | null; note: string | null; uncertain: boolean | null }[];
   findings: { type: string; priority: string; scored: boolean; n: number }[];   // counts by lane
-  requests: { total; answered; failedNotBilled; uncertain; open: number };
-  cost: { recordedCalls: number; costUsd: number; inputTokens: number; outputTokens: number; budget: { limitUsd; spentUsd; reservedUsd: number } | null };
+  requests: { total; answered; failedNotBilled; uncertain; open; reused: number };   // reused: answered from an identical earlier request, never sent
+  cost: { recordedCalls: number; costUsd: number; inputTokens: number; outputTokens: number; budget: { limitUsd; spentUsd; reservedUsd: number } | null;
+    reuse: { requests: number; avoidedUsdEstimate: number } };   // an estimate of what reuse avoided; never part of costUsd
 };
 ```
+
+**Exact-request reuse** (DESIGN.md, "Implementation note: exact-request reuse"). A live run reuses the recorded response
+of an identical request from an earlier live run of the same case: the same provider-visible request (prompt,
+schema, model, effort, output cap, packet text) from the same evidence (depositions, witnesses, parser versions,
+evidence epochs, line ids). A reused request is recorded with status `reused`: no call, no reservation, no charge.
+Its response is parsed, verified, safeguarded and scored again by current code, and its findings are this run's own.
+`cost.costUsd` and `recordedCalls` count only calls this run paid for. The worker turns reuse on, and
+`REQUEST_REUSE=off` turns it off for the server.
 
 ## How to show incomplete work
 

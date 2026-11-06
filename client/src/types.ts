@@ -326,8 +326,10 @@ export type CaseRun = {
   candidates: { total: number; adjudicated: number; incomplete: number; pending: number; deferred: number; uncovered: number; excluded: number; sameWitness: number; crossWitness: number };
   packets: { total: number; adjudicated: number; incomplete: number; failed: number; notStarted: number; inProgress: number; uncertain: number; retryable: number };
   findings: { type: string; priority: string; scored: boolean; n: number }[];
-  requests: { total: number; answered: number; failedNotBilled: number; uncertain: number; open: number };
-  cost: { recordedCalls: number; costUsd: number; budget: { limitUsd: number; spentUsd: number; reservedUsd: number } | null };
+  // reused: requests answered by reusing the recorded response to an identical request from an earlier run of the
+  // case (exact-request reuse): never sent, never charged. avoidedUsdEstimate is an estimate, not a charge.
+  requests: { total: number; answered: number; failedNotBilled: number; uncertain: number; open: number; reused?: number };
+  cost: { recordedCalls: number; costUsd: number; budget: { limitUsd: number; spentUsd: number; reservedUsd: number } | null; reuse?: { requests: number; avoidedUsdEstimate: number } };
 };
 export type CaseRunSide = { exchange: string; depositionId: number; witnessId: number | null; witness: string | null; takenOn: string | null; range: string | null; lines: { id: number; at: string; text: string }[] };
 export type CaseRunFinding = {
