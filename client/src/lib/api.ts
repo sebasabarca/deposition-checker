@@ -88,6 +88,8 @@ export const api = {
   },
   depositionPdf: (id: number, pdfPage: number) => `/api/depositions/${id}/pdf#page=${pdfPage}`,
   depositionOriginal: (id: number) => `/api/depositions/${id}/pdf`,
+  // One whole-case run's kept findings (and, withContext, those marked Needs context) as a PDF download.
+  caseRunReportUrl: (runId: number, withContext: boolean) => `/api/case-runs/${runId}/report.pdf${withContext ? "?context=1" : ""}`,
   // The kept findings as a PDF download: of the given finished analyses, or all of the case's.
   reportPdf: (caseId: number, analyses?: number[], withContext = false) =>
     `/api/cases/${caseId}/report.pdf?${new URLSearchParams({ ...(analyses ? { analyses: analyses.join(",") } : {}), ...(withContext ? { context: "1" } : {}) })}`,

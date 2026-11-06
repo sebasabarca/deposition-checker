@@ -182,8 +182,9 @@ function Item({ n, e }: { n: number; e: Entry }) {
       </div>
       <p className="mt-3 font-mono text-[13px] leading-5 break-words">{pinpointCitation(f.a, f.b)}</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
-        {side("Earlier session", f.a)}
-        {side("Later session", f.b)}
+        {/* A whole-case finding keeps its sides in retrieval order: the earlier session first. */}
+        {side("Earlier session", (f.b.deposition.takenOn ?? "") < (f.a.deposition.takenOn ?? "") ? f.b : f.a)}
+        {side("Later session", (f.b.deposition.takenOn ?? "") < (f.a.deposition.takenOn ?? "") ? f.a : f.b)}
       </div>
       <div className="mt-4 space-y-3 text-sm leading-6">
         <div>

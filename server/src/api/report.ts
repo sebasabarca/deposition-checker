@@ -10,6 +10,10 @@ import type { Database } from "../db/client";
 import { analysisFindings, analysisView, findingDetail } from "./analyses";
 import { caseDetail } from "./cases";
 import { caseAnalysisReport, CaseDecisionsBody } from "./caseAnalysis";
+import { asc, eq } from "drizzle-orm";
+import { candidates, findings } from "../db/schema";
+import { standingOf } from "../evidence/correction";
+import { caseRunReport, caseRunSetOf } from "../jobs/caseRun";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof findingDetail>>>;
 type Side = Detail["a"];
@@ -24,7 +28,11 @@ const day = (iso: string | Date | null) => {
 const displayRef = (r: string | null) => r && r.replace(/\b0:0*(\d+)\s*[–-]\s*0:0*(\d+)/g, "Lines $1–$2").replace(/\b0:0*(\d+)/g, "Line $1");
 const PHYSICAL = "line counted on the page, not an official line number";
 const cite = (s: Side) => `${s.deposition.witness.split(" ").at(-1)} Dep. ${displayRef(s.range) ?? "(no page:line reference)"} (${day(s.deposition.takenOn)})${s.lines.some((l) => l.pageInferred) ? " [page number inferred; verify against the scan]" : ""}${s.deposition.physicalLines ? ` [${PHYSICAL}]` : ""}`;
-const headline = (f: Detail) => (f.group === "contradictions" ? (f.cross ? "Potential conflict between witnesses" : f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction") : f.groupLabel);
+// A whole-case finding stores its sides in retrieval order and may pair two witnesses without a cross-witness
+// reading: both are told from the testimony itself, the earlier session first.
+const across = (f: Detail) => !!f.cross || f.a.deposition.witness !== f.b.deposition.witness;
+const inOrder = (f: Detail) => ((f.b.deposition.takenOn ?? "") < (f.a.deposition.takenOn ?? "") ? [f.b, f.a] : [f.a, f.b]);
+const headline = (f: Detail) => (f.group === "contradictions" ? (across(f) ? "Potential conflict between witnesses" : f.classification === "direct" ? "Potential direct contradiction" : "Potential inferential contradiction") : f.groupLabel);
 
 export async function reportData(db: Database, caseId: number, analysisIds: number[] | null, withContext: boolean) {
   const detail = await caseDetail(db, caseId);
@@ -54,6 +62,26 @@ export async function reportData(db: Database, caseId: number, analysisIds: numb
   const partial = views.filter((v) => v?.evidence?.model?.completionStatus === "partial").length;
   if (partial > 0) gaps.push(`${partial === 1 ? "One analysis's" : `${partial} analyses'`} Veridict's model reported a partial review.`);
   return { name: detail.case.name, witnesses: detail.witnesses.map((w) => w.name), covered, gaps, kept, context, withContext, entries };
+}
+
+// One whole-case run's report: the findings the reviewer kept from it (and, with withContext, those marked Needs
+// context), in retrieval order. A finding set aside by a transcript correction is never reported. The run's unread
+// testimony is stated, so the report never reads as covering more than was read.
+export async function caseRunReportData(db: Database, runId: number, withContext: boolean) {
+  const run = await caseRunReport(db, runId);
+  if (!run) return null;
+  const detail = await caseDetail(db, run.caseId);
+  if (!detail) return null;
+  const rows = await db.select({ id: findings.id, reviewState: findings.reviewState }).from(findings).innerJoin(candidates, eq(candidates.id, findings.candidateId)).where(eq(candidates.candidateSet, caseRunSetOf(runId))).orderBy(asc(candidates.mergedRank), asc(findings.id));
+  const standing = await standingOf(db, rows.map((r) => r.id));
+  const current = rows.filter((r) => standing.get(r.id)?.state !== "quarantined");
+  const kept = current.filter((r) => r.reviewState === "confirmed").length;
+  const context = current.filter((r) => r.reviewState === "needs_context").length;
+  const chosen = current.filter((r) => r.reviewState === "confirmed" || (withContext && r.reviewState === "needs_context"));
+  const entries = (await Promise.all(chosen.map((r) => findingDetail(db, r.id)))).filter((f) => f !== null);
+  const sessions = run.scope && run.scope.kind === "depositions" ? `${run.scope.depositionIds.length} selected depositions` : `the whole case, ${detail.depositions.filter((d) => d.status === "ready").length} sessions`;
+  const covered = [`${run.name ?? "Whole-case analysis"} (${day(run.createdAt)}): ${sessions}`];
+  return { name: detail.case.name, witnesses: detail.witnesses.map((w) => w.name), covered, gaps: run.incompleteReasons, kept, context, withContext, entries };
 }
 
 // authorship "hand": the explanations were written by hand (the demo case's example analysis), and the
@@ -125,11 +153,11 @@ export function renderReport(r: Report): PDFKit.PDFDocument {
     doc.font("Times-Roman").fontSize(15).fillColor(FAINT).text(`${i + 1}.`, left, top, { width: 24 });
     doc.font("Times-Bold").fontSize(15).fillColor(INK).text(f.direct?.sharedSubject ?? headline(f), left + 26, top, { width: width - 26 });
     const decision = f.reviewState === "confirmed" ? "Kept" : "Needs more context";
-    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(`${headline(f)} · ${f.cross ? `${f.a.deposition.witness} and ${f.b.deposition.witness}` : f.a.deposition.witness} · ${decision}${f.reviewedAt ? `, ${day(f.reviewedAt)}` : ""}`, left + 26, doc.y + 2, { width: width - 26 });
+    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(`${headline(f)} · ${across(f) ? `${inOrder(f)[0].deposition.witness} and ${inOrder(f)[1].deposition.witness}` : f.a.deposition.witness} · ${decision}${f.reviewedAt ? `, ${day(f.reviewedAt)}` : ""}`, left + 26, doc.y + 2, { width: width - 26 });
     doc.moveDown(0.7);
-    doc.font("Courier").fontSize(9).fillColor(INK).text(`${cite(f.a)}; compare ${cite(f.b)}.`, left, doc.y, { width });
+    doc.font("Courier").fontSize(9).fillColor(INK).text(`${cite(inOrder(f)[0])}; compare ${cite(inOrder(f)[1])}.`, left, doc.y, { width });
 
-    for (const [name, s] of [["Earlier session", f.a], ["Later session", f.b]] as const) {
+    for (const [name, s] of [["Earlier session", inOrder(f)[0]], ["Later session", inOrder(f)[1]]] as const) {
       doc.moveDown(0.9);
       room(60);
       label(`${name} · ${day(s.deposition.takenOn)} · ${displayRef(s.range) ?? "no reference"}${s.deposition.physicalLines ? ` (${PHYSICAL})` : ""}`);
@@ -202,6 +230,19 @@ export function reportRoutes({ db }: { db: Database }): Router {
     const data = await reportData(db, caseId.data, ids, q.data.context === "1");
     if (!data) return res.status(404).json({ error: "That case or analysis wasn't found, or the analysis hasn't finished." });
     const file = `Veridict report - ${data.name}${data.covered.length === 1 ? ` - ${data.covered[0]}` : ""}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${file.replace(/[^\w .,()-]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file)}`);
+    renderReport(data).pipe(res);
+  });
+
+  // One whole-case run's report (caseRunReportData); ?context=1 adds the findings marked Needs context.
+  router.get("/case-runs/:id/report.pdf", async (req, res) => {
+    const id = z.coerce.number().int().positive().safeParse(req.params.id);
+    const q = Query.safeParse(req.query);
+    if (!id.success || !q.success) return res.status(400).json({ error: "Invalid report request." });
+    const data = await caseRunReportData(db, id.data, q.data.context === "1");
+    if (!data) return res.status(404).json({ error: "That analysis wasn't found." });
+    const file = `Veridict report - ${data.name} - ${data.covered[0].split(" (")[0]}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${file.replace(/[^\w .,()-]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file)}`);
     renderReport(data).pipe(res);
