@@ -146,8 +146,24 @@ describe("packet-c3 dismissal quotes are checked against the pair's own exchange
     expect(ok.verdicts.map((v: PairVerdict) => v.pairId).sort()).toEqual(["R1", "R2"]);
     const bad = check(rows(words(r2.a), "the defendant confessed everything"));
     expect(bad.verdicts.map((v: PairVerdict) => v.pairId)).toEqual(["R1"]);
-    expect(bad.malformed).toEqual([{ index: -1, pairId: "R2", error: "dismissal quote not found in exchange B" }]);
-    expect(check(rows("", "")).malformed[0].error).toBe("dismissal quotes not found in exchange A and B");
+    expect(bad.malformed).toEqual([{ index: -1, pairId: "R2", error: "dismissal quote not found in exchange B or its context" }]);
+    expect(check(rows("", "")).malformed[0].error).toBe("dismissal quotes not found in exchange A and B or its context");
     expect(verifyPacketReply(packet, bad).pairs.find((x) => x.pairId === "R2")!.status).toBe("malformed");
+  });
+
+  it("accepts a quote from the context lines shown around an exchange, and records that side; text shown nowhere stays rejected", () => {
+    // The fixture with context shown around E1 (side A of R2): a line before and one after its exchange.
+    const line = (id: number, text: string) => ({ id, page: 1, line: id, text, role: "answer" as const });
+    const shown: IssuePacket = { ...packet, passages: packet.passages.map((x) => (x.id === "E1" ? { ...x, before: [line(90, "A. I drove back from the office around six.")], after: [line(91, "A. My sister stayed with me until midnight.")] } : x)) };
+    const checkIn = (reply: unknown) => { const r = parseVerdictsLenient(JSON.stringify(reply), VERDICT_SCHEMAS["packet-v1"], "packet-c3"); if (!r.ok) throw new Error(r.error); return checkDismissalQuotes(r, shown); };
+    const dismissal = (out: ReturnType<typeof checkIn>) => (out.verdicts.find((v: PairVerdict) => v.pairId === "R2") as (PairVerdict & { compactDismissal: { contextQuote?: string[] } }) | undefined)?.compactDismissal;
+    const ok = checkIn(rows("My sister stayed with me until midnight", "Yes, I was home all evening"));
+    expect(ok.malformed).toEqual([]);
+    expect(dismissal(ok)!.contextQuote).toEqual(["A"]);
+    expect(dismissal(checkIn(rows("Yes, I was home all evening", "Yes, I was home all evening")))!.contextQuote).toBeUndefined();
+    // E3 has no context shown, and the same words aren't in its exchange: side B is still rejected.
+    const bad = checkIn(rows("Yes, I was home all evening", "My sister stayed with me until midnight"));
+    expect(dismissal(bad)).toBeUndefined();
+    expect(bad.malformed).toEqual([{ index: -1, pairId: "R2", error: "dismissal quote not found in exchange B or its context" }]);
   });
 });

@@ -35,7 +35,8 @@ export const COMPACT_CONTRACTS = Object.keys(SCREEN_ROWS) as CompactContractId[]
 type AnyRow = { pairId: string; disposition: Disposition; compared?: string; quoteA?: string; quoteB?: string };
 
 // What a dismissal keeps of the model's row, beside its packet-v1 form.
-export type CompactDismissal = { disposition: Exclude<Disposition, typeof FULL_VERDICT>; compared?: string; quoteA?: string; quoteB?: string };
+// contextQuote: the sides whose quote was found only in the context lines shown around the exchange (checkDismissalQuotes).
+export type CompactDismissal = { disposition: Exclude<Disposition, typeof FULL_VERDICT>; compared?: string; quoteA?: string; quoteB?: string; contextQuote?: ("A" | "B")[] };
 export type DismissalVerdict = PairVerdict & { compactDismissal: CompactDismissal };
 export const isCompactDismissal = (v: object): v is DismissalVerdict => "compactDismissal" in v;
 
@@ -84,22 +85,29 @@ export function readCompactReply(json: unknown, verdictItem: z.ZodType<PairVerdi
 }
 
 // packet-c3's guard against lazy dismissal, checked by code: a dismissal's quoteA and quoteB must be words of the
-// pair's own exchanges (A and B; every content word present, verify/quotes.ts). A dismissal whose quote is not
-// found is not accepted: it is reported as malformed, so the pair goes through the existing recovery request and,
-// failing that, stays unanswered (counted), never silently dismissed.
+// stored testimony shown for that side (every content word present, verify/quotes.ts): its exchange, or the context
+// lines shown before and after it. The model often quotes those neighbouring lines (run 38: 94 of 96 rejected
+// dismissals), which are still stored transcript checked word for word; a side quoted from context is recorded on
+// the dismissal (contextQuote). A quote found in neither is not accepted: it is reported as malformed, so the pair
+// goes through the existing recovery request and, failing that, stays unanswered (counted), never silently dismissed.
 export const DISMISSAL_QUOTE_MIN_SCORE = 0.9;
 export function checkDismissalQuotes<T extends { ok: true; verdicts: PairVerdict[]; malformed: MalformedVerdict[] }>(parsed: T, packet: IssuePacket): T {
-  const passage = new Map(packet.passages.map((p) => [p.id, p.lines.map((l) => l.text).join(" ")]));
-  const sides = new Map(packet.pairs.map((p) => [p.pairId, [passage.get(p.a) ?? "", passage.get(p.b) ?? ""] as const]));
+  const text = (ls: { text: string }[]) => ls.map((l) => l.text).join(" ");
+  const passage = new Map(packet.passages.map((p) => [p.id, { exchange: text(p.lines), shown: text([...p.before, ...p.lines, ...p.after]) }]));
+  const none = { exchange: "", shown: "" };
+  const sides = new Map(packet.pairs.map((p) => [p.pairId, [passage.get(p.a) ?? none, passage.get(p.b) ?? none] as const]));
   const verdicts: PairVerdict[] = [];
   const malformed = [...parsed.malformed];
   for (const v of parsed.verdicts) {
     const d = isCompactDismissal(v) ? v.compactDismissal : null;
     const ex = sides.get(v.pairId);
     if (!d || d.quoteA === undefined || !ex) { verdicts.push(v); continue; }
-    const bad = ([["A", d.quoteA, ex[0]], ["B", d.quoteB ?? "", ex[1]]] as const).filter(([, q, text]) => !q.trim() || quoteMatchScore(q, text) < DISMISSAL_QUOTE_MIN_SCORE);
-    if (bad.length) malformed.push({ index: -1, pairId: v.pairId, error: `dismissal quote${bad.length > 1 ? "s" : ""} not found in exchange ${bad.map(([s]) => s).join(" and ")}` });
-    else verdicts.push(v);
+    const found = (q: string, t: string) => !!q.trim() && quoteMatchScore(q, t) >= DISMISSAL_QUOTE_MIN_SCORE;
+    const quotes = [["A", d.quoteA, ex[0]], ["B", d.quoteB ?? "", ex[1]]] as const;
+    const bad = quotes.filter(([, q, t]) => !found(q, t.shown));
+    if (bad.length) { malformed.push({ index: -1, pairId: v.pairId, error: `dismissal quote${bad.length > 1 ? "s" : ""} not found in exchange ${bad.map(([s]) => s).join(" and ")} or its context` }); continue; }
+    const fromContext = quotes.filter(([, q, t]) => !found(q, t.exchange)).map(([side]) => side);
+    verdicts.push(fromContext.length ? ({ ...v, compactDismissal: { ...d, contextQuote: fromContext } } as DismissalVerdict) : v);
   }
   return { ...parsed, verdicts, malformed };
 }
