@@ -312,7 +312,10 @@ export type CaseRunStatus = "queued" | "retrieving" | "awaiting_confirmation" | 
 export type CoverageState = "complete" | "processed_with_unread" | "partial";
 // economy: the same projection at Message Batches API prices (absent on runs prepared before economy mode existed).
 export type CaseRunEconomyEstimate = { expectedUsd: number; noCacheUsd: number; worstCaseUsd: number; worstCasePerBatchUsd: number; recommendedBudgetUsd: number; batchSize: number; discount: number };
-export type CaseRunEstimate = { packets: number; listedPairs: number; splitPackets: number; oversizePackets: number; expectedUsd: number; noCacheUsd: number; largestPacketWorstCaseUsd: number; recommendedBudgetUsd: number; economy?: CaseRunEconomyEstimate; note: string };
+// reuse: requests whose exact request an earlier live run of this case already answered (exact-request reuse), found
+// by rendering every planned request; an expectation, not a guarantee. checked is false when reuse doesn't apply.
+export type CaseRunReuseEstimate = { checked: boolean; reusableRequests: number; expectedAvoidedUsd: number; economy: { expectedAvoidedUsd: number } };
+export type CaseRunEstimate = { packets: number; listedPairs: number; splitPackets: number; oversizePackets: number; expectedUsd: number; noCacheUsd: number; largestPacketWorstCaseUsd: number; recommendedBudgetUsd: number; economy?: CaseRunEconomyEstimate; reuse?: CaseRunReuseEstimate; note: string };
 export type CaseRunExecution = "standard" | "batch";
 export type CaseRunBatches = { total: number; submitting: number; processing: number; awaitingImport: number; imported: number; notSubmitted: number; unknown: number; oldestOpenSince: string | null; resultsExpireAt: string | null; requests: Record<string, number> };
 export type CaseRun = {
@@ -329,7 +332,7 @@ export type CaseRun = {
   // reused: requests answered by reusing the recorded response to an identical request from an earlier run of the
   // case (exact-request reuse): never sent, never charged. avoidedUsdEstimate is an estimate, not a charge.
   requests: { total: number; answered: number; failedNotBilled: number; uncertain: number; open: number; reused?: number };
-  cost: { recordedCalls: number; costUsd: number; budget: { limitUsd: number; spentUsd: number; reservedUsd: number } | null; reuse?: { requests: number; avoidedUsdEstimate: number } };
+  cost: { recordedCalls: number; costUsd: number; budget: { limitUsd: number; spentUsd: number; reservedUsd: number } | null; reuse?: { requests: number; avoidedUsdEstimate: number; fresh?: boolean } };
 };
 export type CaseRunSide = { exchange: string; depositionId: number; witnessId: number | null; witness: string | null; takenOn: string | null; range: string | null; lines: { id: number; at: string; text: string }[] };
 export type CaseRunFinding = {

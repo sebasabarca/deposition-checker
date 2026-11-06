@@ -94,7 +94,8 @@ export function caseRunRoutes({ db, boss, env = process.env }: { db: Database; b
   // then starts its paid adjudication. Batch needs retentionAcknowledged: the provider keeps batch data 29 days.
   router.post("/case-runs/:id/confirm", async (req, res) => {
     const id = Id.safeParse(req.params.id);
-    const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional() }).strict().safeParse(req.body ?? {});
+    // fresh: a fresh analysis, which reuses no earlier response and pays for every request (exact-request reuse).
+    const body = z.object({ budgetUsd: Budget, execution: Execution.optional(), retentionAcknowledged: z.boolean().optional(), name: z.string().trim().min(1).max(120).optional(), fresh: z.boolean().optional() }).strict().safeParse(req.body ?? {});
     if (!id.success || !body.success) return res.status(400).json({ error: `Confirm with a budget in USD (more than 0, at most ${MAX_CASE_RUN_BUDGET_USD}).` });
     if (!analysisKeySet(env)) return res.status(409).json({ error: "Paid analysis isn't set up on this server: add the API key to the server's .env (see .env.example) and restart. Nothing was sent.", code: "paid_unavailable" });
     const outcome = await confirmCaseRun(db, id.data, body.data);

@@ -1310,6 +1310,32 @@ is **not** part of this note. It was rejected as unrestricted, and is not enable
   re-attributed or re-parsed evidence therefore misses.
 - A hit needs **both** to match.
 
+**Model and compatibility safety:**
+- **The model id is in the fingerprint, and the source must have been answered by exactly that id.**
+  `llm_calls.model` is the id the provider reported. A provider-side change of the answering model, or a dated
+  snapshot behind an alias, therefore misses.
+- **`REUSE_COMPATIBILITY_VERSION`** (`adjudicate/requestReuse.ts`) is part of every fingerprint. Bumping it retires
+  every earlier response at once. It is bumped when a model's behaviour may change without its id changing, or
+  when how a reply is read changes meaning without changing the request.
+- **Verification doesn't need a version in the key.** Every reused response is verified, safeguarded and scored
+  again by current code, and the reply schema is part of the request.
+
+**Fresh analysis:**
+- The review step offers one checkbox, **Run fresh analysis**, shown only when reuse is expected. Confirming with
+  it (`fresh: true`) stores `config.reuse = "fresh"`. That run reuses nothing, sends and pays for every request
+  under the same budget and authorisation, and its own responses can serve later runs.
+- A normal confirmation stores `"automatic"`.
+
+**The estimate:**
+- After retrieval, when an earlier live run of the case holds sources, every planned request is rendered exactly
+  as the run will first send it and looked up with the run's own rule. `estimate.reuse = { checked,
+  reusableRequests, expectedAvoidedUsd, economy.expectedAvoidedUsd }`.
+- The review step shows the expected new cost, the requests expected to be reused, and the expected cost avoided,
+  as an expectation.
+- **The recommended limit and the server's reservations are unchanged.** They cover the whole run, because an
+  expected reuse can still miss: a correction changes the evidence key, and that request is then sent and charged
+  within the limit.
+
 **What can be reused:**
 - a request of a live run **of the same case**;
 - status `completed`: answered, not cut off at max_tokens, no error kind such as a refusal;

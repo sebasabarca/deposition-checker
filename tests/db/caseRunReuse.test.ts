@@ -13,7 +13,7 @@ import { FakeBatchProvider } from "../../server/src/eval/mockPacketBatch";
 import { mockPacketReply } from "../../server/src/eval/mockPacketModel";
 import { WEBB_SUITE, WHITFIELD_SUITE } from "../../server/src/eval/synthetic";
 import { storeSessions } from "../../server/src/eval/syntheticStore";
-import { caseRunFindings, caseRunReport, caseRunSetOf, createCaseRun, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
+import { caseRunFindings, caseRunReport, caseRunSetOf, confirmCaseRun, createCaseRun, mockCaseModel, resumeCaseRun, runCaseRun, type CasePacketModel, type CaseRunDeps } from "../../server/src/jobs/caseRun";
 import { emptyTables, openTestDatabase, TEST_DATABASE_URL } from "./database";
 
 type Reply = Awaited<ReturnType<CasePacketModel["adjudicate"]>>;
@@ -94,9 +94,73 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
     for (const x of reusedRows.values()) expect(x).toMatchObject({ status: "reused", llmCallId: null, reservationId: null, maxCostUsd: 0 });
   }, 120_000);
 
+  it("a fresh analysis reuses nothing and pays for every request; its responses then serve later runs", async () => {
+    const p = provider();
+    const fresh = await createCaseRun(db, caseId, { mode: "live", budgetUsd: 50, confirmed: true, fresh: true });
+    expect(await runCaseRun(db, pool, fresh.id, deps(p.model))).toBe("completed");
+    const r = await report(fresh.id);
+    expect(r.requests.reused).toBe(0);
+    expect(p.calls.length).toBe((await report(first)).requests.answered);
+    expect(r.cost.recordedCalls).toBe(p.calls.length);
+    expect(r.cost.costUsd).toBeCloseTo((await report(first)).cost.costUsd, 4);
+    expect(r.cost.reuse.fresh).toBe(true);
+    expect(r.cost.budget!.spentUsd).toBeLessThanOrEqual(50);
+    const later = await live();
+    expect(await runCaseRun(db, pool, later.id, deps(provider().model))).toBe("completed");
+    const sources = new Set((await requests(later.id)).map((x) => x.reusedFromRequestId));
+    expect(sources.has(null)).toBe(false); // every request of the later run was reused
+    expect((await requests(fresh.id)).some((x) => sources.has(x.id))).toBe(true); // the latest qualifying source: the fresh run's
+  }, 120_000);
+
+  it("a source answered by another model id than the one requested is never reused", async () => {
+    const latest = (await db.execute<{ id: number }>(sql`select id from case_runs where case_id = ${caseId} and mode = 'live' order by id desc`)).rows.map((x) => Number(x.id));
+    const calls = (await db.execute<{ id: number; model: string }>(sql`select l.id, l.model from adjudication_requests r join llm_calls l on l.id = r.llm_call_id join case_runs c on r.candidate_set = 'case-run-' || c.id where c.case_id = ${caseId}`)).rows;
+    await db.execute(sql`update llm_calls set model = 'claude-sonnet-5-5-20261201' where id in (${sql.join(calls.map((c) => sql`${c.id}`), sql`, `)})`);
+    try {
+      const p = provider();
+      const run = await live();
+      expect(await runCaseRun(db, pool, run.id, deps(p.model))).toBe("completed");
+      expect((await report(run.id)).requests.reused).toBe(0);
+      expect(p.calls.length).toBe((await report(first)).requests.answered);
+    } finally {
+      for (const c of calls) await db.execute(sql`update llm_calls set model = ${c.model} where id = ${c.id}`);
+      // The run just made is itself a source now; later tests reuse from it or from earlier ones alike.
+      expect(latest.length).toBeGreaterThan(0);
+    }
+  }, 120_000);
+
+  it("the estimate expects exactly the reuse the run then gets, and a run confirmed as fresh sends everything", async () => {
+    const auto = await createCaseRun(db, caseId, { mode: "live" });
+    expect(await runCaseRun(db, pool, auto.id, deps(provider().model))).toBe("awaiting_confirmation");
+    const e = (await report(auto.id)).estimate as { packets: number; expectedUsd: number; recommendedBudgetUsd: number; reuse: { checked: boolean; reusableRequests: number; expectedAvoidedUsd: number; economy: { expectedAvoidedUsd: number } } };
+    expect(e.reuse.checked).toBe(true);
+    expect(e.reuse.reusableRequests).toBe(e.packets);
+    expect(e.reuse.expectedAvoidedUsd).toBeCloseTo(e.expectedUsd, 2);
+    expect(e.reuse.economy.expectedAvoidedUsd).toBeCloseTo(e.expectedUsd * 0.5, 2);
+    expect(await confirmCaseRun(db, auto.id, { budgetUsd: e.recommendedBudgetUsd })).toBe("queued");
+    const p = provider();
+    expect(await runCaseRun(db, pool, auto.id, deps(p.model))).toBe("completed");
+    expect((await report(auto.id)).requests.reused).toBe(e.reuse.reusableRequests);
+    expect(p.calls).toEqual([]);
+    // The same estimate, confirmed as a fresh analysis: nothing reused, everything sent and charged.
+    const fresh = await createCaseRun(db, caseId, { mode: "live" });
+    expect(await runCaseRun(db, pool, fresh.id, deps(provider().model))).toBe("awaiting_confirmation");
+    expect(await confirmCaseRun(db, fresh.id, { budgetUsd: e.recommendedBudgetUsd, fresh: true })).toBe("queued");
+    const q = provider();
+    expect(await runCaseRun(db, pool, fresh.id, deps(q.model))).toBe("completed");
+    expect((await report(fresh.id)).requests.reused).toBe(0);
+    expect(q.calls.length).toBe(e.packets);
+    // Without the worker's switch the estimate doesn't look for reuse.
+    const off = await createCaseRun(db, caseId, { mode: "live" });
+    expect(await runCaseRun(db, pool, off.id, deps(provider().model, { reuse: false }))).toBe("awaiting_confirmation");
+    expect(((await report(off.id)).estimate as { reuse: { checked: boolean } }).reuse.checked).toBe(false);
+  }, 180_000);
+
   it("re-reads a reused response with current code: a source whose recorded text no longer verifies gives an unverified finding", async () => {
     // A source whose recorded reply quotes testimony (so its citations can fail to verify once tampered with).
-    const sources = await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.candidateSet, caseRunSetOf(first)), eq(adjudicationRequests.status, "completed")));
+    // The latest run with sent requests holds the sources the next run picks (the latest qualifying one wins).
+    const newest = Number((await db.execute<{ id: number }>(sql`select c.id from case_runs c join adjudication_requests r on r.candidate_set = 'case-run-' || c.id where c.case_id = ${caseId} and r.status = 'completed' order by c.id desc limit 1`)).rows[0].id);
+    const sources = await db.select().from(adjudicationRequests).where(and(eq(adjudicationRequests.candidateSet, caseRunSetOf(newest)), eq(adjudicationRequests.status, "completed")));
     let src = sources[0], call = (await db.select().from(llmCalls).where(eq(llmCalls.id, src.llmCallId!)))[0];
     for (const x of sources) {
       const c = (await db.select().from(llmCalls).where(eq(llmCalls.id, x.llmCallId!)))[0];

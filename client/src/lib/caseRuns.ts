@@ -89,6 +89,19 @@ export function modeEstimate(e: CaseRunEstimate, execution: CaseRunExecution): {
   return { lowUsd: e.economy.expectedUsd, highUsd: e.economy.noCacheUsd, recommendedUsd: e.economy.recommendedBudgetUsd };
 }
 
+// The cost after expected exact-request reuse: the requests an earlier run of this case already answered word for word
+// are expected to be answered again from that run, at no charge. A fresh analysis expects none. The recommended
+// limit stays the whole run's, since an expected reuse can still miss (then that request is sent and charged).
+export function reuseAdjusted(e: CaseRunEstimate, execution: CaseRunExecution, fresh: boolean): { lowUsd: number; highUsd: number; recommendedUsd: number; reusable: number; avoidedUsd: number } | null {
+  const m = modeEstimate(e, execution);
+  if (!m) return null;
+  const reusable = !fresh && e.reuse?.checked ? e.reuse.reusableRequests : 0;
+  if (!reusable) return { ...m, reusable: 0, avoidedUsd: 0 };
+  const avoided = execution === "batch" ? e.reuse!.economy.expectedAvoidedUsd : e.reuse!.expectedAvoidedUsd;
+  const less = (x: number) => Math.max(0, Math.round((x - avoided) * 100) / 100);
+  return { lowUsd: less(m.lowUsd), highUsd: less(m.highUsd), recommendedUsd: m.recommendedUsd, reusable, avoidedUsd: avoided };
+}
+
 // The recommended limit can't pass the ceiling a person is allowed to confirm.
 export const defaultLimit = (recommendedUsd: number) => Math.min(recommendedUsd, MAX_CASE_RUN_BUDGET_USD).toFixed(2);
 

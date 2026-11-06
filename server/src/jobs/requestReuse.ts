@@ -21,10 +21,13 @@ export type ReuseSource = { requestId: number; llmCallId: number; text: string; 
 
 // A server switch, never a lawyer's setting: REQUEST_REUSE=off turns reuse off for every run.
 export const reuseAllowed = (env: Record<string, string | undefined>) => env.REQUEST_REUSE !== "off";
-// Only live runs use or provide reuse (mock and test-model runs record no provider calls), and only when the caller
-// turns it on: the worker does, from REQUEST_REUSE (on unless "off"); scripts and tests that pass nothing send every
-// request, as before.
-export const reuseApplies = (run: Pick<CaseRun, "mode">, enabled: boolean | undefined) => run.mode === "live" && enabled === true;
+// A fresh analysis (chosen when the run is confirmed, stored in its config): it reuses nothing and pays for every
+// request, as if no earlier run existed. Its own responses can still be reused by later runs.
+export const freshOf = (run: { config?: unknown }) => (run.config as { reuse?: string } | null | undefined)?.reuse === "fresh";
+// Only live runs use or provide reuse (mock and test-model runs record no provider calls), only when the caller turns
+// it on (the worker does, from REQUEST_REUSE, on unless "off"; scripts and tests that pass nothing send every request,
+// as before), and never in a fresh analysis.
+export const reuseApplies = (run: { mode: string; config?: unknown }, enabled: boolean | undefined) => run.mode === "live" && enabled === true && !freshOf(run);
 
 export async function requestKeys(db: Database, contract: ContractId, packet: IssuePacket, adjudicator: { model: string; effort: string }): Promise<RequestKeys> {
   const ids = [...new Set(packet.passages.map((p) => p.depositionId))];
@@ -36,7 +39,9 @@ export async function requestKeys(db: Database, contract: ContractId, packet: Is
 // The latest eligible source: a completed request (not cut off, no error kind such as a refusal) of a live run of
 // the same case, with a recorded call holding its raw text, and the same fingerprint and evidence key. Sent,
 // failed, partial, aborted, uncertain, unimported and reused requests never qualify.
-export async function findReusable(db: Database, caseId: number, keys: RequestKeys): Promise<ReuseSource | null> {
+// Model identity: the source must have been asked for, and answered by, exactly this model id (llm_calls.model is the
+// id the provider reported answering with).
+export async function findReusable(db: Database, caseId: number, keys: RequestKeys, model: string): Promise<ReuseSource | null> {
   if (keys.evidenceKey === null) return null;
   const [row] = await db.execute<{ id: number; llm_call_id: number; text: string; cost: string | null; batch: boolean; case_run_id: number }>(sql`
     select r.id, r.llm_call_id, l.raw_output as text, l.cost_usd::text as cost, l.batch, c.id as case_run_id
@@ -45,6 +50,7 @@ export async function findReusable(db: Database, caseId: number, keys: RequestKe
     join case_runs c on r.candidate_set = 'case-run-' || c.id
     where r.request_fingerprint = ${keys.fingerprint} and r.evidence_key = ${keys.evidenceKey}
       and r.status = 'completed' and r.error_kind is null and l.raw_output is not null
+      and r.model = ${model} and l.model = ${model}
       and c.case_id = ${caseId} and c.mode = 'live'
     order by r.id desc limit 1`).then((r) => r.rows);
   return row ? { requestId: Number(row.id), llmCallId: Number(row.llm_call_id), text: row.text, costUsd: row.cost === null ? 0 : Number(row.cost), batch: row.batch, caseRunId: Number(row.case_run_id) } : null;
@@ -66,6 +72,15 @@ export async function recordReuse(
   }).returning();
   await db.update(screeningEntries).set({ attempts: sql`${screeningEntries.attempts} + 1`, requestId: request.id, llmCallId: source.llmCallId, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entryId));
   return { reply: { text: source.text, callId: source.llmCallId, requestId: request.id }, request };
+}
+
+// Whether any earlier live run of this case holds a request that could be a source: a cheap check before the
+// estimate renders every planned request to look for reuse.
+export async function caseHasSources(db: Database, caseId: number): Promise<boolean> {
+  const [row] = await db.execute<{ any: boolean }>(sql`
+    select exists (select 1 from adjudication_requests r join case_runs c on r.candidate_set = 'case-run-' || c.id
+      where c.case_id = ${caseId} and c.mode = 'live' and r.status = 'completed' and r.request_fingerprint is not null) as any`).then((r) => r.rows);
+  return !!row?.any;
 }
 
 // Stores the keys on a request that is about to be sent, so a later identical request can reuse its response.

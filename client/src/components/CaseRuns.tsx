@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, ArrowUpRight, Check, FileUp, Info, LoaderCircle } from "lucide-react";
 import { api } from "../lib/api";
-import { ACTIVE_RUN, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
+import { ACTIVE_RUN, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, reuseAdjusted, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
 import { formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
@@ -273,7 +273,9 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
 
   // savedAt: a saved estimate from this browser (a preview; reviewing prepares a current one), or null for the server's.
   function figures(e: CaseRunEstimate, savedAt: number | null) {
-    const fast = modeEstimate(e, "standard")!, economy = modeEstimate(e, "batch");
+    // With expected exact-request reuse (the review step can still choose a fresh analysis, charged in full).
+    const fast = reuseAdjusted(e, "standard", false)!, economy = reuseAdjusted(e, "batch", false);
+    const reusable = fast.reusable;
     const cost = (x: { lowUsd: number; highUsd: number }) => (x.lowUsd === x.highUsd ? formatUsd(x.lowUsd) : `${formatUsd(x.lowUsd)}–${formatUsd(x.highUsd)}`);
     return box(
       <div className="space-y-2">
@@ -285,6 +287,7 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
           </dl>
           <Button disabled={busy} onClick={onReview}>Review and start<ArrowRight aria-hidden className="size-4" /></Button>
         </div>
+        {reusable > 0 && <p className="text-xs text-muted">{reusable.toLocaleString()} of {e.packets.toLocaleString()} packets repeat a request an earlier analysis of this case already sent, on the same evidence; their answers are expected to be reused, not charged. You can choose a fresh analysis when you review.</p>}
         {!paidAvailable && <p className="text-xs text-muted">{NO_KEY}</p>}
         {savedAt !== null && <p className="text-xs text-muted">Estimate saved at {new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} for this choice. Reviewing prepares a current one first.</p>}
       </div>,
@@ -433,7 +436,11 @@ function Progress({ run }: { run: CaseRun }) {
 function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; cancel: ReactNode }) {
   const e = run.estimate!;
   const [execution, setExecution] = useState<CaseRunExecution>("standard");
-  const chosen = modeEstimate(e, execution)!;
+  // Exact-request reuse: packets an earlier analysis of this case already sent word for word are expected to reuse
+  // its answers. "Run fresh analysis" asks the model again for every packet instead, charged in full.
+  const [fresh, setFresh] = useState(false);
+  const canReuse = !!e.reuse?.checked && e.reuse.reusableRequests > 0;
+  const chosen = reuseAdjusted(e, execution, fresh)!;
   const [limit, setLimit] = useState(defaultLimit(e.recommendedBudgetUsd));
   const [edited, setEdited] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -447,7 +454,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
   const submit = (ev: FormEvent) => {
     ev.preventDefault();
     // One checkbox: for economy the privacy notice sits under it and describes it, so authorizing acknowledges it too.
-    if (!problem && agreed) act(api.confirmCaseRun(run.id, Number(limit), execution, economy, name.trim() || undefined));
+    if (!problem && agreed) act(api.confirmCaseRun(run.id, Number(limit), execution, economy, name.trim() || undefined, canReuse && fresh));
   };
   // Two decimals in this step (the shared formatter shows four below $1); amounts under a cent read "under $0.01".
   const usd = (n: number) => (n > 0 && n < 0.005 ? "under $0.01" : `$${n.toFixed(2)}`);
@@ -462,7 +469,7 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
         <p className="mt-0.5 text-sm text-muted">Both options examine the same prepared evidence using the same analysis method. The difference is how quickly results are delivered and how much they cost.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {(["standard", "batch"] as const).map((x) => {
-            const m = modeEstimate(e, x);
+            const m = reuseAdjusted(e, x, fresh);
             // Why a mode can't run on this server, from the server's own capability report (never assumed).
             const off = run.paidAvailable === false ? "Needs the server's API key." : null;
             const id = `execution-${run.id}-${x}`;
@@ -487,8 +494,21 @@ function Confirm({ run, busy, act, paidBlocked, cancel }: { run: CaseRun; busy: 
           })}
         </div>
       </fieldset>
+      {canReuse && (
+        <div className="rounded-lg border border-line px-4 py-3">
+          <p className="text-sm">
+            {fresh
+              ? "Fresh analysis: every packet is sent to Veridict's model and charged, as if this case had not been analyzed before."
+              : `${e.reuse!.reusableRequests.toLocaleString()} of ${e.packets.toLocaleString()} packets repeat a request an earlier analysis of this case sent word for word, on the same evidence. Their earlier answers are expected to be reused and checked again, not charged: about ${usd(chosen.avoidedUsd)} less. A packet whose earlier answer can't be reused is sent and charged within your limit.`}
+          </p>
+          <label className="mt-2 flex items-start gap-3 text-sm">
+            <input type="checkbox" checked={fresh} onChange={(ev) => setFresh(ev.target.checked)} className="mt-0.5 size-4 flex-none rounded accent-navy" />
+            <span><span className="font-medium">Run fresh analysis</span> <span className="text-muted">Ask the model again for every packet instead of reusing earlier answers. Charged in full.</span></span>
+          </label>
+        </div>
+      )}
       <dl className="grid grid-cols-2 divide-rule rounded-lg border border-line sm:grid-cols-4 sm:divide-x">
-        <div className="px-4 py-3"><dt className="text-xs text-faint">Estimated cost</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{cost(chosen)}</dd></div>
+        <div className="px-4 py-3"><dt className="text-xs text-faint">{canReuse && !fresh ? "Estimated new cost" : "Estimated cost"}</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{cost(chosen)}</dd></div>
         <div className="px-4 py-3"><dt className="text-xs text-faint">Recommended limit</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{formatUsd(chosen.recommendedUsd)}</dd></div>
         <div className="px-4 py-3"><dt className="text-xs text-faint">Evidence packets</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{e.packets.toLocaleString()}</dd></div>
         <div className="px-4 py-3"><dt className="text-xs text-faint">Candidate pairs to read</dt><dd className="mt-0.5 text-lg font-semibold tabular-nums">{e.listedPairs.toLocaleString()}</dd></div>

@@ -61,7 +61,7 @@ import { VERIFICATION_VERSION } from "../verify/version";
 import { Aborted, ProviderLimiter, realClock, UNLIMITED, type Clock } from "./limiter";
 import { BATCH_DEFAULTS, reconcileStaleBatchRun, runBatchTick, STALE_BATCH_RECONCILING, type BatchDeps } from "./caseRunBatch";
 import { BATCH_MULTIPLIER } from "../costs/pricing";
-import { findReusable, recordReuse, requestKeys, reuseApplies, storeKeys, type RequestKeys } from "./requestReuse";
+import { caseHasSources, findReusable, freshOf, recordReuse, requestKeys, reuseApplies, storeKeys, type RequestKeys } from "./requestReuse";
 
 export const CASE_RUN_STATUSES = ["queued", "retrieving", "awaiting_confirmation", "adjudicating", "completed", "incomplete", "failed", "blocked_budget", "blocked_credentials", "cancelled", "interrupted", "reconciling"] as const;
 export type CaseRunStatus = (typeof CASE_RUN_STATUSES)[number];
@@ -449,7 +449,8 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
   }
   // The estimate a person confirms before a live run: projected from the packets' size and the Milestone 2
   // calibration's measured output per pair, plus the largest packet's worst case, held while it is in flight.
-  const sized = packets.packets.map((p) => ({ passageTokens: p.inputTokens - INSTRUCTION_TOKENS, pairs: p.pairs.length }));
+  const sizedOf = (ps: typeof packets.packets) => ps.map((p) => ({ passageTokens: p.inputTokens - INSTRUCTION_TOKENS, pairs: p.pairs.length }));
+  const sized = sizedOf(packets.packets);
   const assumptions = stretch ? STRETCH_COST_ASSUMPTIONS : COST_ASSUMPTIONS;
   const expectedUsd = projectCost(sized, true, assumptions);
   const largest = packets.packets.reduce((m, p) => Math.max(m, maxRequestCost(PACKET_MODEL, { inputTokens: inputTokenBound(p.inputTokens * 4), maxOutputTokens: maxOutputTokensFor(p.pairs.length) })), 0);
@@ -469,11 +470,36 @@ async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDep
       recommendedBudgetUsd: Math.ceil((economyNoCache + perBatch) * 100) / 100, batchSize: BATCH_DEFAULTS.batchSize, discount: BATCH_MULTIPLIER,
     },
     contract: contractOf(run), assumptions, note: (stretch ? "Experimental whole-stretch requests (stretch-v2): output per pair measured on a 49-request pilot chosen around known evidence. " : "") + "A projection from packet size and measured output per pair, not a measurement. The limit is enforced by Veridict (each request reserves its worst case before it is sent), not by the provider.",
+    reuse: await reuseEstimate(db, run, ledgerId, itemIndex, deps, (ids) => projectCost(sizedOf(packets.packets.filter((p) => ids.has(p.id))), true, assumptions)),
   };
   await db.update(caseRuns).set({ progress: sql`${caseRuns.progress} || ${JSON.stringify({ estimate })}::jsonb`, updatedAt: new Date() }).where(eq(caseRuns.id, run.id));
   return (await ledgerOf(db, run.id))!;
 }
 const round2 = (x: number) => Math.round(x * 100) / 100;
+
+// Exact-request reuse in the estimate: every planned request rendered as the run will first send it, and looked up
+// with the run's own rule (same case, same fingerprint and evidence key, same model). An expectation, not a
+// guarantee: a source can stop qualifying before the run sends (a correction changes the evidence key), and then
+// that request is sent and paid within the limit. The recommended limit is unchanged: it covers the whole run as if
+// nothing were reused. `checked` is false when reuse doesn't apply (a test run, or reuse off on this server).
+async function reuseEstimate(db: Database, run: CaseRun, ledgerId: number, index: ItemIndex, deps: CaseRunDeps, projected: (packetIds: Set<string>) => number) {
+  const none = (checked: boolean) => ({ checked, reusableRequests: 0, expectedAvoidedUsd: 0, economy: { expectedAvoidedUsd: 0 } });
+  if (run.mode !== "live" || deps.reuse !== true) return none(false);
+  if (!(await caseHasSources(db, run.caseId))) return none(true);
+  const stretch = contractOf(run) === STRETCH_V2_PROMPT_VERSION;
+  const names = new Map((await db.select({ id: witnesses.id, name: witnesses.name }).from(witnesses).where(eq(witnesses.caseId, run.caseId))).map((w) => [w.id, w.name]));
+  const reusable = new Set<string>();
+  for (const entry of await db.select().from(screeningEntries).where(eq(screeningEntries.runId, ledgerId))) {
+    const ctx = await entryContext(db, entry, index, names, { allItems: stretch });
+    if (typeof ctx === "string") continue;
+    const built = buildIssuePacket({ id: entry.packetId, issue: "", items: ctx.keys, pairs: ctx.ids.map((c) => ctx.pairOfCandidate.get(c)!), inputTokens: 0 }, ctx.passages, { allItems: stretch });
+    if (!built.packet || built.unbuilt.length) continue;
+    const keys = await requestKeys(db, contractOf(run), built.packet, { model: PACKET_MODEL, effort: PACKET_EFFORT });
+    if (await findReusable(db, run.caseId, keys, PACKET_MODEL)) reusable.add(entry.packetId);
+  }
+  const avoided = projected(reusable);
+  return { checked: true, reusableRequests: reusable.size, expectedAvoidedUsd: round2(avoided), economy: { expectedAvoidedUsd: round2(avoided * BATCH_MULTIPLIER) } };
+}
 
 
 type EntryOutcome = { kind: "done" | "incomplete" | "halted" } | { kind: "budget"; message: string } | { kind: "failed"; message: string; fatal?: boolean };
@@ -581,7 +607,7 @@ async function adjudicateEntry(db: Database, run: CaseRun, ledgerId: number, ent
       // Exact-request reuse: the same provider-visible request, from the same evidence, already answered in a live
       // run of this case. Its recorded response is parsed again below instead of paying for a new one.
       const keys = await requestKeys(db, contractOf(run), step.packet, model);
-      const source = reuseApplies(run, deps.reuse) ? await findReusable(db, run.caseId, keys) : null;
+      const source = reuseApplies(run, deps.reuse) ? await findReusable(db, run.caseId, keys, model.model) : null;
       if (source) {
         const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round: replies.made + 1, strategy: "packet", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: maxOutputTokensFor(step.packet.pairs.length) });
         replies.made++;
@@ -774,9 +800,9 @@ async function persistStretch(db: Database, run: CaseRun, entry: Entry, packet: 
 // Creates a run, and a live run's budget. A live run created with `confirmed` (the CLI, after its own plan)
 // may spend at once; otherwise it stops after retrieval for confirmCaseRun. The caller queues the job.
 // depositionIds: analyze only these depositions of the case (the same pipeline, model and checks); absent = the whole case.
-export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION, depositionIds }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract; depositionIds?: number[] }) {
+export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION, depositionIds, fresh = false }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract; depositionIds?: number[]; fresh?: boolean }) {
   return db.transaction(async (tx) => {
-    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
+    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy" } : {}), ...(fresh ? { reuse: "fresh" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
     const live = mode === "live";
     const [row] = await tx
       .insert(caseRuns)
@@ -794,7 +820,8 @@ export async function createCaseRun(db: Database, caseId: number, { mode, budget
 // A person confirms a live run's estimate with a budget: the only way an unconfirmed run starts spending.
 // Economy (execution "batch") also needs the person to acknowledge that the provider keeps batch inputs and results
 // for 29 days. The execution mode is fixed here: nothing has been sent yet, and it never changes afterwards.
-export async function confirmCaseRun(db: Database, id: number, { budgetUsd, execution = "standard", retentionAcknowledged = false, name }: { budgetUsd: number; execution?: CaseRunExecution; name?: string; retentionAcknowledged?: boolean }): Promise<"queued" | "not_found" | "not_awaiting" | "no_budget" | "no_acknowledgement"> {
+// fresh: a fresh analysis, which reuses no earlier response (exact-request reuse) and pays for every request.
+export async function confirmCaseRun(db: Database, id: number, { budgetUsd, execution = "standard", retentionAcknowledged = false, name, fresh = false }: { budgetUsd: number; execution?: CaseRunExecution; name?: string; retentionAcknowledged?: boolean; fresh?: boolean }): Promise<"queued" | "not_found" | "not_awaiting" | "no_budget" | "no_acknowledgement"> {
   if (!(budgetUsd > 0)) return "no_budget";
   if (execution === "batch" && !retentionAcknowledged) return "no_acknowledgement";
   return db.transaction(async (tx) => {
@@ -804,7 +831,7 @@ export async function confirmCaseRun(db: Database, id: number, { budgetUsd, exec
     await tx.update(budgets).set({ limitUsd: budgetUsd }).where(eq(budgets.id, run.budgetId!));
     // The person's name for the analysis, kept with its settings (no schema change), so they can tell runs apart.
     if (name) await tx.update(caseRuns).set({ config: sql`${caseRuns.config} || ${JSON.stringify({ name })}::jsonb` }).where(eq(caseRuns.id, id));
-    await tx.update(caseRuns).set({ budgetUsd, execution, retentionAcknowledgedAt: execution === "batch" ? new Date() : null, confirmedAt: new Date(), status: "queued", error: null, updatedAt: new Date() }).where(eq(caseRuns.id, id));
+    await tx.update(caseRuns).set({ budgetUsd, execution, retentionAcknowledgedAt: execution === "batch" ? new Date() : null, confirmedAt: new Date(), status: "queued", error: null, updatedAt: new Date(), config: sql`${caseRuns.config} || ${JSON.stringify({ reuse: fresh ? "fresh" : "automatic" })}::jsonb` }).where(eq(caseRuns.id, id));
     return "queued" as const;
   });
 }
@@ -947,7 +974,7 @@ export async function caseRunReport(db: Database, id: number) {
     cost: {
       recordedCalls: req.calls, costUsd: req.cost === null ? 0 : Number(req.cost), inputTokens: req.input, outputTokens: req.output, budget: budget ? { limitUsd: Number(budget.limit_usd), spentUsd: Number(budget.spent_usd), reservedUsd: Number(budget.reserved_usd) } : null,
       // An estimate: each reused request's source call cost, in this run's mode. Not a charge, not a refund.
-      reuse: { requests: req.reused, avoidedUsdEstimate: req.avoided === null ? 0 : Math.round(Number(req.avoided) * 1e4) / 1e4 },
+      reuse: { requests: req.reused, avoidedUsdEstimate: req.avoided === null ? 0 : Math.round(Number(req.avoided) * 1e4) / 1e4, fresh: freshOf(run) },
     },
   };
 }

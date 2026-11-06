@@ -74,6 +74,7 @@ export function CaseRunPage({ id }: { id: number }) {
                 {reused.toLocaleString()} identical {reused === 1 ? "request" : "requests"} answered from an earlier run of this case, not charged again. About {formatUsd(run.cost.reuse?.avoidedUsdEstimate ?? 0)} saved (estimate).
               </dd>
             )}
+            {!test && run.cost.reuse?.fresh && <dd className="mt-1 text-xs leading-snug text-muted">Fresh analysis: no earlier answers were reused; every request was sent and charged.</dd>}
           </div>
         </dl>
         <div className="border-t border-rule px-5 py-3 text-sm text-muted">

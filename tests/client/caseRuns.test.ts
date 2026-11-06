@@ -2,7 +2,7 @@
 // reviewed, the spending limit a person must type, and when a new run may start.
 
 import { describe, expect, it } from "vitest";
-import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep } from "../../client/src/lib/caseRuns";
+import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, reuseAdjusted, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep } from "../../client/src/lib/caseRuns";
 import { MAX_CASE_RUN_BUDGET_USD as SERVER_MAX } from "../../server/src/api/caseRuns";
 import { findingGroup } from "../../server/src/api/present";
 import type { CaseRun, CaseRunEstimate } from "../../client/src/types";
@@ -76,6 +76,16 @@ describe("choosing fast or economy", () => {
     expect(modeEstimate({ ...base, economy }, "batch")).toEqual({ lowUsd: 29.77, highUsd: 43, recommendedUsd: 54.5 });
   });
   it("offers no economy figure for an estimate prepared before economy mode existed", () => expect(modeEstimate(base, "batch")).toBeNull());
+  it("subtracts the expected reuse from the cost, never from the recommended limit, and a fresh analysis expects none", () => {
+    const reuse = { checked: true, reusableRequests: 40, expectedAvoidedUsd: 20, economy: { expectedAvoidedUsd: 10 } };
+    const e = { ...base, economy, reuse };
+    expect(reuseAdjusted(e, "standard", false)).toEqual({ lowUsd: 39.54, highUsd: 39.54, recommendedUsd: 60.04, reusable: 40, avoidedUsd: 20 });
+    expect(reuseAdjusted(e, "batch", false)).toEqual({ lowUsd: 19.77, highUsd: 33, recommendedUsd: 54.5, reusable: 40, avoidedUsd: 10 });
+    expect(reuseAdjusted(e, "standard", true)).toEqual({ lowUsd: 59.54, highUsd: 59.54, recommendedUsd: 60.04, reusable: 0, avoidedUsd: 0 });
+    expect(reuseAdjusted({ ...e, reuse: { ...reuse, checked: false } }, "standard", false)!.reusable).toBe(0);
+    expect(reuseAdjusted({ ...e, reuse: { ...reuse, expectedAvoidedUsd: 100 } }, "standard", false)!.lowUsd).toBe(0); // never below zero
+    expect(reuseAdjusted(base, "standard", false)).toEqual({ ...modeEstimate(base, "standard")!, reusable: 0, avoidedUsd: 0 }); // estimates without reuse data
+  });
   it("never suggests a limit past the ceiling", () => {
     expect(defaultLimit(54.5)).toBe("54.50");
     expect(defaultLimit(MAX_CASE_RUN_BUDGET_USD + 40)).toBe(MAX_CASE_RUN_BUDGET_USD.toFixed(2));

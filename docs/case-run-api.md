@@ -129,6 +129,14 @@ Its response is parsed, verified, safeguarded and scored again by current code, 
 `cost.costUsd` and `recordedCalls` count only calls this run paid for. The worker turns reuse on, and
 `REQUEST_REUSE=off` turns it off for the server.
 
+- **`estimate.reuse`** = `{ checked, reusableRequests, expectedAvoidedUsd, economy: { expectedAvoidedUsd } }`:
+  - the planned requests an earlier live run of the case already answered word for word, and their projected
+    cost;
+  - an expectation, not a guarantee; `recommendedBudgetUsd` still covers the whole run;
+  - `checked: false` when reuse doesn't apply (a test run, or reuse off).
+- **`POST /case-runs/:id/confirm`** takes an optional `fresh: true`: a fresh analysis that reuses nothing and pays
+  for every request. The report's `cost.reuse.fresh` says so.
+
 ## How to show incomplete work
 
 - **`coverageState`** is the headline:

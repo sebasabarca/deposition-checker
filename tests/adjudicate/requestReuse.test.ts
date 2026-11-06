@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { avoidedCostEstimate, canonicalJson, evidenceKey, requestFingerprint, type DepositionEvidence } from "../../server/src/adjudicate/requestReuse";
+import { avoidedCostEstimate, canonicalJson, evidenceKey, requestFingerprint, REUSE_COMPATIBILITY_VERSION, type DepositionEvidence } from "../../server/src/adjudicate/requestReuse";
 import type { IssuePacket } from "../../server/src/adjudicate/packetPrompt";
-import { reuseAllowed, reuseApplies } from "../../server/src/jobs/requestReuse";
+import { freshOf, reuseAllowed, reuseApplies } from "../../server/src/jobs/requestReuse";
 
 const passage = (id: string, depositionId: number, page: number, answer: string, lineBase = page * 10): IssuePacket["passages"][number] => ({
   key: `doc${depositionId}#1-2`, id, depositionId, groupId: 1, witnessId: depositionId, witnessName: "W", session: `s${depositionId}`, takenOn: null, partIds: [1], wholeExchange: true,
@@ -29,6 +29,10 @@ describe("the request fingerprint", () => {
     ];
     expect(new Set([base, ...variants]).size).toBe(variants.length + 1);
   });
+  it("changes with the cache-compatibility version, so bumping it retires every earlier response", () => {
+    expect(requestFingerprint("packet-v1", packet, real)).toBe(requestFingerprint("packet-v1", packet, real, REUSE_COMPATIBILITY_VERSION));
+    expect(requestFingerprint("packet-v1", packet, real, `${REUSE_COMPATIBILITY_VERSION}-next`)).not.toBe(requestFingerprint("packet-v1", packet, real));
+  });
 });
 
 describe("the evidence key", () => {
@@ -50,6 +54,9 @@ describe("reuse switches and the avoided-cost estimate", () => {
     expect(reuseApplies({ mode: "live" }, undefined)).toBe(false);
     expect(reuseApplies({ mode: "mock" }, true)).toBe(false);
     expect([reuseAllowed({}), reuseAllowed({ REQUEST_REUSE: "" }), reuseAllowed({ REQUEST_REUSE: "off" })]).toEqual([true, true, false]);
+    expect(reuseApplies({ mode: "live", config: { reuse: "fresh" } }, true)).toBe(false); // a fresh analysis reuses nothing
+    expect(reuseApplies({ mode: "live", config: { reuse: "automatic" } }, true)).toBe(true);
+    expect([freshOf({ config: { reuse: "fresh" } }), freshOf({ config: {} }), freshOf({ config: null })]).toEqual([true, false, false]);
   });
   it("prices the avoided request in this run's mode", () => {
     expect(avoidedCostEstimate(0.02, false, false, 0.5)).toBe(0.02);
