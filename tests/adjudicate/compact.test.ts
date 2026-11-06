@@ -166,4 +166,15 @@ describe("packet-c3 dismissal quotes are checked against the pair's own exchange
     expect(dismissal(bad)).toBeUndefined();
     expect(bad.malformed).toEqual([{ index: -1, pairId: "R2", error: "dismissal quote not found in exchange B or its context" }]);
   });
+
+  it("accepts two real quotes labelled on the wrong sides, and marks the dismissal; one real quote on the wrong side is still rejected", () => {
+    // R2 is E1 (A) and E3 (B); E3 gets an answer of its own so each side's words are distinct.
+    const shown: IssuePacket = { ...packet, passages: packet.passages.map((x) => (x.id === "E3" ? { ...x, lines: [x.lines[0], { ...x.lines[1], text: "A. I took the dog out after dinner." }] } : x)) };
+    const checkIn = (reply: unknown) => { const r = parseVerdictsLenient(JSON.stringify(reply), VERDICT_SCHEMAS["packet-v1"], "packet-c3"); if (!r.ok) throw new Error(r.error); return checkDismissalQuotes(r, shown); };
+    const swapped = checkIn(rows("I took the dog out after dinner", "Yes, I was home all evening"));
+    expect(swapped.malformed).toEqual([]);
+    expect((swapped.verdicts.find((v: PairVerdict) => v.pairId === "R2") as PairVerdict & { compactDismissal: { swappedQuotes?: true } }).compactDismissal.swappedQuotes).toBe(true);
+    const half = checkIn(rows("I took the dog out after dinner", "the defendant confessed everything"));
+    expect(half.malformed.map((m) => m.pairId)).toEqual(["R2"]);
+  });
 });

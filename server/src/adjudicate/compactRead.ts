@@ -36,7 +36,8 @@ type AnyRow = { pairId: string; disposition: Disposition; compared?: string; quo
 
 // What a dismissal keeps of the model's row, beside its packet-v1 form.
 // contextQuote: the sides whose quote was found only in the context lines shown around the exchange (checkDismissalQuotes).
-export type CompactDismissal = { disposition: Exclude<Disposition, typeof FULL_VERDICT>; compared?: string; quoteA?: string; quoteB?: string; contextQuote?: ("A" | "B")[] };
+// swappedQuotes: quoteA was found on side B and quoteB on side A (both real testimony, labelled the other way round).
+export type CompactDismissal = { disposition: Exclude<Disposition, typeof FULL_VERDICT>; compared?: string; quoteA?: string; quoteB?: string; contextQuote?: ("A" | "B")[]; swappedQuotes?: true };
 export type DismissalVerdict = PairVerdict & { compactDismissal: CompactDismissal };
 export const isCompactDismissal = (v: object): v is DismissalVerdict => "compactDismissal" in v;
 
@@ -88,7 +89,8 @@ export function readCompactReply(json: unknown, verdictItem: z.ZodType<PairVerdi
 // stored testimony shown for that side (every content word present, verify/quotes.ts): its exchange, or the context
 // lines shown before and after it. The model often quotes those neighbouring lines (run 38: 94 of 96 rejected
 // dismissals), which are still stored transcript checked word for word; a side quoted from context is recorded on
-// the dismissal (contextQuote). A quote found in neither is not accepted: it is reported as malformed, so the pair
+// the dismissal (contextQuote). Two quotes each found on the other side are accepted too, marked swappedQuotes (run
+// 38's last 2 unread pairs). A quote found in neither is not accepted: it is reported as malformed, so the pair
 // goes through the existing recovery request and, failing that, stays unanswered (counted), never silently dismissed.
 export const DISMISSAL_QUOTE_MIN_SCORE = 0.9;
 export function checkDismissalQuotes<T extends { ok: true; verdicts: PairVerdict[]; malformed: MalformedVerdict[] }>(parsed: T, packet: IssuePacket): T {
@@ -105,6 +107,8 @@ export function checkDismissalQuotes<T extends { ok: true; verdicts: PairVerdict
     const found = (q: string, t: string) => !!q.trim() && quoteMatchScore(q, t) >= DISMISSAL_QUOTE_MIN_SCORE;
     const quotes = [["A", d.quoteA, ex[0]], ["B", d.quoteB ?? "", ex[1]]] as const;
     const bad = quotes.filter(([, q, t]) => !found(q, t.shown));
+    // Both quotes real, each on the other side's testimony: the model labelled the sides the other way round.
+    if (bad.length === 2 && found(d.quoteA, ex[1].shown) && found(d.quoteB ?? "", ex[0].shown)) { verdicts.push({ ...v, compactDismissal: { ...d, swappedQuotes: true } } as DismissalVerdict); continue; }
     if (bad.length) { malformed.push({ index: -1, pairId: v.pairId, error: `dismissal quote${bad.length > 1 ? "s" : ""} not found in exchange ${bad.map(([s]) => s).join(" and ")} or its context` }); continue; }
     const fromContext = quotes.filter(([, q, t]) => !found(q, t.exchange)).map(([side]) => side);
     verdicts.push(fromContext.length ? ({ ...v, compactDismissal: { ...d, contextQuote: fromContext } } as DismissalVerdict) : v);

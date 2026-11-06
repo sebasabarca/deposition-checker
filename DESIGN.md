@@ -1392,7 +1392,8 @@ verdicts, so verification, attribution, scoring and persistence are packet-v1's,
   the context lines shown before and after it (November 6, developer-approved: in run 38 the model quoted those
   neighbouring lines in 94 of 96 rejected dismissals, so the pairs stayed unread through every retry). A side quoted
   from context is recorded on the dismissal (`contextQuote`). Trade-off: a pair can be dismissed on an answer a few
-  lines from its exchange. A dismissal whose quotes are found in neither is malformed, and so is a missing, duplicate
+  lines from its exchange. Two quotes that are each found on the other side's testimony (the sides labelled the other
+  way round) are accepted and marked `swappedQuotes`. A dismissal whose quotes are found in neither is malformed, and so is a missing, duplicate
   or malformed row. Each goes through the existing recovery request and is then left unanswered and counted, never
   silently dismissed;
 - an abstention (insufficient_evidence, needs_more_context, unable_to_assess) always needs a full verdict.
