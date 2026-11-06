@@ -26,7 +26,7 @@ Code, not the model, decides each pair's status:
 | `flagged_unverified` | A finding cites exactly this pair, but its citations failed verification, or it was filed under another unit | A finding: unscored, check manually |
 | `unclear` | The model said it can't tell, and no finding cites the pair | A count; no finding |
 | `no_conflict_identified` | Checked, and no finding cites it | A count; **read, not cleared**. Never "compatible" |
-| `incomplete` | Its unit or ledger entry is missing, or the reply failed | Not read: one recovery request, then the entry is incomplete |
+| `incomplete` | Its unit or ledger entry is missing, or the reply failed | Not read: up to two recovery requests, then the entry is incomplete |
 
 - **`related`** is an attribute, not a status: another finding of the unit cites one of the pair's exchanges. It is never turned into a conflict.
 - **Disagreements:** when the model's ledger disagrees with its own findings, the verified finding stands and an `INCONSISTENT` audit note is kept.

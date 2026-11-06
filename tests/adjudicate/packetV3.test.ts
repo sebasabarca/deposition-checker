@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PACKET_PROMPTS, PACKET_SYSTEM_PROMPT, PACKET_SYSTEM_PROMPT_V2, PACKET_SYSTEM_PROMPT_V3, type IssuePacket, type PacketPassage } from "../../server/src/adjudicate/packetPrompt";
 import { PACKET_REPLY_V3_JSON_SCHEMA, PairVerdictV2, PairVerdictV3, parseVerdictsLenient, type PairVerdictV3 as V3 } from "../../server/src/adjudicate/packetSchema";
 import { mockPacketReplyV3 } from "../../server/src/eval/mockPacketModel";
-import { recoveryPlan, verifyPacketReply } from "../../server/src/verify/packet";
+import { MAX_RECOVERY_ROUNDS, recoveryPlan, verifyPacketReply } from "../../server/src/verify/packet";
 
 type Line = PacketPassage["lines"][number];
 const q = (id: number, page: number, line: number, text: string): Line => ({ id, page, line, text, role: "question" });
@@ -117,13 +117,14 @@ describe("verdict completeness", () => {
     expect(verify([verdict(), verdict({ pairId: "R2" }), { pairId: "R2" }]).pairs[1]).toMatchObject({ status: "duplicate", duplicateCount: 2 });
   });
 
-  it("plans one bounded recovery request for exactly the unresolved pairs, and none after it", () => {
+  it("plans bounded recovery requests for exactly the unresolved pairs, up to MAX_RECOVERY_ROUNDS, and none after", () => {
     const v = verify([verdict()]);
     const plan = recoveryPlan(packet, v);
     expect(plan.unresolved).toEqual([{ pairId: "R2", status: "missing" }]);
     expect(plan.packet).toMatchObject({ id: "P~recovery-1", pairs: [{ pairId: "R2", a: "E12", b: "E20" }] });
     expect(plan.packet!.passages.map((p) => p.id)).toEqual(["E12", "E20"]);
-    expect(recoveryPlan(packet, v, 2).packet).toBeNull();
+    expect(recoveryPlan(packet, v, MAX_RECOVERY_ROUNDS).packet).toMatchObject({ id: `P~recovery-${MAX_RECOVERY_ROUNDS}` });
+    expect(recoveryPlan(packet, v, MAX_RECOVERY_ROUNDS + 1).packet).toBeNull();
     expect(recoveryPlan(packet, verify([verdict(), verdict({ pairId: "R2" })])).packet).toBeNull();
   });
 });

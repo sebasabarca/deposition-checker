@@ -3,6 +3,7 @@
 // out-of-order and duplicate results, errors, expiry, missing results, lost submissions, crashes, cancellation
 // and a tight budget. Every tick is a fresh call, as after a worker restart. No API key, no network.
 
+import { MAX_RECOVERY_ROUNDS } from "../../server/src/verify/packet";
 import { and, eq, sql } from "drizzle-orm";
 import express from "express";
 import type { PgBoss } from "pg-boss";
@@ -143,7 +144,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run, economy (batch) execution",
     const report = (await caseRunReport(db, stuck.id))!;
     expect(report.coverageState).toBe("partial");
     expect(report.candidates.incomplete).toBeGreaterThan(0);
-    expect(Math.max(...[...q.sentPerPacket.values()])).toBe(2);
+    expect(Math.max(...[...q.sentPerPacket.values()])).toBe(1 + MAX_RECOVERY_ROUNDS); // the packet and two recoveries
   }, 120_000);
 
   it("retries an errored or expired request once (not billed), and leaves it failed and unread after that", async () => {

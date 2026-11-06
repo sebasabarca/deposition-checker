@@ -13,8 +13,8 @@
 //     candidate, so re-running after a crash cannot duplicate findings.
 //   - A reply is recorded (llm_calls, with its raw text) and its pointer stored on the ledger entry before
 //     anything is parsed. A run resumed after a crash parses that stored reply instead of paying again.
-//   - Each claim of a packet makes at most 1 + MAX_RECOVERY_ROUNDS model replies: the packet, then one
-//     recovery request for the pairs left unanswered. Pairs still unanswered leave the entry `incomplete`,
+//   - Each claim of a packet makes at most 1 + MAX_RECOVERY_ROUNDS model replies: the packet, then up to
+//     MAX_RECOVERY_ROUNDS recovery requests, each for the pairs still unanswered. Pairs still unanswered leave the entry `incomplete`,
 //     with each pair and why, and their candidates stay `selected`: unread, never compatible.
 //   - Live calls reserve their worst case first. A reservation that fails while other requests of the run hold
 //     theirs waits for one of them to settle; one the budget can't cover with nothing held stops the run as
@@ -599,7 +599,7 @@ export async function nextStep(db: Database, run: CaseRun, at: { entry: Entry },
 // Pairs still without a verdict after the packet and its recovery request: the entry ends incomplete, each pair
 // listed and unread (its candidate stays `selected`), never compatible.
 export async function markIncomplete(db: Database, entry: Entry, remaining: number[], ctx: EntryContext) {
-  const unresolvedPairs = remaining.map((c) => { const [a, b] = ctx.pairOfCandidate.get(c)!; return { a, b, status: "unanswered after the packet and one recovery request" }; });
+  const unresolvedPairs = remaining.map((c) => { const [a, b] = ctx.pairOfCandidate.get(c)!; return { a, b, status: `unanswered after the packet and ${MAX_RECOVERY_ROUNDS} recovery requests` }; });
   await db.update(screeningEntries).set({ adjudicationStatus: "incomplete", unresolvedPairs, adjudicationNote: `${remaining.length} of ${ctx.ids.length} pairs left without a verdict`, updatedAt: sql`now()` }).where(eq(screeningEntries.id, entry.id));
 }
 
@@ -878,7 +878,7 @@ export async function confirmCaseRun(db: Database, id: number, { budgetUsd, exec
 }
 
 // Makes a stopped run continue. Failed packets whose request is known not to have been billed, and incomplete
-// packets, go back to the queue (each claim again gets one packet request and one recovery request). A packet
+// packets, go back to the queue (each claim again gets one packet request and up to MAX_RECOVERY_ROUNDS recovery requests). A packet
 // whose request may have been billed (uncertain) is retried only with retryUncertain. The budget may be raised,
 // never lowered.
 export async function resumeCaseRun(db: Database, id: number, { budgetUsd, retryUncertain = false }: { budgetUsd?: number; retryUncertain?: boolean } = {}): Promise<"queued" | "not_found" | "lower_budget" | CaseRunStatus> {

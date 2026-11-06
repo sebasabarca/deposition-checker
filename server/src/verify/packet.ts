@@ -317,8 +317,10 @@ function withAttributionError(side: SideAttribution): PacketAttributionSide {
 // A bounded, auditable recovery plan for an incomplete reply: the pairs left unresolved (missing, malformed,
 // duplicate, or a failed request) and one follow-up packet holding only those pairs and their passages. It is
 // a plan: nothing here sends a request, and the caller decides (under the paid-call gate and budget) whether
-// to send at most one follow-up. The original reply and its valid verdicts are kept as they are.
-export const MAX_RECOVERY_ROUNDS = 1;
+// to send at most MAX_RECOVERY_ROUNDS follow-ups, one after another, each for what is still unresolved. Two since
+// November 6 (developer's choice): a single retry left pairs unread when the model repeated a reply-format slip,
+// and a person had to press Resume. The original reply and its valid verdicts are kept as they are.
+export const MAX_RECOVERY_ROUNDS = 2;
 export function recoveryPlan(packet: IssuePacket, v: PacketVerification, round = 1): { unresolved: { pairId: string; status: string }[]; packet: IssuePacket | null } {
   const unresolved = v.pairs.filter((p) => p.status !== "answered").map((p) => ({ pairId: p.pairId, status: p.status }));
   if (unresolved.length === 0 || round > MAX_RECOVERY_ROUNDS) return { unresolved, packet: null };

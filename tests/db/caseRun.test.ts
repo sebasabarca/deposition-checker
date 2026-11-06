@@ -3,6 +3,7 @@
 // no paid call. "Live" runs here use the mock in place of the Anthropic client, so budgets, recorded calls,
 // stored replies and restarts follow the live path. See tests/db/database.ts for when these run.
 
+import { MAX_RECOVERY_ROUNDS } from "../../server/src/verify/packet";
 import Anthropic from "@anthropic-ai/sdk";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import express from "express";
@@ -222,7 +223,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run", () => {
     expect(await findingCount(run.id)).toBe(await findingCount(mockRun));
   }, 120_000);
 
-  it("recovers unanswered pairs once, then leaves the rest incomplete and listed, never as compatible", async () => {
+  it("recovers unanswered pairs up to twice, then leaves the rest incomplete and listed, never as compatible", async () => {
     // First packet: R1 dropped on the first reply, answered by the recovery request.
     // Second packet: R1 dropped every time. Third packet: unreadable every time.
     const order: string[] = [];
@@ -237,7 +238,7 @@ describe.skipIf(!TEST_DATABASE_URL)("whole-case run", () => {
     const run = await createCaseRun(db, caseId, { mode: "live", budgetUsd: 50, confirmed: true });
     expect(await runCaseRun(db, pool, run.id, deps(model))).toBe("incomplete");
     expect(calls.filter((c) => c === order[0])).toHaveLength(2);
-    expect(calls.filter((c) => c === order[1])).toHaveLength(2); // one packet request, one recovery: bounded
+    expect(calls.filter((c) => c === order[1])).toHaveLength(1 + MAX_RECOVERY_ROUNDS); // the packet request and two recoveries: bounded
     const r = (await caseRunReport(db, run.id))!;
     expect(r.packets.incomplete).toBe(2);
     expect(r.unresolved.map((u) => u.packetId).sort()).toEqual([order[1], order[2]].sort());
