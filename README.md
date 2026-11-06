@@ -58,6 +58,9 @@ npm 11 may warn that some packages' install scripts were not run (esbuild, onnxr
 | `APP_URL` | Default works | Where links in emails point. |
 | `RESEND_API_KEY`, `EMAIL_FROM` | No | Without them, emails (account verification, password reset) are printed in the `npm run dev` terminal instead of sent. |
 | `CASE_RUN_*`, `PROVIDER_*` | No | Concurrency and provider rate limits for whole-case analyses, and the batch size, batches in flight and check interval of Economy runs (`CASE_RUN_BATCH_*`). Conservative defaults; see the comments in `.env.example`. |
+| `PROVIDER_TIER`, `PACKET_OUTPUT_TOKENS_PER_PAIR`, `CASE_RUN_ADAPTIVE` | No | Faster Fast analyses. `PROVIDER_TIER=1`–`4` sets the three per-minute limits to that Anthropic usage tier (check yours in the Console); `PACKET_OUTPUT_TOKENS_PER_PAIR=1200` lowers each request's output cap and reservation (Economy keeps the default). Measured on a tier-4 account: `PROVIDER_TIER=4`, `PACKET_OUTPUT_TOKENS_PER_PAIR=1200`, `CASE_RUN_PACKETS_PER_CASE=16`, `CASE_RUN_PACKETS_GLOBAL=16` ran about 160 packets a minute with no cut-off or failed request. **The limits are per worker process**: with two workers, give each half (explicit `PROVIDER_*_PER_MINUTE` values instead of the tier). |
+| `RETRIEVAL_PATH_A`, `RETRIEVAL_DENSE_THREADS` | No | Faster retrieval with identical results: `RETRIEVAL_PATH_A=memory` and `RETRIEVAL_DENSE_THREADS=8` (CPU threads per retrieval). |
+| `ALLOW_STRETCH_V2` | No | `true` offers the experimental **Contextual Analysis** method beside Focused Analysis (the default). See below. |
 
 ## First-time walkthrough
 
@@ -150,6 +153,10 @@ npm run admin -- grant-analysis you@example.com
 Without an API key, the review step says paid analysis isn't set up and can't be confirmed: nothing is sent or charged.
 
 **Running a real paid analysis** needs a real `ANTHROPIC_API_KEY` in `.env`, then a restart of `npm run dev`. Set a spending limit you're willing to pay. Veridict enforces it itself: before any request is sent, its largest possible cost (every input token at the highest input rate, and its full output allowance) is reserved against the limit, so recorded spending can't pass it. Anthropic doesn't know about this limit, so also set a spend limit on the API workspace in the Anthropic Console as a second guard.
+
+#### Focused or Contextual Analysis
+
+**Focused Analysis** (the default) sends small packets of candidate pairs and asks for a verdict on each pair. **Contextual Analysis** (experimental, offered only when the server sets `ALLOW_STRETCH_V2=true`) shows the model longer continuous stretches of testimony around the pairs and asks only for the conflicts it finds, which costs about a third as much per pair. In a controlled test on developer-labelled examples it found fewer of the known contradictions and flagged more compatible controls than Focused Analysis, so it is not the default; its findings go through the same citation checks, attribution safeguards and scoring. Both run in Fast or Economy.
 
 **Coverage** is always shown in one of three states:
 - **Complete coverage:** every candidate pair was read.
