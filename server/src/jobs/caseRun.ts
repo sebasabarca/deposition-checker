@@ -945,7 +945,9 @@ export async function caseRunFindings(db: Database, id: number) {
   const people = await db.execute<{ id: number; witness: string; witness_id: number; taken_on: string | null }>(sql`select d.id, w.name as witness, w.id as witness_id, d.taken_on from depositions d join witnesses w on w.id = d.witness_id where d.case_id = (select case_id from case_runs where id = ${id})`).then((r) => new Map(r.rows.map((d) => [Number(d.id), d])));
   const at = (l: { printed_page: number; line_no: number }) => `${l.printed_page}:${String(l.line_no).padStart(2, "0")}`;
   const standing = await standingOf(db, rows.map((r) => r.f.id));
-  return rows.map(({ f, v }) => {
+  // The transcript versions a reviewer sees now: a decision is saved only against these (api/analyses.ts, review).
+  const epochs = await captureEpochs(db, rows.flatMap((r) => [r.c.depositionA, r.c.depositionB]));
+  return rows.map(({ f, v, c }) => {
     const sides = (v.packet as { sides: { id: string; depositionId: number; lineIds: number[] }[] }).sides.map((s) => {
       const lines = s.lineIds.map((x) => stored.get(x)).filter((l) => l !== undefined);
       const d = people.get(s.depositionId);
@@ -953,7 +955,7 @@ export async function caseRunFindings(db: Database, id: number) {
     });
     const checks = f.checks as { source?: { a?: { evidenceLineIds?: number[]; status?: string }; b?: { evidenceLineIds?: number[]; status?: string } }; outcome?: string; safeguards?: { rule: string; side: "a" | "b" | null; detail: string }[] };
     return {
-      id: f.id, crossWitness: sides[0]?.witnessId !== sides[1]?.witnessId, type: f.type, priority: f.priority, score: f.score, band: f.band, unscoredReason: f.unscoredReason, evidenceStatus: f.evidenceStatus, reviewState: f.reviewState, standing: standing.get(f.id)!,
+      id: f.id, crossWitness: sides[0]?.witnessId !== sides[1]?.witnessId, type: f.type, priority: f.priority, score: f.score, band: f.band, unscoredReason: f.unscoredReason, evidenceStatus: f.evidenceStatus, reviewState: f.reviewState, reviewNote: f.reviewNote, reviewedAt: f.reviewedAt, evidenceEpochs: Object.fromEntries([c.depositionA, c.depositionB].map((d) => [String(d), epochs[String(d)]])), standing: standing.get(f.id)!,
       // Code's verification: which stored lines each side's citation was found on.
       verification: { a: { status: checks.source?.a?.status ?? null, lineIds: checks.source?.a?.evidenceLineIds ?? [] }, b: { status: checks.source?.b?.status ?? null, lineIds: checks.source?.b?.evidenceLineIds ?? [] } },
       a: sides[0], b: sides[1],

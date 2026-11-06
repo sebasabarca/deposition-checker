@@ -6,13 +6,14 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, ArrowUpRight, Check, FileUp, Info, LoaderCircle } from "lucide-react";
 import { api } from "../lib/api";
-import { ACTIVE_RUN, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
+import { ACTIVE_RUN, timeLeft, budgetProblem, COVERAGE, defaultLimit, EXECUTION, isTestRun, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep, type AnalysisScope, type WorkflowChoice, type WorkflowStep } from "../lib/caseRuns";
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
 import { formatDate, formatUsd } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
 import { useUser } from "../lib/session";
 import type { CaseRun, CaseRunEstimate, CaseRunExecution } from "../types";
 import { NO_ACCESS } from "./CheckAgain";
+import { useNow } from "./CheckProgress";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputClass, type Tone } from "./ui";
 
 export function useCaseRuns(caseId: number) {
@@ -392,18 +393,69 @@ function RunState({ run, busy, act, paidBlocked, onBack }: { run: CaseRun; busy:
         </p>
       )}
 
-      {run.status === "adjudicating" && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Progress run={run} />
-          <div className="flex flex-wrap gap-2">
-            {/* Findings so far: an economy run's arrive batch by batch. */}
-            {run.packets.adjudicated > 0 && <a href={href.caseRun(run.id)} className={buttonClass("secondary")}>Findings so far ({run.findings.reduce((n, f) => n + f.n, 0)})</a>}
-            {cancel}
-          </div>
-        </div>
-      )}
+      {run.status === "adjudicating" && <Working run={run} cancel={cancel} />}
 
       {!["queued", "retrieving", "awaiting_confirmation", "adjudicating"].includes(run.status) && <Outcome run={run} busy={busy} act={act} paidBlocked={paidBlocked} />}
+    </div>
+  );
+}
+
+// What the work is, in a lawyer's terms: the stages every packet goes through, not each request. Shown in turn.
+const STAGES = [
+  "Reading each witness's testimony, session by session",
+  "Comparing answers across sessions and witnesses",
+  "Checking every citation against the stored transcript",
+  "Weighing the evidence behind each potential contradiction",
+];
+
+// A run at work: two transcript pages being compared, the share done, a rough time left, the findings so far,
+// and that the person can leave. The counts and the spend are under Details.
+function Working({ run, cancel }: { run: CaseRun; cancel: ReactNode }) {
+  const now = useNow(true);
+  const { adjudicated, total } = run.packets;
+  const pct = total ? Math.min(100, Math.floor((adjudicated / total) * 100)) : 0;
+  const found = run.findings.reduce((n, f) => n + f.n, 0);
+  const stage = STAGES[Math.floor(now / 4500) % STAGES.length];
+  const left = timeLeft(run, now);
+  const economy = run.execution === "batch";
+  const page = (scan: string) => (
+    <span aria-hidden className="relative block h-16 w-12 overflow-hidden rounded-sm bg-sheet ring-1 ring-line">
+      <span className={cx("absolute inset-x-1 top-1.5 h-2.5 rounded-[2px] bg-mark/80", scan)} />
+      {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} className="absolute left-2 h-[2px] rounded-full bg-control" style={{ top: 8 + i * 8, right: i % 3 === 2 ? 14 : 8 }} />)}
+    </span>
+  );
+  return (
+    <div className="overflow-hidden rounded-lg border border-line bg-well">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-4 px-5 py-5">
+        <div className="flex items-center gap-1.5" aria-hidden>
+          {page("page-scan")}
+          <span className="relative block h-2 w-8"><span className="page-link absolute top-0 left-0 size-2 rounded-full bg-slate" /></span>
+          {page("page-scan-late")}
+        </div>
+        <div className="min-w-0 flex-1 basis-64">
+          <p className="text-base font-semibold">Analyzing the testimony</p>
+          <p key={stage} className="fade-in mt-0.5 text-sm text-muted" aria-live="off">{stage}</p>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-rule" role="progressbar" aria-label="Analysis progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+            <div className="h-full rounded-full bg-navy transition-[width] duration-700 ease-out" style={{ width: `${Math.max(pct, 2)}%` }} />
+          </div>
+          <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-muted tabular-nums">
+            <span className="font-semibold text-ink">{pct}% done</span>
+            <span>{economy ? "Economy: each batch usually finishes within an hour" : left ?? "Estimating time left…"}</span>
+            <span>{found === 0 ? "No potential contradictions yet" : `${found.toLocaleString()} potential ${found === 1 ? "contradiction" : "contradictions"} so far`}</span>
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-sheet px-5 py-3">
+        <p className="max-w-2xl text-sm text-muted">You don't need to stay on this page. The analysis keeps running on the server; come back to this case any time to see the results.</p>
+        <div className="flex flex-wrap gap-2">
+          {found > 0 && <a href={href.caseRun(run.id)} className={buttonClass("secondary")}>See findings so far</a>}
+          {cancel}
+        </div>
+      </div>
+      <details className="border-t border-line bg-sheet px-5 py-2.5 text-sm">
+        <summary className="cursor-pointer text-muted">Details</summary>
+        <div className="mt-2 mb-1"><Progress run={run} /></div>
+      </details>
     </div>
   );
 }

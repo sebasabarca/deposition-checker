@@ -114,6 +114,49 @@
   animation: sweep 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+/* A run at work (CaseRuns.tsx, Working): a highlighter band moves down each of two transcript pages, offset, while
+   a dot travels between them. Off for people who ask for reduced motion. */
+@keyframes page-scan {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(46px);
+  }
+}
+@keyframes page-link {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  20%, 80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .page-scan {
+    animation: page-scan 3.2s ease-in-out infinite;
+  }
+  .page-scan-late {
+    animation: page-scan 3.2s ease-in-out 1.6s infinite;
+  }
+  .page-link {
+    animation: page-link 1.6s ease-in-out infinite;
+  }
+  .fade-in {
+    animation: fade-in 600ms ease-out;
+  }
+}
+
 @keyframes rise {
   from {
     opacity: 0;

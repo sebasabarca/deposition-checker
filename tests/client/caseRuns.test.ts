@@ -2,7 +2,7 @@
 // reviewed, the spending limit a person must type, and when a new run may start.
 
 import { describe, expect, it } from "vitest";
-import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, workflowStep } from "../../client/src/lib/caseRuns";
+import { budgetProblem, canStartRun, COVERAGE, defaultLimit, laneOf, MAX_CASE_RUN_BUDGET_USD, modeEstimate, MOVING_RUN, RESUMABLE_RUN, RUN_STATUS, isAnalysis, isEstimate, isUnusedEstimate, runScopeKey, scopeKey, scopeProblem, timeLeft, workflowStep } from "../../client/src/lib/caseRuns";
 import { MAX_CASE_RUN_BUDGET_USD as SERVER_MAX } from "../../server/src/api/caseRuns";
 import { findingGroup } from "../../server/src/api/present";
 import type { CaseRun, CaseRunEstimate } from "../../client/src/types";
@@ -120,5 +120,24 @@ describe("the guided analysis workflow", () => {
     expect(scopeProblem("selected", [1, 2], deps)).toBeNull();
     expect(scopeProblem("selected", [1], deps)).toMatch(/at least two/);
     expect(scopeProblem("selected", [1, 3], deps)).toMatch(/finished reading/);
+  });
+});
+
+describe("timeLeft", () => {
+  const start = "2026-11-05T12:00:00Z";
+  const at = (s: number) => Date.parse(start) + s * 1000;
+  const run = (done: number, total = 100, execution: "standard" | "batch" = "standard") => ({ execution, startedAt: start, packets: { adjudicated: done, total } });
+  it("waits for enough of the run before guessing", () => {
+    expect(timeLeft(run(10), at(10))).toBeNull(); // under 20 seconds
+    expect(timeLeft(run(2), at(60))).toBeNull(); // under 3% done
+  });
+  it("projects from the pace so far", () => {
+    expect(timeLeft(run(25), at(60))).toBe("About 3 minutes left"); // 25 in a minute, 75 to go
+    expect(timeLeft(run(90), at(60))).toBe("Less than a minute left");
+    expect(timeLeft(run(5), at(3600))).toBe("About 19 hours left");
+  });
+  it("never guesses for economy or a finished run", () => {
+    expect(timeLeft(run(50, 100, "batch"), at(600))).toBeNull();
+    expect(timeLeft(run(100), at(600))).toBeNull();
   });
 });

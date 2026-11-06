@@ -110,7 +110,7 @@ function CopyCitation({ text, inferred }: { text: string; inferred: boolean }) {
   );
 }
 
-const OPTIONS: { d: ReviewDecision; label: string; icon: typeof X; on: string }[] = [
+export const OPTIONS: { d: ReviewDecision; label: string; icon: typeof X; on: string }[] = [
   { d: "confirmed", label: "Keep", icon: CircleCheck, on: "bg-ok text-white ring-ok" },
   { d: "needs_context", label: "Needs context", icon: CircleHelp, on: "bg-context text-white ring-context" },
   { d: "dismissed", label: "Dismiss", icon: X, on: "bg-muted text-white ring-muted" },
