@@ -46,23 +46,25 @@ export function CasesPage() {
           {shown.length === 0 ? <p className="px-5 py-6 text-sm text-muted">No case or witness matches “{q}”.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[46rem] text-sm">
-                <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>Analyses</th><th className={thClass}>Next</th><th className={cx(thClass, "text-right")}>Last activity</th><th className={cx(thClass, "w-0")}><span className="sr-only">Rename</span></th></tr></thead>
+                <thead><tr><th className={thClass}>Case</th><th className={thClass}>Witnesses</th><th className={cx(thClass, "text-right")}>Depositions</th><th className={cx(thClass, "text-right")}>Analyses</th><th className={thClass}>Next</th><th className={cx(thClass, "text-right")}>Last activity</th></tr></thead>
                 <tbody>
                   {shown.map((c) => {
                     const s = statusOf(c);
                     return (
                       <tr key={c.id} className={cx(rowClass, "cursor-pointer")} onClick={(e) => !(e.target as HTMLElement).closest("a, button") && (window.location.hash = href.case(c.id))}>
-                        <td className={tdClass}><a href={href.case(c.id)} className="font-semibold hover:underline">{c.name}</a></td>
+                        <td className={tdClass}>
+                          <span className="flex items-center gap-1">
+                            <a href={href.case(c.id)} className="font-semibold hover:underline">{c.name}</a>
+                            <button type="button" onClick={() => setRenaming(c)} aria-label={`Rename ${c.name}`} title="Rename" className="-my-1 inline-flex size-7 flex-none items-center justify-center rounded-md text-faint transition-colors hover:bg-rule hover:text-ink">
+                              <Pencil aria-hidden className="size-3.5" />
+                            </button>
+                          </span>
+                        </td>
                         <td className={cx(tdClass, "text-muted")}>{c.witnessNames.join(", ") || "–"}</td>
                         <td className={cx(tdClass, "text-right tabular-nums")}>{c.depositions}</td>
                         <td className={cx(tdClass, "text-right tabular-nums")}>{c.reports}</td>
                         <td className={tdClass}><Badge tone={s.tone} dot>{s.label}</Badge></td>
                         <td className={cx(tdClass, "text-right text-muted tabular-nums")}>{relativeTime(c.lastActivity, now)}</td>
-                        <td className={cx(tdClass, "py-1.5")}>
-                          <button type="button" onClick={() => setRenaming(c)} aria-label={`Rename ${c.name}`} title="Rename" className="-my-1 inline-flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-rule hover:text-ink">
-                            <Pencil aria-hidden className="size-4" />
-                          </button>
-                        </td>
                       </tr>
                     );
                   })}

@@ -124,9 +124,15 @@ export function CasePage({ id }: { id: number }) {
     <>
       <PageHeader
         above={<Breadcrumbs items={[{ label: "Cases", href: href.cases() }]} />}
-        title={detail.case.name}
+        title={
+          <span className="inline-flex items-center gap-2">
+            {detail.case.name}
+            <button type="button" onClick={() => setRenaming(true)} title="Rename case" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 font-sans text-sm font-medium tracking-normal text-muted transition-colors hover:bg-rule hover:text-ink">
+              <Pencil aria-hidden className="size-4" />Rename<span className="sr-only"> case</span>
+            </button>
+          </span>
+        }
         description={summary}
-        actions={<Button variant="secondary" onClick={() => setRenaming(true)}><Pencil aria-hidden className="size-4" />Rename</Button>}
       />
       <RenameCase caseId={id} name={detail.case.name} open={renaming} onClose={() => setRenaming(false)} onRenamed={(name) => { setRenaming(false); setDetail((d) => d && { ...d, case: { ...d.case, name } }); }} />
 
