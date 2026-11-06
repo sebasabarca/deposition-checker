@@ -42,7 +42,10 @@ export async function requestKeys(db: Database, contract: ContractId, packet: Is
 // failed, partial, aborted, uncertain, unimported and reused requests never qualify.
 // Model identity: the source must have been asked for, and answered by, exactly this model id (llm_calls.model is the
 // id the provider reported answering with).
-export async function findReusable(db: Database, caseId: number, keys: RequestKeys, model: string): Promise<ReuseSource | null> {
+// entryId: the ledger entry asking. A reply this entry already received (sent or reused) never qualifies again: its
+// recovery request can be byte-identical to the request that got it (a one-pair packet), and reusing it would hand
+// back the reply that just failed instead of asking again.
+export async function findReusable(db: Database, caseId: number, keys: RequestKeys, model: string, entryId?: number): Promise<ReuseSource | null> {
   if (keys.evidenceKey === null) return null;
   const [row] = await db.execute<{ id: number; llm_call_id: number; text: string; cost: string | null; batch: boolean; case_run_id: number }>(sql`
     select r.id, r.llm_call_id, l.raw_output as text, l.cost_usd::text as cost, l.batch, c.id as case_run_id
@@ -53,6 +56,8 @@ export async function findReusable(db: Database, caseId: number, keys: RequestKe
       and r.status = 'completed' and r.error_kind is null and l.raw_output is not null
       and r.model = ${model} and l.model = ${model}
       and c.case_id = ${caseId} and c.mode = 'live'
+      ${entryId === undefined ? sql`` : sql`and not exists (select 1 from adjudication_requests t left join adjudication_requests s on s.id = t.reused_from_request_id
+        where t.screening_entry_id = ${entryId} and coalesce(t.llm_call_id, s.llm_call_id) = l.id)`}
     order by r.id desc limit 1`).then((r) => r.rows);
   return row ? { requestId: Number(row.id), llmCallId: Number(row.llm_call_id), text: row.text, costUsd: row.cost === null ? 0 : Number(row.cost), batch: row.batch, caseRunId: Number(row.case_run_id) } : null;
 }
@@ -84,7 +89,8 @@ export async function caseHasSources(db: Database, caseId: number): Promise<bool
   return !!row?.any;
 }
 
-// Stores the keys on a request that is about to be sent, so a later identical request can reuse its response.
-export async function storeKeys(db: Database, requestId: number, keys: RequestKeys) {
-  await db.update(adjudicationRequests).set({ requestFingerprint: keys.fingerprint, evidenceKey: keys.evidenceKey }).where(eq(adjudicationRequests.id, requestId));
+// Stores the keys on a request that is about to be sent, so a later identical request can reuse its response, and
+// the ledger entry it serves, so that entry's recovery never reuses this response (findReusable).
+export async function storeKeys(db: Database, requestId: number, keys: RequestKeys, entryId: number) {
+  await db.update(adjudicationRequests).set({ requestFingerprint: keys.fingerprint, evidenceKey: keys.evidenceKey, screeningEntryId: entryId }).where(eq(adjudicationRequests.id, requestId));
 }

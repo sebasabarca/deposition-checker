@@ -192,7 +192,7 @@ async function advance(db: Database, run: CaseRun, ledgerId: number, entry: Entr
     const reused = async (round: number): Promise<boolean> => {
       if (cancelling || !reuseApplies(run, reuse)) return false;
       const keys = await requestKeys(db, contractOf(run), step.packet, model);
-      const source = await findReusable(db, run.caseId, keys, model.model);
+      const source = await findReusable(db, run.caseId, keys, model.model, at.entry.id);
       if (!source) return false;
       const hit = await recordReuse(db, run, at.entry.id, step.packet, step.sentIds, model, source, keys, { round, strategy: "packet-batch", estimatedInputTokens: inputTokenBound(requestChars(step.packet, contractOf(run))), maxOutputTokens: maxOutputTokensFor(step.packet.pairs.length) });
       at.entry = await applyReply(db, run, { ...at.entry, requestId: hit.request.id, llmCallId: source.llmCallId }, step.packet, step.sentIds, hit.reply, model);

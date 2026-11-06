@@ -96,6 +96,37 @@ describe.skipIf(!TEST_DATABASE_URL)("exact-request reuse", () => {
     for (const x of reusedRows.values()) expect(x).toMatchObject({ status: "reused", llmCallId: null, reservationId: null, maxCostUsd: 0 });
   }, 120_000);
 
+  it("a recovery request identical to the one that failed is asked again, never answered with the failed reply", async () => {
+    // Its own effort, so no earlier run's response matches. The first reply to each packet answers no pair, so each
+    // recovery request carries the same pairs as the original, and often the same fingerprint.
+    const blank = new Set<string>();
+    const p = provider({ effort: "recovery-test" });
+    const ask = p.model.adjudicate.bind(p.model);
+    const model: CasePacketModel = { ...p.model, async adjudicate(packet, o) {
+      const r = await ask(packet, o);
+      if (blank.has(packet.id)) return r;
+      blank.add(packet.id);
+      return { ...r, text: JSON.stringify({ screen: [], verdicts: [] }) };
+    } };
+    const run = await live();
+    const outcome = await runCaseRun(db, pool, run.id, deps(model));
+    const rows = await requests(run.id);
+    expect(outcome).toBe("completed");
+    const byEntry = new Map<number | null, typeof rows>();
+    for (const x of rows.sort((x, y) => x.id - y.id)) byEntry.set(x.screeningEntryId, [...(byEntry.get(x.screeningEntryId) ?? []), x]);
+    expect(byEntry.has(null)).toBe(false);
+    expect([...byEntry.values()].every((xs) => xs.length === 2)).toBe(true); // the blank reply, then one recovery
+    expect([...byEntry.values()].some(([a, b]) => a.requestFingerprint === b.requestFingerprint)).toBe(true);
+    expect(rows.every((x) => x.status === "completed")).toBe(true); // every recovery sent, none reused from the blank reply
+    expect(await signature(run.id)).toEqual(await signature(first));
+    // A later run with the same model reuses round 1's blank reply, then the recovery reply, never the blank one twice.
+    const p2 = provider({ effort: "recovery-test" });
+    const again = await live();
+    expect(await runCaseRun(db, pool, again.id, deps(p2.model))).toBe("completed");
+    expect(p2.calls).toEqual([]);
+    expect(await signature(again.id)).toEqual(await signature(first));
+  }, 120_000);
+
   it("a fresh analysis reuses nothing and pays for every request; its responses then serve later runs", async () => {
     const p = provider();
     const fresh = await createCaseRun(db, caseId, { mode: "live", budgetUsd: 50, confirmed: true, fresh: true });
