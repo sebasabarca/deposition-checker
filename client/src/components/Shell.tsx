@@ -255,8 +255,8 @@ function useRunningChecks(section: Section | null) {
   }, []);
   // The tab title says so too, for someone working in another tab.
   useEffect(() => {
-    const base = document.title.replace(/^(Checking… · |Findings ready · )/, "");
-    document.title = running !== null ? `Checking… · ${base}` : ready !== null ? `Findings ready · ${base}` : base;
+    const base = document.title.replace(/^(Checking… · |Analyzing… · |Findings ready · )/, "");
+    document.title = running !== null ? `Analyzing… · ${base}` : ready !== null ? `Findings ready · ${base}` : base;
   }, [running, ready, section]);
   const seen = () => setReady(null);
   if (running !== null) return { state: "running" as const, analysisId: running, seen };

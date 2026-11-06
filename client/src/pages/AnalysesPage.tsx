@@ -20,10 +20,13 @@ const VIEWS: { id: View; label: string }[] = [
 const runBucket = (r: CaseRun): View => (MOVING_RUN.includes(r.status) ? "running" : r.status === "completed" ? "completed" : "stopped");
 
 // Every case's whole-case analyses, newest first: those that ran or are running, never an estimate nobody confirmed.
-function useAllCaseRuns(caseIds: number[]) {
+// caseIds is null until the workspace has loaded: nothing is fetched, so "no analyses" is never shown before the
+// case list is known.
+function useAllCaseRuns(caseIds: number[] | null) {
   const [runs, setRuns] = useState<CaseRun[] | null>(null);
-  const key = caseIds.join(",");
+  const key = caseIds === null ? null : caseIds.join(",");
   const load = useCallback(() => {
+    if (key === null) return;
     const ids = key ? key.split(",").map(Number) : [];
     Promise.all(ids.map((id) => api.caseRuns(id).then((r) => r.caseRuns, () => [] as CaseRun[])))
       .then((all) => setRuns(all.flat().filter((r) => isAnalysis(r) && !isUnusedEstimate(r)).sort((a, b) => b.id - a.id)));
@@ -39,7 +42,7 @@ export function AnalysesPage() {
   const [caseId, setCaseId] = useState("");
   const inCase = (id: number) => !caseId || String(id) === caseId;
   const caseNames = useMemo(() => new Map((data?.cases ?? []).map((c) => [c.id, c.name])), [data]);
-  const caseRuns = useAllCaseRuns((data?.cases ?? []).map((c) => c.id));
+  const caseRuns = useAllCaseRuns(data ? data.cases.map((c) => c.id) : null);
   const runsInCase = (caseRuns ?? []).filter((r) => inCase(r.caseId));
   const runRows = runsInCase.filter((r) => view === "all" || runBucket(r) === view);
 
