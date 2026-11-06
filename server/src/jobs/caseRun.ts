@@ -109,6 +109,13 @@ export type CaseRunContract = (typeof CASE_RUN_CONTRACTS)[number];
 export const contractOf = (run: Pick<CaseRun, "promptVersion">): CaseRunContract => (run.promptVersion === STRETCH_V2_PROMPT_VERSION ? STRETCH_V2_PROMPT_VERSION : PACKET_PROMPT_VERSION);
 // Whether this server lets a person choose the experimental whole-stretch contract (test-model runs included).
 export const stretchAllowed = (env: Record<string, string | undefined>) => env.ALLOW_STRETCH_V2 === "true";
+// Exact retrieval speed-ups (identical neighbours, pool and packets; retrieve/fullTextMemory.ts, denseParallel.ts), off
+// unless the server sets RETRIEVAL_PATH_A=memory and/or RETRIEVAL_DENSE_THREADS=<2..32>.
+export function retrievalSpeedOf(env: Record<string, string | undefined>): { pathA?: "memory"; denseThreads?: number } {
+  const threads = Number(env.RETRIEVAL_DENSE_THREADS ?? 1);
+  if (!Number.isInteger(threads) || threads < 1 || threads > 32) throw new Error("RETRIEVAL_DENSE_THREADS must be a whole number from 1 to 32.");
+  return { ...(env.RETRIEVAL_PATH_A === "memory" ? { pathA: "memory" as const } : {}), ...(threads > 1 ? { denseThreads: threads } : {}) };
+}
 // The depositions a run analyzes, or null for the whole case (stored in its config when it is created).
 export const scopeOf = (run: Pick<CaseRun, "config">): number[] | null => (run.config as { scope?: { depositionIds?: number[] } } | null)?.scope?.depositionIds ?? null;
 
@@ -388,7 +395,7 @@ export async function finish(db: Database, runId: number, ledgerId: number, stat
 // Retrieval for the whole case, stored once: candidates for every pool pair, then the ledger. Returns
 // an error message when the stored evidence changed since an earlier attempt of this run.
 async function retrieve(db: Database, pool: Pool, run: CaseRun, deps: CaseRunDeps) {
-  const built = await buildCasePool(db, pool, run.caseId, { minilm: deps.minilm ?? "off", depositionIds: scopeOf(run) ?? undefined });
+  const built = await buildCasePool(db, pool, run.caseId, { minilm: deps.minilm ?? "off", depositionIds: scopeOf(run) ?? undefined, ...retrievalSpeedOf(process.env) });
   if (run.sourceHash && run.sourceHash !== built.sourceHash) return "The case's stored testimony changed since this run started retrieval. Start a new run.";
   await update(db, run.id, { sourceHash: built.sourceHash, config: { ...(run.config as object), retrieval: built.settings, paths: built.paths, documents: built.documents } });
   const set = caseRunSetOf(run.id);
