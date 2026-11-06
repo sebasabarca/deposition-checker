@@ -35,7 +35,7 @@ import { assessPacketPair } from "../adjudicate/packetAssess";
 import { buildIssuePacket, resolvePassages } from "../adjudicate/packetLoad";
 import { formatIssuePacket, PACKET_EFFORT, PACKET_MODEL, PACKET_PROMPT_VERSION, PACKET_PROMPTS, maxOutputTokensFor, requestChars, type ContractId, type IssuePacket } from "../adjudicate/packetPrompt";
 import { mockStretchReply, readStretchReply, verificationOf, type StretchReading } from "../adjudicate/stretch";
-import { STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
+import { STRETCH_RENDER_ID, STRETCH_V2_PROMPT_VERSION } from "../adjudicate/stretchPrompt";
 import { buildStretchSet } from "../retrieve/stretchSet";
 import type { PacketAdjudicator } from "../adjudicate/packetModel";
 import { parseVerdictsLenient, VERDICT_SCHEMAS } from "../adjudicate/packetSchema";
@@ -802,7 +802,7 @@ async function persistStretch(db: Database, run: CaseRun, entry: Entry, packet: 
 // depositionIds: analyze only these depositions of the case (the same pipeline, model and checks); absent = the whole case.
 export async function createCaseRun(db: Database, caseId: number, { mode, budgetUsd = 0, confirmed = false, execution = "standard", contract = PACKET_PROMPT_VERSION, depositionIds, fresh = false }: { mode: "live" | "mock"; budgetUsd?: number; confirmed?: boolean; execution?: CaseRunExecution; contract?: CaseRunContract; depositionIds?: number[]; fresh?: boolean }) {
   return db.transaction(async (tx) => {
-    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy" } : {}), ...(fresh ? { reuse: "fresh" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
+    const config = { retrievalVersion: CASE_POOL_VERSION, screening: "off", packetLimits: PACKET_LIMITS, contract, ...(depositionIds ? { scope: { depositionIds: [...new Set(depositionIds)].sort((x, y) => x - y) } } : {}), ...(contract === STRETCH_V2_PROMPT_VERSION ? { experimental: "stretch-v2: whole-stretch requests; not validated for accuracy", stretchRender: STRETCH_RENDER_ID } : {}), ...(fresh ? { reuse: "fresh" } : {}), verificationVersion: VERIFICATION_VERSION, rubricVersion: RUBRIC_V1.version, maxRecoveryRounds: MAX_RECOVERY_ROUNDS, maxRateLimitRetries: MAX_RATE_LIMIT_RETRIES };
     const live = mode === "live";
     const [row] = await tx
       .insert(caseRuns)

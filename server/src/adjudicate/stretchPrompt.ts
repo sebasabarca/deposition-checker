@@ -2,8 +2,8 @@
 // schema of the candidate-reduction experiment's v2 pilot (experiments/candidate-reduction/stretch/v2/contract.ts,
 // branch experiment/candidate-reduction 31590cd), byte for byte (STRETCH_V2_SYSTEM_PROMPT_SHA256 pins it), and a
 // renderer adapted to production evidence: passages come from packetLoad.ts (parser r12 segments, "(part x of y)"
-// labels on a line shared by two turns), each stored line or line part is shown once per stretch, and only the
-// exchanges are citable. Pure: no I/O.
+// labels on a line shared by two turns), each stored line or line part is shown once per stretch, in transcript
+// order (render r2, below), and only the exchanges are citable. Pure: no I/O.
 //
 // What differs from the experiment's renderer, so results from its pilot don't transfer as measurements:
 // - Lines shared by two exchanges are shown as each exchange's own slice, with its part label, never whole.
@@ -94,28 +94,63 @@ const ref = (l: PassageLine) => `${l.page}:${String(l.line).padStart(2, "0")}${s
 const show = (ls: readonly PassageLine[]) => ls.map((l) => `  ${ref(l)}  ${l.text}`).join("\n");
 const lineKey = (l: PassageLine) => `${l.id}:${l.span ? `${l.span.first}-${l.span.last}` : "all"}`;
 
+// Which renderer drew a request's user message, for records: r1 printed each passage's "after" context before the
+// next exchange, so a trailing window running past a short next exchange came out of transcript order; r2 orders
+// every stretch by transcript position, and drops a shared line's whole text from the context when the stretch's
+// exchanges already show every part of it (r1 printed it whole between the two slices). Otherwise r2 is
+// byte-identical to r1.
+export const STRETCH_RENDER_R1 = "stretch-render-r1";
+export const STRETCH_RENDER_R2 = "stretch-render-r2";
+export const STRETCH_RENDER_ID = STRETCH_RENDER_R2;
+export type StretchRenderId = typeof STRETCH_RENDER_R1 | typeof STRETCH_RENDER_R2;
+
+// A piece of a stretch: an exchange, one not-citable line (of context block `block`), or a gap marker, at a
+// transcript position (page, line, then: -1 a gap before the line, 0 the whole line, n an exchange starting at its
+// part n, 99 a gap after the line).
+type Atom = { pos: [number, number, number]; text: string; block?: number };
+const at = (l: PassageLine, sub = l.span?.first ?? 0): Atom["pos"] => [l.page, l.line, sub];
+const byPos = (x: Atom, y: Atom) => x.pos[0] - y.pos[0] || x.pos[1] - y.pos[1] || x.pos[2] - y.pos[2];
+const GAP = "[pages omitted from the transcript here]";
+
 // The user message: each deposition's stretch once, as continuous testimony with every exchange marked, then the units.
-export function formatStretchRequest(packet: IssuePacket): string {
+export function formatStretchRequest(packet: IssuePacket, render: StretchRenderId = STRETCH_RENDER_ID): string {
   const units = requestUnits(packet);
   const inStretch = new Set(units.flatMap((u) => [...u.a, ...u.b]));
   const passages = packet.passages.filter((p) => inStretch.has(p.id));
   const docs = [...new Set(passages.map((p) => p.depositionId))];
   const own = new Set(passages.flatMap((p) => p.lines.map(lineKey)));
+  // r2: lines whose every part an exchange of the request shows (a line without a span is one whole part).
+  const partsShown = new Map<number, { of: number; seen: Set<number> }>();
+  for (const l of passages.flatMap((p) => p.lines)) {
+    const e = partsShown.get(l.id) ?? partsShown.set(l.id, { of: l.span?.of ?? 1, seen: new Set() }).get(l.id)!;
+    for (let i = l.span?.first ?? 1; i <= (l.span?.last ?? 1); i++) e.seen.add(i);
+  }
+  const whollyShown = (l: PassageLine) => render === STRETCH_RENDER_R2 && !l.span && (partsShown.get(l.id)?.seen.size ?? 0) >= (partsShown.get(l.id)?.of ?? Infinity);
   const blocks = docs.map((d, n) => {
     const ps = passages.filter((p) => p.depositionId === d).sort((x, y) => x.groupId - y.groupId);
     const shown = new Set<string>();
-    const context = (ls: readonly PassageLine[]) => { const out = ls.filter((l) => !own.has(lineKey(l)) && !shown.has(lineKey(l))); out.forEach((l) => shown.add(lineKey(l))); return out; };
-    const parts: string[] = [`<stretch id="X${n + 1}" witness="${ps[0].witnessName}" session="${ps[0].session}" taken_on="${ps[0].takenOn ?? "not stated"}">`];
+    let block = 0;
+    const context = (ls: readonly PassageLine[]): Atom[] => { const out = ls.filter((l) => !own.has(lineKey(l)) && !shown.has(lineKey(l)) && !whollyShown(l)); out.forEach((l) => shown.add(lineKey(l))); block++; return out.map((l) => ({ pos: at(l), text: show([l]), block })); };
+    const atoms: Atom[] = [];
     for (const p of ps) {
+      const first = p.before[0] ?? p.lines[0], last = p.after[p.after.length - 1] ?? p.lines[p.lines.length - 1];
       const before = context(p.before);
-      if (p.gapBefore) parts.push("[pages omitted from the transcript here]");
-      if (before.length) parts.push(`Not citable:\n${show(before)}`);
-      parts.push(`Exchange [${p.id}] (${ref(p.lines[0])} to ${ref(p.lines[p.lines.length - 1])}):\n${show(p.lines)}`);
+      if (p.gapBefore) atoms.push({ pos: at(first, -1), text: GAP });
+      atoms.push(...before);
+      atoms.push({ pos: at(p.lines[0]), text: `Exchange [${p.id}] (${ref(p.lines[0])} to ${ref(p.lines[p.lines.length - 1])}):\n${show(p.lines)}` });
       p.lines.forEach((l) => shown.add(lineKey(l)));
-      const after = context(p.after);
-      if (after.length) parts.push(`Not citable:\n${show(after)}`);
-      if (p.gapAfter) parts.push("[pages omitted from the transcript here]");
+      atoms.push(...context(p.after));
+      if (p.gapAfter) atoms.push({ pos: at(last, 99), text: GAP });
     }
+    // r2: a stable sort, so pieces already in order keep r1's order (and bytes); a context block split by an
+    // exchange becomes two "Not citable" blocks.
+    if (render === STRETCH_RENDER_R2) atoms.sort(byPos);
+    const parts: string[] = [`<stretch id="X${n + 1}" witness="${ps[0].witnessName}" session="${ps[0].session}" taken_on="${ps[0].takenOn ?? "not stated"}">`];
+    atoms.forEach((a, i) => {
+      if (a.block === undefined) parts.push(a.text);
+      else if (atoms[i - 1]?.block === a.block) parts[parts.length - 1] += `\n${a.text}`;
+      else parts.push(`Not citable:\n${a.text}`);
+    });
     parts.push("</stretch>");
     return parts.join("\n");
   });
