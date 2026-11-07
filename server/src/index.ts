@@ -7,6 +7,7 @@ import { caseRunRoutes, caseRoutes, depositionRoutes, findingRoutes, reportRoute
 import { accountGates, authRoutes, requireUser, sameOrigin, scopeToOrg } from "./auth";
 import { connect } from "./db/client";
 import { localMode } from "./local";
+import { guestConfigProblem, guestMode, guestReadOnly } from "./guest";
 import { isEvidenceOnHold } from "./evidence";
 import { createCaseRunQueues, createIngestQueues, startBoss } from "./jobs";
 
@@ -45,6 +46,8 @@ async function mountDepositionRoutes() {
         res.status(503).json({ ok: false, error: "The database isn't reachable." });
       }
     });
+    // Guest mode (guest.ts): a read-only demo, so every change is refused before any route sees it.
+    app.use("/api", guestReadOnly());
     // Sign-in is open; everything after it needs a session, and sees only the user's organization.
     app.use("/api", authRoutes(db));
     app.use("/api", sameOrigin, requireUser(db), scopeToOrg(db), accountGates());
@@ -75,8 +78,11 @@ function mountClient() {
 const PORT = Number(process.env.PORT ?? 3001);
 // Local mode (local.ts) answers only this computer: loopback, and never behind a proxy that would hide the caller.
 if (localMode() && process.env.TRUST_PROXY) throw new Error("LOCAL_MODE=true can't be used with TRUST_PROXY: local mode is for one computer, not behind a proxy.");
+// Guest mode (guest.ts) is a public read-only demo: it never starts with a model key or without its demo account.
+const guestProblem = guestConfigProblem();
+if (guestProblem) throw new Error(guestProblem);
 mountDepositionRoutes().then(() => {
   mountClient();
   if (localMode()) app.listen(PORT, "127.0.0.1", () => console.log(`Server running on http://127.0.0.1:${PORT} (local mode: this computer only)`));
-  else app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+  else app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}${guestMode() ? " (guest mode: read-only demo, no model key)" : ""}`));
 });

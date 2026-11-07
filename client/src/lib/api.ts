@@ -8,7 +8,8 @@ import type { Workspace } from "./workspace";
 export const SIGNED_OUT = "veridict:signed-out";
 // A deposition was uploaded to a case (detail: { caseId }), so an open case page reloads and shows it processing.
 export const DEPOSITION_ADDED = "veridict:deposition-added";
-export type User = { id: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean; onboarded: boolean };
+// guest: the read-only demo account (server/src/guest.ts).
+export type User = { id: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean; onboarded: boolean; guest?: boolean };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -46,6 +47,9 @@ export const api = {
   resetPassword: (token: string, password: string) => request<{ user: User }>("POST", "/auth/reset", { token, password }),
   signOut: () => request<{ ok: true }>("POST", "/auth/signout"),
   localDemo: () => request<{ available: boolean }>("GET", "/auth/local-demo"),
+  // Guest mode (server/src/guest.ts): the public read-only demo.
+  guestAvailable: () => request<{ available: boolean }>("GET", "/auth/guest"),
+  openGuest: () => request<{ user: User }>("POST", "/auth/guest"),
   openLocalDemo: () => request<{ user: User }>("POST", "/auth/local-demo"),
   updateProfile: (name: string) => request<{ user: User }>("PATCH", "/auth/profile", { name }),
   changePassword: (current: string, password: string) => request<{ ok: true; message: string }>("POST", "/auth/password", { current, password }),

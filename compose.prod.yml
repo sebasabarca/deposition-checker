@@ -29,6 +29,8 @@ services:
       APP_URL: ${APP_URL:?Set APP_URL in .env, the public https address of the site}
       TRUST_PROXY: ${TRUST_PROXY:-1}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      GUEST_MODE: ${GUEST_MODE:-false}
+      GUEST_EMAIL: ${GUEST_EMAIL:-}
     depends_on:
       db: { condition: service_healthy }
 

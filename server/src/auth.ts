@@ -13,6 +13,7 @@ import { z } from "zod";
 import type { Database } from "./db/client";
 import { analyses, authTokens, caseRuns, cases, depositions, findings, orgs, sessions, users } from "./db/schema";
 import { fromLoopback, localDemoEmail, localMode } from "./local";
+import { guestEmail, isGuest, refusedInGuestMode } from "./guest";
 import { alreadyRegistered, emailChanged, passwordChanged, resendMailer, resetPassword, verifyEmail, type Email as EmailMessage, type Mailer } from "./email";
 
 const scrypt = (password: string, salt: Buffer, keylen: number, options: ScryptOptions) =>
@@ -43,7 +44,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export type SessionUser = { id: number; orgId: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean };
+// guest: the read-only demo account (guest.ts).
+export type SessionUser = { id: number; orgId: number; email: string; name: string; emailVerified: boolean; analysisAccess: boolean; guest: boolean };
 
 async function startSession(db: Database, res: Response, req: Request, userId: number) {
   const token = randomBytes(32).toString("base64url");
@@ -74,7 +76,7 @@ export async function sessionUser(db: Database, req: Request): Promise<SessionUs
     .where(and(eq(sessions.tokenHash, tokenHash(token)), gt(sessions.expiresAt, new Date())));
   if (!row) return null;
   const { verifiedAt, ...user } = row;
-  return { ...user, analysisAccess: user.analysisAccess || localMode(), emailVerified: verifiedAt !== null };
+  return { ...user, analysisAccess: (user.analysisAccess || localMode()) && !isGuest(user), emailVerified: verifiedAt !== null, guest: isGuest(user) };
 }
 
 // Every API request after this one has res.locals.user, or got a 401.
@@ -141,6 +143,7 @@ const matches = (req: Request, rules: [string, RegExp][]) => rules.some(([m, re]
 export function accountGates(): RequestHandler {
   return (req, res, next) => {
     const user = res.locals.user as SessionUser;
+    if (user.guest && refusedInGuestMode(req)) return res.status(403).json({ error: "This is a read-only demo: nothing can be changed here.", code: "read_only_demo" });
     if (!user.emailVerified && matches(req, NEEDS_VERIFIED)) return res.status(403).json({ error: "Verify your email address first. Check your inbox for the link, or send a new one from the banner.", code: "email_unverified" });
     // A mock case run uses the deterministic mock and is never billed; anything else is a paid check.
     const mode = (req.body as { mode?: string } | undefined)?.mode;
@@ -311,6 +314,17 @@ export function authRoutes(db: Database, { mailer = resendMailer }: { mailer?: M
     return res.json({ user: await sessionUserById(db, user.id) });
   });
 
+  // Guest mode only (guest.ts): the read-only demo, without a password, for anyone. The client shows only this way in.
+  router.get("/auth/guest", (_req, res) => res.json({ available: guestEmail() !== null }));
+  router.post("/auth/guest", async (req, res) => {
+    const email = guestEmail();
+    if (!email) return res.status(404).json({ error: "No such endpoint." });
+    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+    if (!user) return res.status(404).json({ error: "The demo isn't set up in this database." });
+    await startSession(db, res, req, user.id);
+    return res.json({ user: await sessionUserById(db, user.id) });
+  });
+
   router.post("/auth/signout", async (req, res) => {
     const token = readCookie(req, SESSION_COOKIE);
     if (token) await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash(token)));
@@ -398,5 +412,6 @@ async function sessionUserById(db: Database, id: number) {
   const [row] = await db.select({ id: users.id, email: users.email, name: users.name, verifiedAt: users.emailVerifiedAt, analysisAccess: users.analysisAccess, onboardedAt: users.onboardedAt }).from(users).where(eq(users.id, id));
   const { verifiedAt, onboardedAt, ...user } = row;
   // Local mode: whoever runs the server pays for its key, so no account needs paid access granted (local.ts).
-  return { ...user, analysisAccess: user.analysisAccess || localMode(), emailVerified: verifiedAt !== null, onboarded: onboardedAt !== null };
+  // guest: the read-only demo account (guest.ts): no paid access, and the interface offers nothing that changes data.
+  return { ...user, analysisAccess: (user.analysisAccess || localMode()) && !isGuest(user), emailVerified: verifiedAt !== null, onboarded: onboardedAt !== null, guest: isGuest(user) };
 }

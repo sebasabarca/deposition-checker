@@ -7,6 +7,7 @@ import { CaseRunPanel, useCaseRuns } from "../components/CaseRuns";
 import { DangerZone } from "../components/DangerZone";
 import { useAddDeposition } from "../components/Shell";
 import { RenameCase } from "../components/RenameCase";
+import { useGuest } from "../lib/session";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, cx, Dialog, Field, Loading, PageHeader, rowClass, selectClass, tdClass, thClass } from "../components/ui";
 import { DateInput } from "../components/DateInput";
 import { dateAction, moveTargets } from "../components/sessionActions";
@@ -27,6 +28,7 @@ export function CasePage({ id }: { id: number }) {
   const [over, setOver] = useState<number | null>(null);
   const [move, setMove] = useState<{ d: DepositionRow; to: number | null } | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const guest = useGuest(); // the read-only demo: nothing here changes data
   const add = useAddDeposition();
   const runs = useCaseRuns(id);
   const load = useCallback(() => {
@@ -58,7 +60,7 @@ export function CasePage({ id }: { id: number }) {
     .map((d) => ({ id: d.id, witness: witnessName(d.witnessId), takenOn: d.takenOn, label: d.originalFilename ?? `Deposition #${d.id}`, status: d.status, fileSha256: d.fileSha256 }));
   const depositionsStep = (
     <div className="space-y-3">
-      <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} onKeep={(ds) => Promise.all(ds.map((d) => api.setDepositionDate(d.id, d.takenOn))).then(load)} />
+      {!guest && <DatesBanner depositions={detail.depositions} witnesses={detail.witnesses} onKeep={(ds) => Promise.all(ds.map((d) => api.setDepositionDate(d.id, d.takenOn))).then(load)} />}
       {detail.depositions.length === 0 ? (
         <p className="rounded-lg bg-well px-4 py-6 text-center text-sm text-muted">No depositions in this case yet.</p>
       ) : (
@@ -99,7 +101,8 @@ export function CasePage({ id }: { id: number }) {
                         witness={w.name}
                         onRetry={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}
                         onUseDate={(date) => api.setDepositionDate(d.id, date).then(load)}
-                        movable={moveTargets(detail.witnesses, w.id).length > 0}
+                        movable={!guest && moveTargets(detail.witnesses, w.id).length > 0}
+                        readOnly={guest}
                         onDragStart={() => setDragging(d)}
                         onDragEnd={() => { setDragging(null); setOver(null); }}
                         onMove={() => setMove({ d, to: null })}
@@ -127,9 +130,9 @@ export function CasePage({ id }: { id: number }) {
         title={
           <span className="inline-flex items-center gap-2">
             {detail.case.name}
-            <button type="button" onClick={() => setRenaming(true)} title="Rename case" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 font-sans text-sm font-medium tracking-normal text-muted transition-colors hover:bg-rule hover:text-ink">
+            {!guest && <button type="button" onClick={() => setRenaming(true)} title="Rename case" className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 font-sans text-sm font-medium tracking-normal text-muted transition-colors hover:bg-rule hover:text-ink">
               <Pencil aria-hidden className="size-4" />Rename<span className="sr-only"> case</span>
-            </button>
+            </button>}
           </span>
         }
         description={summary}
@@ -138,7 +141,7 @@ export function CasePage({ id }: { id: number }) {
 
       <CaseRunPanel caseId={id} sessions={workflowSessions} depositions={depositionsStep} onAdd={() => add.open(id)} state={runs} />
 
-      <DangerZone
+      {!guest && <DangerZone
         what="case"
         name={detail.case.name}
         typeToConfirm
@@ -148,7 +151,7 @@ export function CasePage({ id }: { id: number }) {
           await api.deleteCase(id);
           window.location.hash = href.cases();
         }}
-      />
+      />}
 
       {move && (
         <MoveDialog
@@ -165,7 +168,7 @@ export function CasePage({ id }: { id: number }) {
   );
 }
 
-function SessionRow({ d, onRetry, onUseDate, movable, onDragStart, onDragEnd, onMove }: { d: DepositionRow; witness: string; onRetry: () => void; onUseDate: (date: string) => Promise<void>; movable: boolean; onDragStart: () => void; onDragEnd: () => void; onMove: () => void }) {
+function SessionRow({ d, onRetry, onUseDate, movable, readOnly, onDragStart, onDragEnd, onMove }: { d: DepositionRow; witness: string; onRetry: () => void; onUseDate: (date: string) => Promise<void>; movable: boolean; readOnly?: boolean; onDragStart: () => void; onDragEnd: () => void; onMove: () => void }) {
   const s = DEPOSITION_STATUS[d.status];
   const name = d.originalFilename ?? `Deposition #${d.id}`;
   const note = d.status === "failed" || d.status === "unsupported" ? `Couldn't be read: ${d.error ?? "this file's layout isn't recognized."}` : d.status === "needs_review" ? (d.error ?? "Some pages couldn't be read.") : d.scanned ? "Scanned copy. Compare quotations with the page image." : null;
@@ -191,7 +194,7 @@ function SessionRow({ d, onRetry, onUseDate, movable, onDragStart, onDragEnd, on
           )}
         </span>
       </td>
-      <td className={cx(tdClass, "align-top whitespace-nowrap")}><SessionDate d={d} onUse={onUseDate} /></td>
+      <td className={cx(tdClass, "align-top whitespace-nowrap")}>{readOnly ? <span className="font-medium tabular-nums">{formatDate(d.takenOn)}</span> : <SessionDate d={d} onUse={onUseDate} />}</td>
       <td className={cx(tdClass, "max-w-80 align-top")}>
         <a href={href.deposition(d.id)} className="block truncate font-medium hover:underline" title={name}>{name}</a>
         {note && <span className="mt-0.5 block text-xs text-muted">{note}</span>}
@@ -201,7 +204,7 @@ function SessionRow({ d, onRetry, onUseDate, movable, onDragStart, onDragEnd, on
       <td className={cx(tdClass, "align-top whitespace-nowrap")}>
         <span className="flex items-center gap-2">
           <Badge tone={s.tone} dot>{s.label}</Badge>
-          {d.status === "failed" && <Button variant="secondary" className="h-6! px-2! text-xs!" onClick={onRetry}>Try again</Button>}
+          {d.status === "failed" && !readOnly && <Button variant="secondary" className="h-6! px-2! text-xs!" onClick={onRetry}>Try again</Button>}
         </span>
       </td>
       <td className={cx(tdClass, "align-top")}>

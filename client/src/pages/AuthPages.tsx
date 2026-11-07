@@ -8,6 +8,7 @@ import { Alert, Button, inputClass } from "../components/ui";
 import { PasswordInput, PasswordRules, passwordOk } from "../components/PasswordInput";
 import { api, type User } from "../lib/api";
 import { href } from "../lib/router";
+import { useGuestServer } from "../lib/session";
 
 
 function AuthCard({ title, description, children, footer }: { title: string; description?: ReactNode; children: ReactNode; footer?: ReactNode }) {
@@ -61,7 +62,27 @@ function useSubmit<T>(run: () => Promise<T>, done: (r: T) => void) {
   return { submit, error, busy };
 }
 
+// The public read-only demo (guest mode): the only way in, without an account.
+function GuestEntry({ onSignedIn, title }: { onSignedIn: (u: User) => void; title: string }) {
+  const open = useSubmit(() => api.openGuest(), (r) => onSignedIn(r.user));
+  return (
+    <AuthCard title={title} description="A finished analysis of real deposition testimony. Explore the findings, the testimony and the report; nothing can be changed, and no account is needed.">
+      <form onSubmit={open.submit} className="space-y-3">
+        <Button type="submit" className="h-10 w-full" disabled={open.busy}>{open.busy ? "Opening…" : "Explore the demo"}</Button>
+        {open.error && <Alert>{open.error}</Alert>}
+      </form>
+    </AuthCard>
+  );
+}
+
 export function SignInPage({ onSignedIn }: { onSignedIn: (u: User) => void }) {
+  const guestServer = useGuestServer();
+  if (guestServer === null) return null;
+  if (guestServer) return <GuestEntry onSignedIn={onSignedIn} title="Explore the demo" />;
+  return <AccountSignIn onSignedIn={onSignedIn} />;
+}
+
+function AccountSignIn({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { submit, error, busy } = useSubmit(() => api.signIn(email.trim(), password), (r) => onSignedIn(r.user));
@@ -89,7 +110,18 @@ export function SignInPage({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   );
 }
 
+// In the public demo (guest mode) accounts can't be created: the page leads to the demo instead.
 export function RegisterPage() {
+  const guestServer = useGuestServer();
+  if (guestServer === null) return null;
+  if (guestServer) {
+    window.location.hash = href.signin();
+    return null;
+  }
+  return <Register />;
+}
+
+function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

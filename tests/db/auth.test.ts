@@ -101,7 +101,7 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
     expect((await browser()("POST", "/auth/verify", { token })).status).toBe(400); // single use
   });
 
-  it("opens the demo workspace without a password only in local mode, and grants paid access only there", async () => {
+  it("opens the demo workspace without a password only in local mode, as a read-only guest", async () => {
     const [org] = await db.insert(orgs).values({ name: "Demo" }).returning({ id: orgs.id });
     await db.insert(users).values({ orgId: org.id, email: "demo@example.test", name: "Demo", passwordHash: await hashPassword("a long passphrase"), emailVerifiedAt: new Date() });
     const saved = { mode: process.env.LOCAL_MODE, email: process.env.LOCAL_DEMO_EMAIL };
@@ -115,12 +115,15 @@ describe.skipIf(!TEST_DATABASE_URL)("accounts and access control (Postgres)", ()
       expect((await b("GET", "/auth/local-demo")).body).toEqual({ available: true }); // the test server is on 127.0.0.1
       expect((await b("POST", "/auth/local-demo", undefined, { origin: "http://evil.example" })).status).toBe(403);
       const opened = await b("POST", "/auth/local-demo");
-      expect(opened).toMatchObject({ status: 200, body: { user: { email: "demo@example.test", analysisAccess: true } } });
-      expect((await b("GET", "/auth/me")).body.user.analysisAccess).toBe(true);
+      // A read-only demo (guest.ts): no paid access, and nothing it asks to change is changed.
+      expect(opened).toMatchObject({ status: 200, body: { user: { email: "demo@example.test", analysisAccess: false, guest: true } } });
+      expect((await b("GET", "/auth/me")).body.user.guest).toBe(true);
+      expect(await b("POST", "/cases", { name: "New" })).toMatchObject({ status: 403, body: { code: "read_only_demo" } });
+      expect((await b("GET", "/cases")).body.cases).toEqual([]);
       process.env.LOCAL_DEMO_EMAIL = "ana@harlow.law"; // never a real account
       expect((await browser()("POST", "/auth/local-demo")).status).toBe(404);
       delete process.env.LOCAL_MODE;
-      expect((await b("GET", "/auth/me")).body.user.analysisAccess).toBe(false); // outside local mode, as granted
+      expect((await b("GET", "/auth/me")).body.user).toMatchObject({ analysisAccess: false, guest: false }); // outside local mode, an ordinary account
     } finally {
       for (const [k, v] of [["LOCAL_MODE", saved.mode], ["LOCAL_DEMO_EMAIL", saved.email]] as const) if (v === undefined) delete process.env[k]; else process.env[k] = v;
     }

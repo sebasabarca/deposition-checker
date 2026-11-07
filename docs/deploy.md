@@ -43,6 +43,34 @@ Verification and password-reset emails go through [Resend](https://resend.com). 
 Tokens in links are single-use, expire (verification 24 hours, reset 1 hour), and are stored only as
 hashes. They're never logged in production.
 
+## A public read-only demo (guest mode)
+
+Guest mode publishes one finished analysis for anyone to look at, with no account and no way to change
+anything or reach a model (`server/src/guest.ts`). The sign-in page offers only "Explore the demo"; every
+request that would change something is refused, for every visitor; and the web server and the worker refuse
+to start if `ANTHROPIC_API_KEY` is set. Build its database from a copy, never from the working database:
+
+```sh
+npx tsx scripts/db-snapshot.ts dump --db <your db> --out data/raw/guest-demo/source.dump
+npx tsx scripts/db-snapshot.ts restore --file data/raw/guest-demo/source.dump --into <name>_rehearsal_guest
+npx tsx scripts/guest-demo.ts --db <name>_rehearsal_guest --case <id> --run <id> \
+  --email guest@demo.example.test --uploads-out data/raw/guest-demo/uploads
+npx tsx scripts/db-snapshot.ts dump --db <name>_rehearsal_guest --out data/raw/guest-demo/guest.dump
+```
+
+`guest-demo.ts` keeps that case and that completed analysis only: every other case, analysis, account,
+session and unused cost record is deleted from the copy, and it prints what is left so you can check it.
+On the host, in `.env`: leave `ANTHROPIC_API_KEY` empty, and set `GUEST_MODE=true`,
+`GUEST_EMAIL=guest@demo.example.test` and `APP_URL`. No email is sent in guest mode, but compose still
+requires `RESEND_API_KEY` and `EMAIL_FROM`: any placeholder will do. Then load the demo before starting the app:
+
+```sh
+docker compose -f compose.prod.yml up -d db
+docker compose -f compose.prod.yml exec -T db pg_restore -U veridict -d veridict --no-owner < data/raw/guest-demo/guest.dump
+docker compose -f compose.prod.yml up -d --build
+docker compose -f compose.prod.yml cp data/raw/guest-demo/uploads/. web:/app/data/uploads/
+```
+
 ## Health
 
 `GET /api/health` answers 200 while the database is reachable, 503 otherwise. The compose file

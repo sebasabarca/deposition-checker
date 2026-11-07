@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { Pencil, Plus } from "lucide-react";
 import { Alert, Badge, Button, Card, cx, Dialog, Empty, Field, inputClass, Loading, PageHeader, rowClass, Search, tdClass, thClass, type Tone } from "../components/ui";
 import { RenameCase } from "../components/RenameCase";
+import { useGuest } from "../lib/session";
 import { api } from "../lib/api";
 import { relativeTime } from "../lib/insights";
 import { href, usePoll } from "../lib/router";
@@ -22,6 +23,7 @@ export function CasesPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [renaming, setRenaming] = useState<CaseSummary | null>(null);
+  const guest = useGuest(); // the read-only demo: no new case, no rename
   const [q, setQ] = useState("");
   const load = useCallback(() => {
     api.cases().then((r) => setCases(r.cases)).catch((e: Error) => setError(e.message));
@@ -36,10 +38,10 @@ export function CasesPage() {
 
   return (
     <>
-      <PageHeader title="Cases" description={cases ? `${cases.length} ${cases.length === 1 ? "case" : "cases"}, most recently active first.` : undefined} actions={<Button onClick={() => setCreating(true)}><Plus aria-hidden className="size-4" />New case</Button>} />
+      <PageHeader title="Cases" description={cases ? `${cases.length} ${cases.length === 1 ? "case" : "cases"}, most recently active first.` : undefined} actions={guest ? undefined : <Button onClick={() => setCreating(true)}><Plus aria-hidden className="size-4" />New case</Button>} />
       {error && <Alert title="Your cases couldn't be loaded">{error}</Alert>}
       {!cases && !error && <Loading label="Loading cases" />}
-      {cases?.length === 0 && <Empty title="No cases yet" action={<Button onClick={() => setCreating(true)}>New case</Button>}>A case holds the depositions of one matter. Create one, then add its depositions.</Empty>}
+      {cases?.length === 0 && <Empty title="No cases yet" action={guest ? undefined : <Button onClick={() => setCreating(true)}>New case</Button>}>A case holds the depositions of one matter. Create one, then add its depositions.</Empty>}
       {cases && cases.length > 0 && (
         <Card className="overflow-hidden">
           <div className="border-b border-rule px-5 py-3"><Search value={q} onChange={setQ} label="Search cases or witnesses" className="max-w-sm" /></div>
@@ -55,9 +57,9 @@ export function CasesPage() {
                         <td className={tdClass}>
                           <span className="flex items-center gap-1">
                             <a href={href.case(c.id)} className="font-semibold hover:underline">{c.name}</a>
-                            <button type="button" onClick={() => setRenaming(c)} aria-label={`Rename ${c.name}`} title="Rename" className="-my-1 inline-flex size-7 flex-none items-center justify-center rounded-md text-faint transition-colors hover:bg-rule hover:text-ink">
+                            {!guest && <button type="button" onClick={() => setRenaming(c)} aria-label={`Rename ${c.name}`} title="Rename" className="-my-1 inline-flex size-7 flex-none items-center justify-center rounded-md text-faint transition-colors hover:bg-rule hover:text-ink">
                               <Pencil aria-hidden className="size-3.5" />
-                            </button>
+                            </button>}
                           </span>
                         </td>
                         <td className={cx(tdClass, "text-muted")}>{c.witnessNames.join(", ") || "–"}</td>

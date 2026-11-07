@@ -66,6 +66,24 @@ export async function removeDepositions(tx: Tx, ids: number[]): Promise<{ analys
   return { analyses: analysisIds.length, storageKeys: rows.map((r) => r.storageKey) };
 }
 
+async function removeLedgers(tx: Tx, ledgers: number[]) {
+  if (ledgers.length === 0) return;
+  await tx.delete(screeningEntries).where(inArray(screeningEntries.runId, ledgers));
+  await tx.delete(screeningRuns).where(inArray(screeningRuns.id, ledgers));
+}
+
+// Whole-case runs with their candidates (verdicts and findings cascade), requests, provider batches and ledgers.
+// Model-call cost records stay, as everywhere here.
+export async function removeCaseRuns(tx: Tx, runIds: number[]) {
+  if (runIds.length === 0) return;
+  const sets = runIds.map((r) => `case-run-${r}`);
+  await tx.delete(candidates).where(inArray(candidates.candidateSet, sets));
+  await tx.delete(adjudicationRequests).where(inArray(adjudicationRequests.candidateSet, sets));
+  await tx.delete(caseRunBatches).where(inArray(caseRunBatches.caseRunId, runIds)); // economy runs' provider batches
+  await removeLedgers(tx, (await tx.select({ id: screeningRuns.id }).from(screeningRuns).where(inArray(screeningRuns.caseRunId, runIds))).map((r) => r.id));
+  await tx.delete(caseRuns).where(inArray(caseRuns.id, runIds));
+}
+
 // Files are stored once per content, so two cases can share one. Removed only when nothing uses it.
 async function removeUnusedFiles(db: Database, keys: string[], uploadsDir: string) {
   const unique = [...new Set(keys)];
@@ -107,20 +125,9 @@ export async function deleteCase(db: Database, pool: Pool, id: number, uploadsDi
       await tx.delete(adjudicationRequests).where(inArray(adjudicationRequests.analysisId, left));
       await tx.delete(analyses).where(inArray(analyses.id, left));
     }
-    // Whole-case runs: their ledger, requests and rows (their candidates went with the depositions).
-    const runIds = (await tx.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, id))).map((r) => r.id);
-    if (runIds.length) {
-      await tx.delete(candidates).where(inArray(candidates.candidateSet, runIds.map((r) => `case-run-${r}`)));
-      await tx.delete(adjudicationRequests).where(inArray(adjudicationRequests.candidateSet, runIds.map((r) => `case-run-${r}`)));
-      await tx.delete(caseRunBatches).where(inArray(caseRunBatches.caseRunId, runIds)); // economy runs' provider batches
-    }
-    // Screening ledgers: a case run's, and any other kept for the case.
-    const ledgers = (await tx.select({ id: screeningRuns.id }).from(screeningRuns).where(runIds.length ? or(eq(screeningRuns.caseId, id), inArray(screeningRuns.caseRunId, runIds)) : eq(screeningRuns.caseId, id))).map((r) => r.id);
-    if (ledgers.length) {
-      await tx.delete(screeningEntries).where(inArray(screeningEntries.runId, ledgers));
-      await tx.delete(screeningRuns).where(inArray(screeningRuns.id, ledgers));
-    }
-    if (runIds.length) await tx.delete(caseRuns).where(inArray(caseRuns.id, runIds));
+    // Whole-case runs, then any other screening ledger kept for the case.
+    await removeCaseRuns(tx, (await tx.select({ id: caseRuns.id }).from(caseRuns).where(eq(caseRuns.caseId, id))).map((r) => r.id));
+    await removeLedgers(tx, (await tx.select({ id: screeningRuns.id }).from(screeningRuns).where(eq(screeningRuns.caseId, id))).map((r) => r.id));
     await tx.delete(findings).where(eq(findings.caseId, id));
     await tx.delete(depositionSessions).where(eq(depositionSessions.caseId, id)); // its files are all gone by now
     await tx.delete(witnesses).where(eq(witnesses.caseId, id));

@@ -49,7 +49,7 @@ export default function App() {
   return (
     <UserContext.Provider value={user}>
     <Shell section={sectionOf(route)} user={user} onSignOut={signOut} onUser={setUser}>
-      {route.name === "overview" && <OverviewPage />}
+      {(route.name === "overview" || (route.name === "profile" && user.guest)) && <OverviewPage />}
       {route.name === "cases" && <CasesPage />}
       {route.name === "case" && <CasePage key={route.id} id={route.id} />}
       {route.name === "case_run" && <CaseRunPage key={route.id} id={route.id} />}
@@ -58,7 +58,7 @@ export default function App() {
       {route.name === "findings" && <FindingsPage />}
       {route.name === "analyses" && <AnalysesPage />}
       {route.name === "help" && <HelpPage />}
-      {route.name === "profile" && <ProfilePage user={user} onUser={setUser} />}
+      {route.name === "profile" && !user.guest && <ProfilePage user={user} onUser={setUser} />}
       {route.name === "not_found" && <Empty title="Page not found">Go back to the <a className="underline" href={href.overview()}>overview</a>.</Empty>}
     </Shell>
     </UserContext.Provider>

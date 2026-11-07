@@ -10,7 +10,7 @@ import { ACTIVE_RUN, timeLeft, budgetProblem, COVERAGE, defaultLimit, EXECUTION,
 import { browserStore, depositionFingerprint, estimateCacheKey, loadEstimate, saveEstimate, type SavedEstimate } from "../lib/estimateCache";
 import { formatDate, formatUsd, NO_ACCESS } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
-import { useUser } from "../lib/session";
+import { useGuest, useUser } from "../lib/session";
 import type { CaseRun, CaseRunEstimate, CaseRunExecution, RunningAnalysis } from "../types";
 import { useNow } from "../lib/useNow";
 import { Alert, Badge, Button, buttonClass, Card, CardHeader, cx, Field, inputClass, Loading, type Tone } from "./ui";
@@ -57,11 +57,14 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
   const [choice, setChoice] = useState<WorkflowChoice>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const user = useUser();
+  // The read-only demo can walk through every step, but never prepares, starts or changes an analysis: its estimate
+  // is the one its finished analysis was started with, and the start step ends in a note instead of the authorization.
+  const guest = user?.guest === true;
   const latest = runs?.[0] ?? null;
-  const estimate = latest && isEstimate(latest) ? latest : null;
   // The run at work: the newest one, or an earlier one that was resumed.
   const running = runs?.find((r) => ACTIVE_RUN.includes(r.status) && !isEstimate(r)) ?? null;
   const analysis = runs?.find(isAnalysis) ?? null;
+  const estimate = guest ? (analysis?.estimate ? { ...analysis, status: "awaiting_confirmation" as const, confirmedAt: null, paidAvailable: true } : null) : latest && isEstimate(latest) ? latest : null;
   const ready = sessions.filter((s) => s.status === "ready").length;
   // The latest analysis, finished or not, is where the page opens: its result and the way to its review.
   // An estimate waiting doesn't hide it: the steps prepare one automatically, and "Start a new analysis" opens it.
@@ -73,7 +76,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
     p.then(reload, (e: Error) => setProblem(e.message)).finally(() => setBusy(false));
   };
   const invalid = scopeProblem(scope, selected, sessions);
-  const paidBlocked = !user?.emailVerified ? "Verify your email before preparing an analysis." : !user.analysisAccess ? NO_ACCESS : null;
+  const paidBlocked = guest ? null : !user?.emailVerified ? "Verify your email before preparing an analysis." : !user.analysisAccess ? NO_ACCESS : null;
   const elsewhere = elsewhereText(runningElsewhere);
   const contract = stretch && stretchAvailable ? ("stretch-v2" as const) : undefined;
   const desired = invalid || paidBlocked ? null : scopeKey(scope === "selected" ? selected : null, contract);
@@ -88,8 +91,8 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
   const [reviewWanted, setReviewWanted] = useState(false); // "Review and start" pressed while only a saved estimate was shown
   useEffect(() => setReviewWanted(false), [desired]);
   useEffect(() => {
-    if (user && estimate?.status === "awaiting_confirmation" && estimate.estimate) saveEstimate(browserStore(), estimateCacheKey(user.id, caseId, runScopeKey(estimate), fingerprint), estimate.estimate, Date.now());
-  }, [user, estimate, caseId, fingerprint]);
+    if (user && !guest && estimate?.status === "awaiting_confirmation" && estimate.estimate) saveEstimate(browserStore(), estimateCacheKey(user.id, caseId, runScopeKey(estimate), fingerprint), estimate.estimate, Date.now());
+  }, [user, guest, estimate, caseId, fingerprint]);
 
   // Back on the page with an estimate pending: show the choice it was prepared for.
   const initialized = useRef(false);
@@ -107,7 +110,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
   const sending = useRef(false);
   const stopped = !estimate && latest && isUnusedEstimate(latest) && !replaced.current.has(latest.id) && desired !== null && runScopeKey(latest) === desired ? latest : null;
   useEffect(() => {
-    if (step !== 2 || desired === null || !runs || running || (stopped && !reviewWanted)) return;
+    if (guest || step !== 2 || desired === null || !runs || running || (stopped && !reviewWanted)) return;
     if (estimate && runScopeKey(estimate) === desired) {
       if (reviewWanted && estimate.status === "awaiting_confirmation") { setReviewWanted(false); setChoice("review"); }
       return;
@@ -124,7 +127,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
         .finally(() => { sending.current = false; reload(); });
     }, estimate || reviewWanted ? 0 : ESTIMATE_DELAY_MS);
     return () => clearTimeout(t);
-  }, [step, desired, runs, estimate, running, stopped, hasSaved, reviewWanted, caseId, contract, scope, selected, reload]);
+  }, [guest, step, desired, runs, estimate, running, stopped, hasSaved, reviewWanted, caseId, contract, scope, selected, reload]);
 
   // A new start (Continue, Change, Start a new analysis) is a fresh request: a cancelled estimate no longer holds it back.
   const go = (c: WorkflowChoice) => { if (latest) replaced.current.add(latest.id); setChoice(c); };
@@ -140,7 +143,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
           {depositions}
           <div className="flex flex-wrap items-center gap-2">
             {ready >= 2 && <Button onClick={() => go("scope")}>Continue<ArrowRight aria-hidden className="size-4" /></Button>}
-            <Button variant={ready >= 2 ? "secondary" : "primary"} onClick={onAdd}><FileUp aria-hidden className="size-4" />Add deposition</Button>
+            {!guest && <Button variant={ready >= 2 ? "secondary" : "primary"} onClick={onAdd}><FileUp aria-hidden className="size-4" />Add deposition</Button>}
             {ready < 2 && <span className="text-sm text-muted">{sessions.length - ready > 0 ? "Waiting for depositions to finish reading." : `Add ${2 - ready} more to continue.`}</span>}
           </div>
         </div>
@@ -189,7 +192,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
             <p className="max-w-3xl text-xs text-muted">{DISCLAIMER}</p>
           )}
           <EstimateStrip
-            invalid={invalid} paidBlocked={paidBlocked} estimate={estimate} stopped={stopped} saved={saved} reviewWanted={reviewWanted} paidAvailable={paidAvailable}
+            demo={guest} invalid={invalid} paidBlocked={paidBlocked} estimate={estimate} stopped={stopped} saved={saved} reviewWanted={reviewWanted} paidAvailable={paidAvailable}
             current={!!estimate && desired !== null && runScopeKey(estimate) === desired}
             busy={busy}
             onReview={() => (estimate && desired !== null && runScopeKey(estimate) === desired && estimate.status === "awaiting_confirmation" ? setChoice("review") : setReviewWanted(true))}
@@ -205,7 +208,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
       summary: running && !isTestRun(running) && running.cost.budget ? `Spending limit ${formatUsd(running.cost.budget.limitUsd)}, ${EXECUTION[running.execution].label.toLowerCase()}` : shown && !running && step === 4 && shown.cost.budget ? `Spending limit ${formatUsd(shown.cost.budget.limitUsd)}, ${EXECUTION[shown.execution].label.toLowerCase()}` : null,
       content: estimate && (
         <div className="space-y-3">
-          <RunState run={estimate} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} onBack={() => setChoice("scope")} />
+          <RunState run={estimate} busy={busy} act={act} paidBlocked={guest ? DEMO_NO_START : paidBlocked} elsewhere={elsewhere} onBack={() => setChoice("scope")} />
         </div>
       ),
     },
@@ -217,7 +220,7 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
           {shown.name && <p className="text-base font-semibold">{shown.name}</p>}
           <p className="text-sm"><span className="text-muted">Analyzed:</span> <span className="font-semibold">{scopeText(shown, sessions)}</span></p>
           <RunState run={shown} busy={busy} act={act} paidBlocked={paidBlocked} elsewhere={elsewhere} />
-          {!running && <Button variant="secondary" onClick={() => { go("scope"); setScope("case"); }}>Start a new analysis</Button>}
+          {!running && <Button variant="secondary" onClick={() => { go("scope"); setScope("case"); }}>{guest ? "See how an analysis is started" : "Start a new analysis"}</Button>}
         </div>
       ),
     },
@@ -229,8 +232,8 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
     <div id={WHOLE_CASE_PANEL} tabIndex={-1} className="scroll-mt-6 rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-slate/40">
     <Card className="overflow-hidden">
       <CardHeader
-        title="Analyze this case"
-        description="Follow the steps in order. The cost is estimated as soon as you choose what to analyze; nothing is sent to Veridict's model and nothing is charged until you review the estimate and authorize a spending limit."
+        title={guest ? "The analysis of this case" : "Analyze this case"}
+        description={guest ? "Veridict read every session of this case and compared the testimony. Open the findings to read both passages side by side." : "Follow the steps in order. The cost is estimated as soon as you choose what to analyze; nothing is sent to Veridict's model and nothing is charged until you review the estimate and authorize a spending limit."}
       />
       {runningElsewhere && !running && (
         <div className="px-5 pt-4">
@@ -276,12 +279,13 @@ export function CaseRunPanel({ caseId, sessions, depositions, onAdd, state }: { 
 
 // The estimate for the current choice, prepared automatically: why it can't be prepared, that it is being prepared,
 // or what it came to, with the way on to the review.
-function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewWanted, paidAvailable, current, busy, onReview, onRetry }: { invalid: string | null; paidBlocked: string | null; estimate: CaseRun | null; stopped: CaseRun | null; saved: SavedEstimate | null; reviewWanted: boolean; paidAvailable: boolean; current: boolean; busy: boolean; onReview: () => void; onRetry: () => void }) {
+function EstimateStrip({ demo, invalid, paidBlocked, estimate, stopped, saved, reviewWanted, paidAvailable, current, busy, onReview, onRetry }: { demo: boolean; invalid: string | null; paidBlocked: string | null; estimate: CaseRun | null; stopped: CaseRun | null; saved: SavedEstimate | null; reviewWanted: boolean; paidAvailable: boolean; current: boolean; busy: boolean; onReview: () => void; onRetry: () => void }) {
   const box = (children: ReactNode) => <div aria-live="polite" className="rounded-lg bg-well px-4 py-3 text-sm">{children}</div>;
   if (invalid) return box(<p role="alert" className="text-conflict">{invalid}</p>);
   if (paidBlocked) return box(<p className="text-muted">{paidBlocked}</p>);
   const live = current && estimate?.status === "awaiting_confirmation" && estimate.estimate ? estimate.estimate : null;
   if (live) return figures(live, null);
+  if (demo) return box(<p className="text-muted">In this demo only the estimate of the analysis that was run is shown: the whole case, with Focused Analysis.</p>);
   if (reviewWanted) return box(<p className="flex items-center gap-2 text-muted"><LoaderCircle aria-hidden className="size-4 animate-spin" />Preparing the review: a current estimate for this choice, prepared on the server. Nothing is sent to Veridict's model.</p>);
   if (saved) return figures(saved.estimate, saved.savedAt);
   if (stopped) return box(
@@ -311,13 +315,14 @@ function EstimateStrip({ invalid, paidBlocked, estimate, stopped, saved, reviewW
           <Button disabled={busy} onClick={onReview}>Review and start<ArrowRight aria-hidden className="size-4" /></Button>
         </div>
         {reusable > 0 && <p className="text-xs text-muted">{reusable.toLocaleString()} of {e.packets.toLocaleString()} packets repeat a request an earlier analysis of this case already sent, on the same evidence; their answers are expected to be reused, not charged. You can choose a fresh analysis when you review.</p>}
-        {!paidAvailable && <p className="text-xs text-muted">{NO_KEY}</p>}
+        {!paidAvailable && !demo && <p className="text-xs text-muted">{NO_KEY}</p>}
         {savedAt !== null && <p className="text-xs text-muted">Estimate saved at {new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} for this choice. Reviewing prepares a current one first.</p>}
       </div>,
     );
   }
 }
 
+const DEMO_NO_START = "This is a read-only demo: this is where you would set a spending limit and authorize the analysis. Nothing can be started here.";
 const NO_KEY = "Paid analysis is off on this server: it has no API key (see .env.example). You can still review the cost and the saved results.";
 const RECOMMENDED = { label: "Recommended", tone: "good" as const };
 const DISCLAIMER = "Veridict identifies potential inconsistencies for human review. Results are not definitive findings, and an analysis may not detect every contradiction.";
@@ -393,7 +398,8 @@ function scopeText(run: CaseRun, sessions: WorkflowSession[]): string {
 function RunState({ run, busy, act, paidBlocked, elsewhere, onBack }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null; onBack?: () => void }) {
   const s = RUN_STATUS[run.status];
   const test = isTestRun(run);
-  const cancel = <Button variant="secondary" disabled={busy || run.cancelRequested} onClick={() => act(api.cancelCaseRun(run.id))}>{run.cancelRequested ? "Cancelling…" : "Cancel"}</Button>;
+  const guest = useGuest();
+  const cancel = guest ? null : <Button variant="secondary" disabled={busy || run.cancelRequested} onClick={() => act(api.cancelCaseRun(run.id))}>{run.cancelRequested ? "Cancelling…" : "Cancel"}</Button>;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -658,7 +664,8 @@ export const canResume = (run: CaseRun) => RESUMABLE_RUN.includes(run.status);
 export function ResumeControl({ run, busy, act, paidBlocked, elsewhere, compact }: { run: CaseRun; busy: boolean; act: (p: Promise<unknown>) => void; paidBlocked: string | null; elsewhere: string | null; compact?: boolean }) {
   const b = run.cost.budget;
   const [limit, setLimit] = useState(b ? Math.max(b.limitUsd * 2, b.limitUsd + 1).toFixed(2) : "");
-  if (!canResume(run)) return null;
+  const guest = useGuest();
+  if (!canResume(run) || guest) return null; // the read-only demo resumes nothing
   const needsLimit = run.status === "blocked_budget";
   const problem = needsLimit ? budgetProblem(limit, b?.limitUsd ?? 0) : null;
   const blocked = (!isTestRun(run) && (paidBlocked || (run.paidAvailable === false ? "Paid analysis is off on this server: it has no API key (see .env.example)." : null))) || elsewhere;

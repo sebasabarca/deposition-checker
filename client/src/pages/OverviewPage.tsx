@@ -12,7 +12,7 @@ import { DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { decisionShown } from "../lib/findingFilters";
 import { headline } from "./FindingsPage";
 import { href } from "../lib/router";
-import { useUser } from "../lib/session";
+import { useGuest, useUser } from "../lib/session";
 import { useWorkspace, type Workspace } from "../lib/workspace";
 import type { WorkspaceFinding } from "../types";
 import { runTitle } from "../components/CaseRuns";
@@ -124,7 +124,8 @@ function NextStepCard({ step }: { step: NextStep }) {
   const add = useAddDeposition();
   const button = "inline-flex h-9 items-center gap-1.5 rounded-md bg-white px-3.5 text-sm font-semibold text-navy hover:bg-[#e6ebf3]";
   const go = (to: string, label: string) => <a href={to} className={button}>{label}<ArrowRight aria-hidden className="size-4" /></a>;
-  const upload = (label: string, caseId?: number) => <button type="button" onClick={() => add.open(caseId)} className={button}><FileUp aria-hidden className="size-4" />{label}</button>;
+  const guest = useGuest(); // the read-only demo: nothing to upload
+  const upload = (label: string, caseId?: number) => guest ? null : <button type="button" onClick={() => add.open(caseId)} className={button}><FileUp aria-hidden className="size-4" />{label}</button>;
   const content: { title: string; text: string; action: ReactNode; icon: ReactNode } = (() => {
     switch (step.kind) {
       case "first_deposition": return { icon: <FileUp className="size-5" />, title: "Add your first deposition", text: "A PDF, a text file, or pasted text. Start with one session of a witness.", action: upload("Add deposition") };

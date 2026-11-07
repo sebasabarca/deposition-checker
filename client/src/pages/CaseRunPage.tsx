@@ -7,7 +7,7 @@ import { Download } from "lucide-react";
 import { OPTIONS, StandingNotice } from "../components/FindingParts";
 import { TranscriptRows } from "../components/Transcript";
 import { canResume, ResumeControl } from "../components/CaseRuns";
-import { useUser } from "../lib/session";
+import { useGuest, useUser } from "../lib/session";
 import { Alert, Badge, Breadcrumbs, Button, buttonClass, Card, cx, fieldClass, Loading, ModelMark, PageHeader, Tabs, TestimonyMark, VerifiedMark } from "../components/ui";
 import { api } from "../lib/api";
 import { COVERAGE, isTestRun, laneOf, LANES, MOVING_RUN, RUN_STATUS, type Lane } from "../lib/caseRuns";
@@ -113,7 +113,7 @@ export function CaseRunPage({ id }: { id: number }) {
             <ul className="mt-1.5 list-disc space-y-0.5 pl-5">{run.incompleteReasons.map((r) => <li key={r}>{r}</li>)}</ul>
           )}
         </div>
-        {canResume(run) && (
+        {canResume(run) && !user?.guest && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule bg-well px-5 py-3">
             <p className="max-w-2xl text-sm">
               <span className="font-semibold">{run.status === "failed" ? "This analysis stopped with an error." : run.status === "blocked_budget" ? "This analysis stopped at its spending limit." : "This analysis didn't finish."}</span>{" "}
@@ -238,6 +238,16 @@ function DecisionBar({ f, onDecided }: { f: CaseRunFinding; onDecided: (id: numb
   const [error, setError] = useState<string | null>(null);
   const [lock, setLock] = useState(reviewLock(f));
   const noteId = `note-${f.id}`;
+  // The read-only demo shows the decision and its note, with nothing to press.
+  const guest = useGuest();
+  if (guest) {
+    return (
+      <div className="space-y-1 border-t border-rule pt-3 text-sm">
+        <p><span className="text-muted">Decision:</span> <span className="font-medium">{state === "unreviewed" ? "Not decided" : REVIEW_LABEL[state]}</span>{f.reviewedAt && state !== "unreviewed" ? <span className="text-muted"> · {formatDate(f.reviewedAt)}</span> : null}</p>
+        {f.reviewNote && <p className="max-w-3xl whitespace-pre-wrap text-muted">Note: {f.reviewNote}</p>}
+      </div>
+    );
+  }
   const save = async (decision: ReviewDecision | null) => {
     if (lock) return;
     setBusy(true);

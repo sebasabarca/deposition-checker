@@ -13,6 +13,7 @@ import { inMarkedRange } from "../lib/insights";
 import { MOVING_RUN, RUN_STATUS } from "../lib/caseRuns";
 import { DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { href, usePoll } from "../lib/router";
+import { useGuest } from "../lib/session";
 import type { CaseDetail, CaseSummary, DepositionLines, DepositionView } from "../types";
 
 const FORMAT = { pdf: "PDF", html: "HTML", text: "Text", rtf: "RTF", docx: "Word (.docx)" } as const;
@@ -24,6 +25,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
   const [error, setError] = useState<string | null>(null);
   const [moving, setMoving] = useState<"witness" | "case" | null>(null);
   const [editingDate, setEditingDate] = useState(false);
+  const guest = useGuest(); // the read-only demo: the transcript and its details, nothing to change
   const load = useCallback(() => {
     api.deposition(id).then((r) => setD(r.deposition)).catch((e: Error) => setError(e.message));
   }, [id]);
@@ -66,9 +68,9 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
         actions={<a href={api.depositionOriginal(d.id)} target={downloadOnly ? undefined : "_blank"} rel="noreferrer" className={buttonClass("secondary")}><ExternalLink aria-hidden className="size-3.5" />{downloadOnly ? `Download original ${FORMAT[d.sourceFormat]}` : `View original ${isText ? "text" : "PDF"}`}</a>}
       />
       {d.status === "processing" && <Reading since={d.createdAt} scanned={d.sourceFormat === "pdf"} />}
-      {(d.status === "failed" || d.status === "unsupported") && <Alert title={s.label} action={d.status === "failed" ? <Button variant="secondary" onClick={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}>Try again</Button> : undefined}>{d.error ?? "This file's layout isn't recognized."}</Alert>}
+      {(d.status === "failed" || d.status === "unsupported") && <Alert title={s.label} action={d.status === "failed" && !guest ? <Button variant="secondary" onClick={() => api.retryDeposition(d.id).then(load).catch((e: Error) => setError(e.message))}>Try again</Button> : undefined}>{d.error ?? "This file's layout isn't recognized."}</Alert>}
       {d.status === "needs_review" && <Alert tone="warn" title="Some pages couldn't be read">{d.error ?? "The pages that were read are shown below."}</Alert>}
-      <DateBanner d={d} onSaved={setD} onEnter={() => { setEditingDate(true); document.getElementById("date-taken")?.scrollIntoView({ block: "center" }); }} />
+      {!guest && <DateBanner d={d} onSaved={setD} onEnter={() => { setEditingDate(true); document.getElementById("date-taken")?.scrollIntoView({ block: "center" }); }} />}
       {d.status === "ready" && warnings.length > 0 && (
         <Alert tone="warn" title="Check before citing">
           <ul className="list-disc space-y-1 pl-5">{warnings.map((w) => <li key={w}>{w}</li>)}</ul>
@@ -133,9 +135,9 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
             <CardHeader title="Details" />
             <dl className="divide-y divide-rule text-sm">
               <Row label="Status"><Badge tone={s.tone} dot>{s.label}</Badge></Row>
-              <DateRow d={d} onSaved={setD} editing={editingDate} setEditing={setEditingDate} />
-              <Row label="Witness"><span className="flex items-center gap-2"><span className="font-medium">{d.witness.name}</span><ChangeButton label="Change witness" onClick={() => setMoving("witness")} /></span></Row>
-              <Row label="Case"><span className="flex min-w-0 items-center justify-end gap-2">{kase ? <a href={href.case(kase.case.id)} className="min-w-0 truncate font-medium hover:underline">{kase.case.name}</a> : "–"}<ChangeButton label="Change case" onClick={() => setMoving("case")} /></span></Row>
+              {guest ? <Row label="Date taken">{formatDate(d.takenOn)}</Row> : <DateRow d={d} onSaved={setD} editing={editingDate} setEditing={setEditingDate} />}
+              <Row label="Witness"><span className="flex items-center gap-2"><span className="font-medium">{d.witness.name}</span>{!guest && <ChangeButton label="Change witness" onClick={() => setMoving("witness")} />}</span></Row>
+              <Row label="Case"><span className="flex min-w-0 items-center justify-end gap-2">{kase ? <a href={href.case(kase.case.id)} className="min-w-0 truncate font-medium hover:underline">{kase.case.name}</a> : "–"}{!guest && <ChangeButton label="Change case" onClick={() => setMoving("case")} />}</span></Row>
               <Row label="Source">{d.sourceFormat === "pdf" && d.validation?.ocr ? "Scanned PDF, read from the page images" : FORMAT[d.sourceFormat]}</Row>
               {d.validation?.ocr?.meanConfidence != null && <Row label="Reading accuracy">{d.validation.ocr.meanConfidence}% average</Row>}
               <Row label="Pages">{d.pageCount ?? "–"}</Row>
@@ -169,7 +171,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
 
       {moving && <MoveDialog d={d} mode={moving} onClose={() => setMoving(null)} />}
 
-      <DangerZone
+      {!guest && <DangerZone
         what="deposition"
         name={`${d.witness.name}, ${formatDate(d.takenOn)}`}
         consequence={`Deletes this transcript and every finding that cites it, with their decisions and notes. Cost records are kept.`}
@@ -177,7 +179,7 @@ export function DepositionPage({ id, page, q, mark }: { id: number; page: number
           await api.deleteDeposition(d.id);
           window.location.hash = kase ? href.case(kase.case.id) : href.depositions();
         }}
-      />
+      />}
     </>
   );
 }

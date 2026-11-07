@@ -3,6 +3,7 @@
 
 import "dotenv/config";
 import { connect } from "./db/client";
+import { guestConfigProblem } from "./guest";
 import { caseRunSettings, ProviderLimiter } from "./jobs/limiter";
 import { anthropicPacketAdjudicator } from "./adjudicate/packetModel";
 import { anthropicPacketBatches } from "./adjudicate/packetBatch";
@@ -14,6 +15,9 @@ import { analysisKeySet, contractOf, createCaseRunQueues, createIngestQueues, fr
 const SHUTDOWN_GRACE_MS = 60_000;
 
 async function main() {
+  // Guest mode (guest.ts): the demo never runs with a model key.
+  const guestProblem = guestConfigProblem();
+  if (guestProblem) throw new Error(guestProblem);
   const { db, pool } = connect();
   const boss = await startBoss(process.env.DATABASE_URL!, { supervise: true });
   await createIngestQueues(boss);

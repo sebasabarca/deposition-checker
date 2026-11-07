@@ -7,11 +7,13 @@ import { Alert, Badge, Button, Card, cx, Empty, Loading, PageHeader, rowClass, S
 import { DEPOSITION_STATUS, formatDate } from "../lib/labels";
 import { href } from "../lib/router";
 import { useWorkspace } from "../lib/workspace";
+import { useGuest } from "../lib/session";
 import { sourceOf } from "./CasePage";
 
 export function DepositionsPage({ caseId }: { caseId: number | null }) {
   const { data, error } = useWorkspace();
   const add = useAddDeposition();
+  const guest = useGuest(); // the read-only demo: nothing to add
   const [q, setQ] = useState("");
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -26,9 +28,9 @@ export function DepositionsPage({ caseId }: { caseId: number | null }) {
   const total = data?.details.reduce((n, d) => n + d.depositions.length, 0) ?? 0;
   return (
     <>
-      <PageHeader title="Depositions" description={data ? `${total} ${total === 1 ? "session" : "sessions"} across ${data.cases.length} ${data.cases.length === 1 ? "case" : "cases"}.` : undefined} actions={<Button onClick={() => add.open(caseId ?? undefined)}><FileUp aria-hidden className="size-4" />Add deposition</Button>} />
+      <PageHeader title="Depositions" description={data ? `${total} ${total === 1 ? "session" : "sessions"} across ${data.cases.length} ${data.cases.length === 1 ? "case" : "cases"}.` : undefined} actions={guest ? undefined : <Button onClick={() => add.open(caseId ?? undefined)}><FileUp aria-hidden className="size-4" />Add deposition</Button>} />
       {!data ? <Loading label="Loading depositions" /> : total === 0 ? (
-        <Empty title="No depositions yet" action={<Button onClick={() => add.open()}>Add deposition</Button>}>Add a PDF or text transcript. Veridict reads it into page and line references you can search and cite.</Empty>
+        <Empty title="No depositions yet" action={guest ? undefined : <Button onClick={() => add.open()}>Add deposition</Button>}>Add a PDF or text transcript. Veridict reads it into page and line references you can search and cite.</Empty>
       ) : (
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-rule px-5 py-3">

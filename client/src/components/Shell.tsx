@@ -44,7 +44,7 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
   // The first-run tour starts once for a new account; Help can replay it any time.
   const [touring, setTouring] = useState(false);
   useEffect(() => {
-    if (user.onboarded) return;
+    if (user.onboarded || user.guest) return; // the demo opens straight on the work, without the first-run tour
     const t = window.setTimeout(() => setTouring(true), 500);
     return () => window.clearTimeout(t);
   }, [user.onboarded]);
@@ -122,7 +122,7 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
           className="group/rail fixed inset-y-0 left-0 z-40 hidden w-[68px] data-[tour=true]:w-[232px] flex-col overflow-hidden bg-navy transition-[width,box-shadow] delay-0 duration-200 ease-out hover:w-[232px] hover:delay-75 hover:shadow-[inset_-1px_0_0_rgb(255_255_255/0.14),16px_0_40px_-10px_rgb(0_0_0/0.6)] focus-within:w-[232px] focus-within:shadow-[inset_-1px_0_0_rgb(255_255_255/0.14),16px_0_40px_-10px_rgb(0_0_0/0.6)] lg:flex print:hidden"
         >
           {brand(true)}
-          {addButton(true)}
+          {!user.guest && addButton(true)}
           {nav(true)}
           {checkPill(true)}
           {footer(true)}
@@ -146,7 +146,7 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
                 {brand(false)}
                 <button type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="rounded-md p-2 text-white hover:bg-navy-2"><X aria-hidden className="size-5" /></button>
               </div>
-              {addButton(false)}
+              {!user.guest && addButton(false)}
               {nav(false)}
               {checkPill(false)}
               {footer(false)}
@@ -156,7 +156,8 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
 
         <main id="main" className="min-w-0 flex-1">
           <div className="mx-auto w-full max-w-[1320px] space-y-6 px-4 pt-6 pb-16 sm:px-8 lg:pt-8">
-            {!user.emailVerified && <VerifyBanner email={user.email} onRefresh={() => api.me().then((r) => onUser(r.user)).catch(() => undefined)} />}
+            {user.guest && <DemoBanner />}
+            {!user.emailVerified && !user.guest && <VerifyBanner email={user.email} onRefresh={() => api.me().then((r) => onUser(r.user)).catch(() => undefined)} />}
             {children}
           </div>
         </main>
@@ -190,6 +191,16 @@ function VerifyBanner({ email, onRefresh }: { email: string; onRefresh: () => vo
 }
 
 // The account button at the foot of the sidebar: a small menu with the profile and sign-out.
+// The public demo (guest mode): what this is, on every page, so nobody takes a hidden control for a missing feature.
+function DemoBanner() {
+  return (
+    <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-info/15 bg-info-bg px-4 py-2.5 text-sm text-info">
+      <span className="font-semibold">Read-only demo</span>
+      <span>A finished analysis of real deposition testimony. Look around freely: findings, testimony, the report. Uploading, analyzing and decisions are turned off.</span>
+    </div>
+  );
+}
+
 function AccountMenu({ user, rail, onSignOut, className, label }: { user: User; rail: boolean; onSignOut: () => void; className: string; label: string }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -221,8 +232,8 @@ function AccountMenu({ user, rail, onSignOut, className, label }: { user: User; 
             <p className="truncate text-xs text-muted">{user.email}</p>
           </div>
           <div className="pt-1.5">
-            <a role="menuitem" href={href.profile()} onClick={() => setOpen(false)} className={item}><UserRound aria-hidden className="size-4 text-muted" />Profile</a>
-            <button role="menuitem" type="button" onClick={() => { setOpen(false); onSignOut(); }} className={item}><LogOut aria-hidden className="size-4 text-muted" />Sign out</button>
+            {!user.guest && <a role="menuitem" href={href.profile()} onClick={() => setOpen(false)} className={item}><UserRound aria-hidden className="size-4 text-muted" />Profile</a>}
+            <button role="menuitem" type="button" onClick={() => { setOpen(false); onSignOut(); }} className={item}><LogOut aria-hidden className="size-4 text-muted" />{user.guest ? "Leave the demo" : "Sign out"}</button>
           </div>
         </div>
       )}
