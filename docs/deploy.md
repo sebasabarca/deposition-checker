@@ -60,16 +60,31 @@ npx tsx scripts/db-snapshot.ts dump --db <name>_rehearsal_guest --out data/raw/g
 
 `guest-demo.ts` keeps that case and that completed analysis only: every other case, analysis, account,
 session and unused cost record is deleted from the copy, and it prints what is left so you can check it.
-On the host, in `.env`: leave `ANTHROPIC_API_KEY` empty, and set `GUEST_MODE=true`,
-`GUEST_EMAIL=guest@demo.example.test` and `APP_URL`. No email is sent in guest mode, but compose still
-requires `RESEND_API_KEY` and `EMAIL_FROM`: any placeholder will do. Then load the demo before starting the app:
+
+Deploy it with `compose.guest.yml`: Postgres, the web server and Caddy, which gets and renews the HTTPS
+certificate itself (`deploy/Caddyfile`). There is no worker, the model key is fixed to empty in the compose file
+(never read from `.env`), and only Caddy publishes ports (80 and 443). On a fresh Ubuntu 24.04 server with at
+least 2 GB of memory, after pointing a DNS `A` record for the demo's name at the server (on Cloudflare, "DNS
+only", so Caddy can get its certificate):
 
 ```sh
-docker compose -f compose.prod.yml up -d db
-docker compose -f compose.prod.yml exec -T db pg_restore -U veridict -d veridict --no-owner < data/raw/guest-demo/guest.dump
-docker compose -f compose.prod.yml up -d --build
-docker compose -f compose.prod.yml cp data/raw/guest-demo/uploads/. web:/app/data/uploads/
+# On your computer: copy the demo database and transcripts to the server.
+scp data/raw/guest-demo/guest.dump root@<server>:/root/
+scp -r data/raw/guest-demo/uploads root@<server>:/root/
+
+# On the server.
+apt update && apt install -y docker.io docker-compose-v2 git ufw
+ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw --force enable
+git clone https://github.com/sebasabarca/deposition-checker.git veridict && cd veridict
+printf "POSTGRES_PASSWORD=%s\nDEMO_DOMAIN=demo.yourdomain.com\n" "$(openssl rand -hex 24)" > .env
+docker compose -f compose.guest.yml up -d db && sleep 10
+docker compose -f compose.guest.yml exec -T db pg_restore -U veridict -d veridict --no-owner --no-privileges < /root/guest.dump
+docker compose -f compose.guest.yml up -d --build
+docker compose -f compose.guest.yml cp /root/uploads/. web:/app/data/uploads/
 ```
+
+The server's `.env` holds only the database password and the demo's name: no model key, ever. To update the
+code later: `git pull && docker compose -f compose.guest.yml up -d --build`.
 
 ## Health
 

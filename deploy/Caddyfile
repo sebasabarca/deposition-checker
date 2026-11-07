@@ -1,0 +1,6 @@
+# HTTPS for the guest demo (compose.guest.yml): Caddy gets and renews the certificate for DEMO_DOMAIN itself.
+{$DEMO_DOMAIN} {
+	encode gzip
+	reverse_proxy web:3001
+	header Strict-Transport-Security "max-age=31536000"
+}
