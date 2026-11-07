@@ -53,6 +53,22 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
     if (!user.onboarded) api.markOnboarded().then(() => onUser({ ...user, onboarded: true })).catch(() => undefined);
   };
   useEffect(() => setDrawer(false), [section]);
+  // The phone menu: focus moves into it on opening and back to its button on closing; Escape closes it.
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (!drawer) {
+      if (wasOpen.current) menuButton.current?.focus();
+      wasOpen.current = false;
+      return;
+    }
+    wasOpen.current = true;
+    closeButton.current?.focus({ preventScroll: true }); // a scroll would skip the slide-in
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [drawer]);
 
   const row = (active: boolean) => cx("flex h-9 items-center gap-3 overflow-hidden rounded-md px-[13px] text-[14px] transition-colors", active ? "bg-navy-3 font-medium text-white" : "text-navy-ink hover:bg-navy-2 hover:text-white");
 
@@ -134,25 +150,25 @@ export function Shell({ section, user, onSignOut, onUser, children }: { section:
             <Mark className="size-6 text-white" />
             <span className="font-serif text-lg font-semibold">Veridict</span>
           </a>
-          <button type="button" onClick={() => setDrawer(true)} aria-label="Open menu" aria-expanded={drawer} className="-mr-2 rounded-md p-2 text-white hover:bg-navy-2">
+          <button ref={menuButton} type="button" onClick={() => setDrawer(true)} aria-label="Open menu" aria-expanded={drawer} aria-controls="mobile-menu" className="-mr-2 rounded-md p-2 text-white hover:bg-navy-2">
             <Menu aria-hidden className="size-5" />
           </button>
         </header>
-        {drawer && (
-          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal aria-label="Menu">
-            <button type="button" aria-label="Close menu" onClick={() => setDrawer(false)} className="absolute inset-0 bg-navy/50" />
-            <div className="absolute inset-y-0 left-0 flex w-[min(280px,85vw)] flex-col bg-navy">
-              <div className="flex items-center justify-between pr-3">
-                {brand(false)}
-                <button type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="rounded-md p-2 text-white hover:bg-navy-2"><X aria-hidden className="size-5" /></button>
-              </div>
-              {!user.guest && addButton(false)}
-              {nav(false)}
-              {checkPill(false)}
-              {footer(false)}
+        {/* Phone and tablet menu: slides in from the right edge, under the menu button. Kept mounted so it can
+            slide out again; inert while closed, so it takes no focus, clicks or screen-reader attention. */}
+        <div id="mobile-menu" className={cx("fixed inset-0 z-40 overflow-hidden lg:hidden print:hidden", !drawer && "pointer-events-none")} role="dialog" aria-modal aria-label="Menu" inert={!drawer}>
+          <button type="button" tabIndex={-1} aria-label="Close menu" onClick={() => setDrawer(false)} className={cx("absolute inset-0 bg-navy/50 transition-opacity duration-200", drawer ? "opacity-100" : "opacity-0")} />
+          <div className={cx("absolute inset-y-0 right-0 flex w-[min(280px,85vw)] flex-col bg-navy shadow-[-16px_0_40px_-10px_rgb(0_0_0/0.5)] transition-transform duration-200 ease-out", drawer ? "translate-x-0" : "translate-x-full")}>
+            <div className="flex items-center justify-between pr-3">
+              {brand(false)}
+              <button ref={closeButton} type="button" onClick={() => setDrawer(false)} aria-label="Close menu" className="rounded-md p-2 text-white hover:bg-navy-2"><X aria-hidden className="size-5" /></button>
             </div>
+            {!user.guest && addButton(false)}
+            {nav(false)}
+            {checkPill(false)}
+            {footer(false)}
           </div>
-        )}
+        </div>
 
         <main id="main" className="min-w-0 flex-1">
           <div className="mx-auto w-full max-w-[1320px] space-y-6 px-4 pt-6 pb-16 sm:px-8 lg:pt-8">

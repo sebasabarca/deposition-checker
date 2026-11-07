@@ -1,6 +1,7 @@
 /* The landing page's scroll scenes. Each scene is a tall section with a sticky stage; script sets
    --p (0 to 1) as the visitor scrolls through it, and everything moves by transform and opacity from
-   that one number. Without motion (reduced motion, or a phone) --p is 1: the final layout, still. */
+   that one number. Phones play the same scenes without pinning (below). With reduced motion --p is 1:
+   the final layout, still. */
 
 .scene {
   --p: 1;
@@ -108,9 +109,39 @@
   }
 }
 
-/* Still layout (phones, reduced motion): the hero rests with its headline shown and the product
-   flat, and highlights are plain fills that follow wrapped lines. */
-@media (max-width: 899px), (prefers-reduced-motion: reduce) {
+/* Phones: the same scenes, unpinned. The product tilts up in place (rising would run it into the
+   headline, which stays put), the highlight sweeps along each wrapped line, and the wrapped citation is wiped in from
+   the left instead of typed. Side slides stay inside the screen. */
+@media (max-width: 899px) and (prefers-reduced-motion: no-preference) {
+  .scene {
+    overflow-x: clip;
+  }
+  .hero-shot {
+    transform: perspective(1800px) rotateX(calc((1 - var(--s)) * 24deg)) scale(calc(0.86 + var(--s) * 0.14));
+  }
+  /* Unpinned, the headline scrolls away by itself; fading it too would empty the screen too soon. */
+  .hero-copy {
+    opacity: 1;
+    transform: none;
+  }
+  .mark-sweep {
+    background: linear-gradient(var(--color-mark), var(--color-mark)) no-repeat 0 0 / calc(var(--s) * 100%) 100%;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .mark-sweep::before {
+    display: none;
+  }
+  .typed {
+    white-space: normal;
+    max-width: none;
+    clip-path: inset(0 calc((1 - var(--s)) * 100%) 0 0);
+  }
+}
+
+/* Still layout (reduced motion): the hero rests with its headline shown and the product flat, and
+   highlights are plain fills that follow wrapped lines. */
+@media (prefers-reduced-motion: reduce) {
   .hero-copy,
   .hero-shot {
     opacity: 1;

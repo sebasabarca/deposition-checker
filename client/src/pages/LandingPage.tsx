@@ -10,17 +10,20 @@ import { cx } from "../components/ui";
 import { href } from "../lib/router";
 import "./landing.css";
 
-// Scroll progress through a scene, written to --p on the element once per frame. Only on wide
-// screens that allow motion; elsewhere the scene keeps --p: 1, its finished state. Progress starts
-// as the scene enters from the bottom of the screen (not when it reaches the top), so nothing scrolls
-// into view still invisible; the hero, already on screen, counts from the top.
+// Scroll progress through a scene, written to --p on the element once per frame, unless the visitor
+// asks for reduced motion (then the scene keeps --p: 1, its finished state). Progress starts as the
+// scene enters from the bottom of the screen (not when it reaches the top), so nothing scrolls into
+// view still invisible; the hero, already on screen, counts from the top. On wide screens the stage is
+// pinned while the scene plays; on phones nothing pins, and the scene finishes as its bottom reaches
+// the bottom of the screen (the hero, halfway through).
 function useScene<T extends HTMLElement>(onProgress?: (el: T) => void, { fromTop = false } = {}) {
   const ref = useRef<T>(null);
   const progress = useRef(onProgress);
   progress.current = onProgress;
   useEffect(() => {
     const el = ref.current;
-    const motion = window.matchMedia("(min-width: 900px) and (prefers-reduced-motion: no-preference)");
+    const motion = window.matchMedia("(prefers-reduced-motion: no-preference)");
+    const wide = window.matchMedia("(min-width: 900px)");
     if (!el) return;
     let frame = 0;
     const update = () => {
@@ -31,7 +34,7 @@ function useScene<T extends HTMLElement>(onProgress?: (el: T) => void, { fromTop
       const pinTop = parseFloat(getComputedStyle(stage).top) || 0;
       const start = fromTop ? 0 : window.innerHeight; // where the scene's top is when progress is 0
       // Progress ends as the pin releases: when the scene's bottom reaches the stage's bottom.
-      const total = start + r.height - stage.offsetHeight - pinTop;
+      const total = wide.matches ? start + r.height - stage.offsetHeight - pinTop : fromTop ? r.height / 2 : r.height;
       el.style.setProperty("--p", (total > 0 ? Math.min(1, Math.max(0, (start - r.top) / total)) : 1).toFixed(4));
       progress.current?.(el);
     };
